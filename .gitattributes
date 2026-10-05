@@ -1,0 +1,4 @@
+# 統一用 LF：init/*.sql 會掛進 Linux 容器執行
+* text=auto eol=lf
+*.png binary
+*.jpg binary

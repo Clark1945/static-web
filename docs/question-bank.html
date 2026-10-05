@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PostgreSQL 題庫</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* 兩份靜態頁共用：上方固定標題列 + 內容區；色彩沿用展示台的 PostgreSQL 藍 */
+:root {
+  --bg: #F3F5F8;
+  --surface: #FFFFFF;
+  --ink: #16202B;
+  --muted: #5B6878;
+  --line: #D9DFE7;
+  --accent: #336791;
+  --accent-soft: #E3ECF4;
+  --accent-ink: #FFFFFF;
+  --code-bg: #F6F8FA;
+  --star: #B86E00;
+  --ok: #2F7D5B;
+  --ok-soft: #DDF1E7;
+  --bad: #B3261E;
+  --bad-soft: #FBE4E2;
+  --warn-soft: #FBF0D9;
+  --mark: #FFE58A;
+  --hl-kw: #1F5FA8;
+  --hl-fn: #8A3FB0;
+  --hl-str: #2F7D5B;
+  --hl-num: #A85A00;
+  --hl-cmt: #7A8694;
+  --hl-op: #B3261E;
+  --font-body: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E141B; --surface: #161F29; --ink: #E3E9F0; --muted: #94A3B4; --line: #26323F;
+    --accent: #6FA3D3; --accent-soft: #1B2C3D; --accent-ink: #0E141B; --code-bg: #111921;
+    --star: #E9B14F; --ok: #6CCB9E; --ok-soft: #12301F; --bad: #FF8A80; --bad-soft: #3A1715;
+    --warn-soft: #33280F; --mark: #6B5A12;
+    --hl-kw: #79B8FF; --hl-fn: #D2A8FF; --hl-str: #7EE2B8; --hl-num: #FFAB70; --hl-cmt: #7D8B99; --hl-op: #FF9E9E;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E141B; --surface: #161F29; --ink: #E3E9F0; --muted: #94A3B4; --line: #26323F;
+  --accent: #6FA3D3; --accent-soft: #1B2C3D; --accent-ink: #0E141B; --code-bg: #111921;
+  --star: #E9B14F; --ok: #6CCB9E; --ok-soft: #12301F; --bad: #FF8A80; --bad-soft: #3A1715;
+  --warn-soft: #33280F; --mark: #6B5A12;
+  --hl-kw: #79B8FF; --hl-fn: #D2A8FF; --hl-str: #7EE2B8; --hl-num: #FFAB70; --hl-cmt: #7D8B99; --hl-op: #FF9E9E;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: 84px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.7; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.35; }
+code, pre { font-family: var(--font-mono); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+mark { background: var(--mark); color: inherit; border-radius: 2px; }
+
+.top { position: sticky; top: 0; z-index: 10; background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1240px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+.brand { font-size: 1.1rem; margin-right: 10px; }
+.sub { color: var(--muted); font-size: .82rem; }
+.search input {
+  width: min(340px, 80vw); font: inherit; font-size: .9rem; padding: 7px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+.search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* 程式碼區塊 */
+pre.code { position: relative; margin: 10px 0; padding: 12px 14px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+pre.code code { white-space: pre; }
+.copy {
+  position: absolute; top: 6px; right: 6px; font: inherit; font-family: var(--font-body); font-size: .72rem;
+  padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  cursor: pointer; opacity: 0; transition: opacity .15s;
+}
+pre.code:hover .copy, .copy:focus-visible { opacity: 1; }
+.copy:focus-visible { outline: 2px solid var(--accent); }
+@media (hover: none) { .copy { opacity: 1; } }
+.hl-kw { color: var(--hl-kw); font-weight: 600; }
+.hl-fn { color: var(--hl-fn); }
+.hl-str { color: var(--hl-str); }
+.hl-num { color: var(--hl-num); }
+.hl-cmt { color: var(--hl-cmt); font-style: italic; }
+.hl-op { color: var(--hl-op); font-weight: 600; }
+
+/* 表格 */
+.table-wrap { overflow-x: auto; margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.table-wrap table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+.table-wrap th, .table-wrap td { padding: 7px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.table-wrap th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
+.table-wrap tr:last-child td { border-bottom: 0; }
+.table-wrap td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table-wrap code, .doc p code, .doc li code, blockquote code { background: var(--accent-soft); padding: 0 4px; border-radius: 4px; font-size: .85em; }
+.star { color: var(--star); font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+
+/* 題庫：上方題型分頁 → 篩選列 → 一題一張卡片；答案、提示預設收起來 */
+.tabs { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; gap: 4px; overflow-x: auto; }
+.tabs a {
+  padding: 8px 14px; color: var(--muted); text-decoration: none; border-bottom: 3px solid transparent;
+  white-space: nowrap; font-size: .92rem;
+}
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+.tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tabs .n { font-size: .75rem; color: var(--muted); margin-left: 4px; }
+
+.bank { max-width: 980px; margin: 0 auto; padding-inline: 20px; padding-block: 20px 120px; display: grid; gap: 14px; }
+.note { background: var(--accent-soft); border-radius: 10px; padding: 10px 14px; font-size: .86rem; }
+.note a { color: var(--accent); }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-btn {
+  font: inherit; font-size: .82rem; padding: 3px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.chip-btn:hover { border-color: var(--accent); }
+.chip-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toggles { display: flex; flex-wrap: wrap; gap: 14px; font-size: .86rem; color: var(--muted); margin-left: auto; }
+.toggles label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.progress { font-size: .86rem; color: var(--muted); }
+.progress b { color: var(--ok); }
+
+.chapter-head { margin: 18px 0 0; font-size: 1.05rem; color: var(--accent); display: flex; gap: 8px; align-items: baseline; }
+.chapter-head span { font-size: .8rem; color: var(--muted); font-weight: 400; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 10px; min-width: 0; }
+.card[hidden] { display: none; }
+.card.known { border-color: var(--ok); }
+.card-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.card-head h3 { margin: 0; font-size: 1.02rem; flex: 1 1 auto; min-width: 12em; }
+.num { font-family: var(--font-mono); font-size: .8rem; color: var(--muted); }
+.tag { font-size: .72rem; padding: 1px 8px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.tag.write { background: var(--warn-soft); color: var(--star); }
+.known-box { font-size: .82rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; white-space: nowrap; }
+.card.known .known-box { color: var(--ok); font-weight: 500; }
+.prompt { white-space: pre-wrap; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0; }
+
+details > summary { cursor: pointer; color: var(--accent); font-weight: 500; font-size: .9rem; width: fit-content; }
+details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+details[open] > summary { margin-bottom: 6px; }
+details.hint ol { margin: 0; padding: 8px 14px 8px 32px; background: var(--warn-soft); border-radius: 8px; font-size: .9rem; }
+.explain { white-space: pre-wrap; background: var(--accent-soft); border-radius: 8px; padding: 10px 14px; font-size: .9rem; margin: 8px 0; }
+.result-head { font-size: .82rem; color: var(--muted); margin: 10px 0 4px; }
+.table-wrap td.nul { color: var(--muted); font-style: italic; }
+.table-wrap td { white-space: pre; font-variant-numeric: tabular-nums; }
+
+/* 陷阱題 */
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pair > div { min-width: 0; }
+.pair-label { font-size: .85rem; font-weight: 500; }
+.question { margin: 0; font-weight: 500; }
+.options { display: flex; flex-wrap: wrap; gap: 8px; }
+.option {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line);
+  border-radius: 8px; padding: 6px 16px; cursor: pointer;
+}
+.option:hover:not(:disabled) { border-color: var(--accent); }
+.option:disabled { cursor: default; }
+.option.correct { border-color: var(--ok); background: var(--ok-soft); color: var(--ok); font-weight: 500; }
+.option.wrong { border-color: var(--bad); background: var(--bad-soft); color: var(--bad); }
+.option:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.verdict { font-weight: 600; }
+.verdict.ok { color: var(--ok); }
+.verdict.bad { color: var(--bad); }
+.retry { font: inherit; font-size: .82rem; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
+
+/* 索引實驗 */
+.step-label { font-size: .82rem; color: var(--muted); margin-top: 4px; }
+.goal { white-space: pre-wrap; margin: 0; }
+
+.empty { color: var(--muted); text-align: center; padding: 40px; border: 1px dashed var(--line); border-radius: 12px; }
+
+@media (max-width: 760px) {
+  .pair { grid-template-columns: minmax(0, 1fr); }
+  .bank, .tabs, .top-in { padding-inline: 16px; }
+  .toggles { margin-left: 0; }
+}
+
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <div><b class="brand">PostgreSQL 題庫</b><span class="sub" id="sub"></span></div>
+    <label class="search"><span class="sr-only">搜尋題目</span>
+      <input id="q" type="search" placeholder="搜尋題目、SQL、解說…" autocomplete="off"></label>
+  </div>
+  <nav class="tabs" id="tabs" aria-label="題型"></nav>
+</header>
+<main class="bank" id="bank"></main>
+<script type="application/json" id="data">{"exercises": [{"id": "status-count", "chapter": "基礎彙總", "title": "各狀態訂單數", "prompt": "統計每種訂單狀態各有幾筆訂單。\n顯示：status、訂單數。\n排序：訂單數由多到少。\n", "hints": ["用 GROUP BY status 把同一種狀態的訂單分成一組。", "count(*) 算每組的筆數，ORDER BY 後面可以直接用 SELECT 取的別名。"], "ordered": true, "answer": "SELECT status, count(*) AS orders\nFROM orders\nGROUP BY status\nORDER BY orders DESC;\n", "explanation": "最基本的分組彙總。注意 ORDER BY 可以用 SELECT 的別名 orders，但 WHERE 不行：\nWHERE 執行時 SELECT 還沒跑，別名還不存在。\n", "result": {"columns": ["status", "orders"], "rows": [["delivered", 64554], ["cancelled", 8108], ["returned", 6340], ["shipped", 351], ["pending", 329], ["paid", 318]], "total": 6}}, {"id": "having", "chapter": "基礎彙總", "title": "下單超過 50 次的會員", "prompt": "找出下單次數超過 50 次的會員。\n顯示：會員 id、下單次數。\n排序：下單次數由多到少；次數相同時，會員 id 由小到大。\n", "hints": ["先用 GROUP BY customer_id 算出每位會員的下單次數。", "「分組之後」的條件要寫在 HAVING，不能寫在 WHERE。"], "ordered": true, "answer": "SELECT customer_id, count(*) AS orders\nFROM orders\nGROUP BY customer_id\nHAVING count(*) > 50\nORDER BY orders DESC, customer_id;\n", "explanation": "★ 面試常考：WHERE 在分組「之前」過濾資料列，HAVING 在分組「之後」過濾群組。\n聚合函數（count、sum…）只能出現在 HAVING，寫在 WHERE 會直接報錯。\n", "result": {"columns": ["customer_id", "orders"], "rows": [[1, 152], [2, 94], [3, 73], [4, 62], [5, 62], [8, 57], [10, 52]], "total": 7}}, {"id": "distinct-city", "chapter": "基礎彙總", "title": "不重複的出貨城市", "prompt": "列出所有訂單中出現過的出貨城市（shipping_city），不能重複。\n顯示：城市。\n排序：城市名稱。\n", "hints": ["SELECT DISTINCT 會把完全相同的資料列合併成一列。"], "ordered": true, "answer": "SELECT DISTINCT shipping_city\nFROM orders\nORDER BY shipping_city;\n", "explanation": "DISTINCT 和 GROUP BY shipping_city 結果一樣。只要去重複用 DISTINCT 比較直覺；\n需要同時算數量時才用 GROUP BY。\n", "result": {"columns": ["shipping_city"], "rows": [["台中市"], ["台北市"], ["台南市"], ["台東縣"], ["嘉義市"], ["基隆市"], ["宜蘭縣"], ["屏東縣"], ["彰化縣"], ["新北市"]], "total": 15}}, {"id": "vip-count", "chapter": "基礎彙總", "title": "各 VIP 等級人數", "prompt": "統計每個 VIP 等級（vip_level）各有幾位會員。\n顯示：vip_level、會員數。\n排序：不拘。\n", "hints": ["跟第一題一樣的寫法，換成 customers 表。"], "ordered": false, "answer": "SELECT vip_level, count(*) AS members\nFROM customers\nGROUP BY vip_level;\n", "explanation": "這題不要求順序，所以沒寫 ORDER BY 也算對。\n但要記得：沒寫 ORDER BY 時，資料庫「不保證」回傳順序，每次執行都可能不同。\n", "result": {"columns": ["vip_level", "members"], "rows": [["silver", 2670], ["gold", 891], ["normal", 16439]], "total": 3}}, {"id": "never-ordered", "chapter": "JOIN", "title": "從沒下過單的會員", "prompt": "列出從沒下過任何訂單的會員。\n顯示：會員 id、姓名、註冊日。\n排序：註冊日由早到晚；同一天依 id 由小到大。只取前 10 筆。\n", "hints": ["INNER JOIN 會把沒有訂單的會員濾掉，要用 LEFT JOIN 讓所有會員都留下來。", "LEFT JOIN 對不到訂單時，訂單的欄位全部是 NULL，用 WHERE o.id IS NULL 把他們挑出來。"], "ordered": true, "answer": "SELECT c.id, c.name, c.signup_date\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nWHERE o.id IS NULL\nORDER BY c.signup_date, c.id\nLIMIT 10;\n", "explanation": "「找出沒有對應資料的列」有兩種標準寫法：\nLEFT JOIN … WHERE 右表.id IS NULL，或 WHERE NOT EXISTS (子查詢)。\n兩種結果一樣，PostgreSQL 通常會把它們最佳化成同一種執行計畫（Anti Join）。\n", "result": {"columns": ["id", "name", "signup_date"], "rows": [[2469, "鄭子廷", "2022-07-22"], [2941, "徐子婷", "2022-08-30"], [2961, "蕭欣萱", "2022-08-31"], [2987, "莊家涵", "2022-09-03"], [3215, "吳宇瑋", "2022-09-21"], [3751, "呂書瑋", "2022-11-04"], [3887, "林俊樺", "2022-11-15"], [3964, "王宜文", "2022-11-22"], [4451, "周明安", "2023-01-01"], [4473, "郭詩廷", "2023-01-02"]], "total": 10}}, {"id": "products-per-category", "chapter": "JOIN", "title": "每個分類的商品數（含 0）", "prompt": "統計每個分類各有幾件商品，沒有商品的分類也要列出來，數量顯示 0。\n顯示：分類 id、分類名稱、商品數。\n排序：分類 id。\n", "hints": ["以 categories 為主表，LEFT JOIN products。", "count(*) 會把「補 NULL 的那一列」也算成 1，要改用 count(p.id)。"], "ordered": true, "answer": "SELECT c.id, c.name, count(p.id) AS products\nFROM categories c\nLEFT JOIN products p ON p.category_id = c.id\nGROUP BY c.id, c.name\nORDER BY c.id;\n", "explanation": "★ 陷阱：LEFT JOIN 之後用 count(*)，沒有商品的分類會得到 1 而不是 0，\n因為 LEFT JOIN 還是產生了一列（右邊全是 NULL）。count(欄位) 不算 NULL，才會得到 0。\n", "result": {"columns": ["id", "name", "products"], "rows": [[1, "3C電子", 0], [2, "手機", 78], [3, "筆電", 76], [4, "耳機", 0], [5, "無線耳機", 69], [6, "有線耳機", 92], [7, "手機配件", 80], [8, "居家生活", 0], [9, "廚房用品", 71], [10, "寢具", 95]], "total": 27}}, {"id": "category-parent", "chapter": "JOIN", "title": "分類與上層分類（SELF JOIN）", "prompt": "列出每個分類，以及它的上層分類名稱。最上層的分類沒有上層，顯示「無」。\n顯示：分類 id、分類名稱、上層分類名稱。\n排序：分類 id。\n", "hints": ["categories 要 JOIN 自己，所以同一張表要取兩個不同的別名，例如 c 和 p。", "最上層分類的 parent_id 是 NULL，用 LEFT JOIN 才不會被濾掉，再用 COALESCE 把 NULL 換成「無」。"], "ordered": true, "answer": "SELECT c.id, c.name, COALESCE(p.name, '無') AS parent\nFROM categories c\nLEFT JOIN categories p ON p.id = c.parent_id\nORDER BY c.id;\n", "explanation": "SELF JOIN 就是同一張表當兩張用。常見情境：員工與主管、分類與上層分類、推薦人與被推薦人。\n", "result": {"columns": ["id", "name", "parent"], "rows": [[1, "3C電子", "無"], [2, "手機", "3C電子"], [3, "筆電", "3C電子"], [4, "耳機", "3C電子"], [5, "無線耳機", "耳機"], [6, "有線耳機", "耳機"], [7, "手機配件", "3C電子"], [8, "居家生活", "無"], [9, "廚房用品", "居家生活"], [10, "寢具", "居家生活"]], "total": 27}}, {"id": "top-categories-2026", "chapter": "JOIN", "title": "2026 年最暢銷的分類", "prompt": "統計 2026 年下單、而且狀態是 delivered 的訂單中，各分類賣出的商品件數（quantity 加總）。\n顯示：分類名稱、件數。\n排序：件數由多到少，取前 5 名。\n", "hints": ["要串四張表：orders → order_items → products → categories。", "日期範圍建議寫成 order_date >= '2026-01-01' AND order_date < '2027-01-01'。"], "ordered": true, "answer": "SELECT c.name, sum(oi.quantity) AS qty\nFROM orders o\nJOIN order_items oi ON oi.order_id = o.id\nJOIN products p     ON p.id = oi.product_id\nJOIN categories c   ON c.id = p.category_id\nWHERE o.status = 'delivered'\n  AND o.order_date >= '2026-01-01' AND o.order_date < '2027-01-01'\nGROUP BY c.name\nORDER BY qty DESC\nLIMIT 5;\n", "explanation": "日期範圍用「>= 起點 AND < 下一個起點」最安全：不會漏掉最後一天的下午，也能用到索引。\n寫成 extract(year FROM order_date) = 2026 結果一樣，但欄位被函數包住後，一般索引就用不到了。\n", "result": {"columns": ["name", "qty"], "rows": [["寢具", 5126], ["女裝", 4475], ["收納", 4444], ["手機", 4294], ["露營用品", 4157]], "total": 5}}, {"id": "profile-completeness", "chapter": "NULL", "title": "會員資料完整度", "prompt": "統計會員資料的完整度，結果只有一列。\n顯示：會員總數、有填生日的人數、有填城市的人數。\n", "hints": ["count(*) 算列數；count(欄位) 只算那個欄位「不是 NULL」的列。"], "ordered": true, "answer": "SELECT count(*)          AS total,\n       count(birth_date) AS has_birth_date,\n       count(city)       AS has_city\nFROM customers;\n", "explanation": "★ count(*) 和 count(欄位) 的差別是面試常考題。sum、avg、max、min 也一樣會忽略 NULL，\n所以 avg(欄位) 是「有值的那些」的平均，不是全部人的平均。\n", "result": {"columns": ["total", "has_birth_date", "has_city"], "rows": [[20000, 18859, 19384]], "total": 1}}, {"id": "city-with-unknown", "chapter": "NULL", "title": "各城市會員數（含未填寫）", "prompt": "統計各城市的會員數，沒有填城市的會員歸到「未填寫」。\n顯示：城市、人數。\n排序：人數由多到少；人數相同時依城市名稱。\n", "hints": ["COALESCE(city, '未填寫') 會把 NULL 換成「未填寫」。", "GROUP BY 也要用同一個 COALESCE 運算式（或寫 GROUP BY 1）。"], "ordered": true, "answer": "SELECT COALESCE(city, '未填寫') AS city, count(*) AS members\nFROM customers\nGROUP BY COALESCE(city, '未填寫')\nORDER BY members DESC, city;\n", "explanation": "其實不用 COALESCE，GROUP BY city 也會把所有 NULL 分在同一組。\nCOALESCE 是讓報表顯示得比較友善。\n", "result": {"columns": ["city", "members"], "rows": [["台北市", 4330], ["新北市", 2039], ["台中市", 1638], ["高雄市", 1370], ["桃園市", 1216], ["台南市", 1088], ["新竹市", 1028], ["新竹縣", 976], ["基隆市", 905], ["彰化縣", 887]], "total": 16}}, {"id": "phones-above-avg", "chapter": "子查詢", "title": "比全站平均還貴的手機", "prompt": "列出「手機」分類中，價格高於「全部商品平均價格」的商品。\n顯示：商品 id、名稱、價格。\n排序：價格由高到低；同價依 id 由小到大。\n", "hints": ["全部商品的平均價格可以用子查詢算：(SELECT avg(price) FROM products)。", "要 JOIN categories 才能用分類名稱「手機」篩選。"], "ordered": true, "answer": "SELECT p.id, p.name, p.price\nFROM products p\nJOIN categories c ON c.id = p.category_id\nWHERE c.name = '手機'\n  AND p.price > (SELECT avg(price) FROM products)\nORDER BY p.price DESC, p.id;\n", "explanation": "回傳單一值的子查詢叫「純量子查詢」，可以放在任何需要一個值的地方。\n它跟外層無關，所以只會執行一次。\n", "result": {"columns": ["id", "name", "price"], "rows": [[540, "Sony 手機 I447", 29949.0], [395, "小米 手機 O256", 28769.0], [1122, "ASUS 手機 H620", 28659.0], [465, "Samsung 手機 D707", 28649.0], [115, "Apple 手機 Q137", 28229.0], [410, "小米 手機 L473", 28119.0], [952, "小米 手機 R209", 27849.0], [876, "ASUS 手機 X745", 27839.0], [844, "Apple 手機 B600", 26799.0], [216, "Samsung 手機 V578", 26739.0]], "total": 78}}, {"id": "never-sold", "chapter": "子查詢", "title": "從沒賣出過的商品（NOT EXISTS）", "prompt": "找出從來沒有出現在任何訂單明細裡的商品。\n顯示：商品 id、名稱、上架日期（created_at）。\n排序：商品 id。\n", "hints": ["WHERE NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.product_id = p.id)"], "ordered": true, "answer": "SELECT p.id, p.name, p.created_at\nFROM products p\nWHERE NOT EXISTS (\n    SELECT 1 FROM order_items oi WHERE oi.product_id = p.id\n)\nORDER BY p.id;\n", "explanation": "EXISTS 只關心「有沒有」，找到一筆就停，所以子查詢習慣寫 SELECT 1。\n★ 找「不存在」優先用 NOT EXISTS，不要用 NOT IN：子查詢只要有一個 NULL，NOT IN 就會一筆都查不到（陷阱題有示範）。\n", "result": {"columns": ["id", "name", "created_at"], "rows": [[1401, "ESR 手機配件 B485", "2026-09-14"], [1402, "Kiehls 保養 N117", "2026-09-25"], [1403, "無印良品 寢具 I961", "2026-09-19"], [1404, "黑松 飲料 S360", "2026-08-26"], [1405, "大成 生鮮 R623", "2026-08-26"], [1406, "MAC 彩妝 C382", "2026-07-22"], [1407, "ESR 手機配件 Q355", "2026-07-12"], [1408, "UNIQLO 男裝 N750", "2026-08-27"], [1409, "Coleman 露營用品 M690", "2026-07-09"], [1410, "無印良品 收納 I355", "2026-08-07"]], "total": 100}}, {"id": "gold-returned", "chapter": "子查詢", "title": "有退貨紀錄的金卡會員", "prompt": "VIP 等級是 gold、而且曾經有退貨（status = 'returned'）訂單的會員有幾位？\n結果只有一個數字。\n", "hints": ["用 EXISTS 檢查「這位會員有沒有退貨訂單」。", "如果用 JOIN 寫，記得一位會員可能有好幾筆退貨，要 count(DISTINCT c.id)。"], "ordered": true, "answer": "SELECT count(*) AS members\nFROM customers c\nWHERE c.vip_level = 'gold'\n  AND EXISTS (\n      SELECT 1 FROM orders o\n      WHERE o.customer_id = c.id AND o.status = 'returned'\n  );\n", "explanation": "★ 用 JOIN 寫很容易算錯：一位會員有 3 筆退貨，JOIN 後就變成 3 列，count(*) 會重複計算。\nEXISTS 天生不會重複，這是它比 JOIN 適合「判斷有沒有」的原因。\n", "result": {"columns": ["members"], "rows": [[344]], "total": 1}}, {"id": "price-level", "chapter": "CASE WHEN", "title": "商品價格分級", "prompt": "把商品依價格分成三級：10000 以上是「高價」、1000 以上是「中價」、其餘是「平價」。\n統計每一級的商品數。\n顯示：級別、商品數。\n排序：不拘。\n", "hints": ["CASE WHEN price >= 10000 THEN '高價' WHEN price >= 1000 THEN '中價' ELSE '平價' END", "GROUP BY 可以寫 GROUP BY 1，代表依 SELECT 的第 1 個欄位分組。"], "ordered": false, "answer": "SELECT CASE WHEN price >= 10000 THEN '高價'\n            WHEN price >= 1000  THEN '中價'\n            ELSE '平價' END AS level,\n       count(*) AS products\nFROM products\nGROUP BY 1;\n", "explanation": "CASE WHEN 由上往下判斷，第一個成立就停，所以條件的順序很重要。\n如果先寫 price >= 1000，高價商品也會被歸到「中價」。\n", "result": {"columns": ["level", "products"], "rows": [["中價", 677], ["高價", 143], ["平價", 680]], "total": 3}}, {"id": "cancel-rate-by-year", "chapter": "CASE WHEN", "title": "每年的取消率", "prompt": "統計每一年（依下單時間）的訂單數、取消數（status = 'cancelled'）與取消率。\n取消率用百分比表示，四捨五入到小數第 1 位（例如 9.8）。\n顯示：年份、訂單數、取消數、取消率。\n排序：年份。\n", "hints": ["extract(year FROM order_date) 取出年份。", "取消數可以用 count(*) FILTER (WHERE status = 'cancelled')，或 sum(CASE WHEN … THEN 1 ELSE 0 END)。", "★ 整數除以整數會變成整數（9 / 100 = 0），要寫 100.0 * … 才會有小數。"], "ordered": true, "answer": "SELECT extract(year FROM order_date)::int AS year,\n       count(*) AS orders,\n       count(*) FILTER (WHERE status = 'cancelled') AS cancelled,\n       round(100.0 * count(*) FILTER (WHERE status = 'cancelled') / count(*), 1) AS cancel_pct\nFROM orders\nGROUP BY 1\nORDER BY 1;\n", "explanation": "「條件彙總」是報表最常用的技巧：一次掃描就算出多種條件的數量。\nFILTER 是 PostgreSQL 的寫法；sum(CASE WHEN …) 是所有資料庫都通用的寫法，兩種都要會。\n", "result": {"columns": ["year", "orders", "cancelled", "cancel_pct"], "rows": [[2022, 4324, 418, 9.7], [2023, 9907, 1000, 10.1], [2024, 15934, 1636, 10.3], [2025, 24005, 2435, 10.1], [2026, 25830, 2619, 10.1]], "total": 5}}, {"id": "union-members", "chapter": "集合運算", "title": "取消或退貨過的會員（UNION）", "prompt": "有「取消」或「退貨」訂單紀錄的會員，總共有幾位？\n結果只有一個數字。可以試著用 UNION 寫。\n", "hints": ["先寫兩個查詢：取消過的 customer_id、退貨過的 customer_id，再用 UNION 合併（UNION 會去除重複）。", "合併後的結果放進 FROM ( … ) t，外層再 count(*)。"], "ordered": true, "answer": "SELECT count(*) AS members\nFROM (\n    SELECT customer_id FROM orders WHERE status = 'cancelled'\n    UNION\n    SELECT customer_id FROM orders WHERE status = 'returned'\n) t;\n", "explanation": "★ UNION 會去除重複，UNION ALL 不會。這題要算「幾位會員」，同一人兩種都有只能算一次，所以用 UNION。\n更簡單的寫法是 count(DISTINCT customer_id) … WHERE status IN ('cancelled', 'returned')。\n", "result": {"columns": ["members"], "rows": [[9556]], "total": 1}}, {"id": "except-churned", "chapter": "集合運算", "title": "2025 年有買、2026 年沒買（EXCEPT）", "prompt": "2025 年有下單、但 2026 年完全沒有下單的會員有幾位？\n結果只有一個數字。\n", "hints": ["A EXCEPT B：在 A 裡面、但不在 B 裡面的資料。", "A = 2025 年下過單的 customer_id；B = 2026 年下過單的 customer_id。"], "ordered": true, "answer": "SELECT count(*) AS members\nFROM (\n    SELECT customer_id FROM orders\n    WHERE order_date >= '2025-01-01' AND order_date < '2026-01-01'\n    EXCEPT\n    SELECT customer_id FROM orders\n    WHERE order_date >= '2026-01-01' AND order_date < '2027-01-01'\n) t;\n", "explanation": "這就是「流失會員」的算法。EXCEPT 也會去除重複。\n同樣的需求也能用 NOT EXISTS 寫，大資料量時通常更好最佳化。\n", "result": {"columns": ["members"], "rows": [[3985]], "total": 1}}, {"id": "first-order", "chapter": "視窗函數", "title": "每位會員的第一筆訂單（DISTINCT ON）", "prompt": "會員 id 1 到 10，每人的第一筆訂單（下單時間最早的那筆）。\n顯示：會員 id、訂單 id、下單時間。\n排序：會員 id。\n", "hints": ["PostgreSQL 專屬寫法：SELECT DISTINCT ON (customer_id) … ORDER BY customer_id, order_date", "通用寫法：用 row_number() OVER (PARTITION BY customer_id ORDER BY order_date)，外層取編號 1。"], "ordered": true, "answer": "SELECT DISTINCT ON (customer_id)\n       customer_id, id AS order_id, order_date\nFROM orders\nWHERE customer_id BETWEEN 1 AND 10\nORDER BY customer_id, order_date;\n", "explanation": "DISTINCT ON (欄位) 會在每組裡保留 ORDER BY 排序後的第一列，是 PostgreSQL「分組取第一筆」最簡潔的寫法。\nORDER BY 的開頭必須跟 DISTINCT ON 的欄位一樣。面試時如果對方不是用 PostgreSQL，就改用 row_number()。\n", "result": {"columns": ["customer_id", "order_id", "order_date"], "rows": [[1, 10, "2022-01-09 01:25:07"], [2, 116, "2022-02-12 16:48:46"], [3, 1, "2022-01-01 04:41:30"], [4, 84, "2022-02-03 18:43:27"], [5, 12, "2022-01-09 03:49:33"], [6, 417, "2022-04-01 17:22:43"], [7, 2, "2022-01-01 23:46:36"], [8, 6, "2022-01-08 08:22:20"], [9, 16, "2022-01-11 07:02:51"], [10, 40, "2022-01-22 05:54:25"]], "total": 10}}, {"id": "top-product-per-category", "chapter": "視窗函數", "title": "每個分類最貴的商品", "prompt": "找出每個分類中價格最高的商品（同價時取商品 id 較小的）。只列出有商品的分類。\n顯示：分類 id、商品 id、商品名稱、價格。\n排序：分類 id。\n", "hints": ["row_number() OVER (PARTITION BY category_id ORDER BY price DESC, id) 幫每個分類內的商品編號。", "視窗函數不能直接寫在 WHERE，要包一層子查詢或 CTE，外層再篩 rn = 1。"], "ordered": true, "answer": "SELECT category_id, id, name, price\nFROM (\n    SELECT p.*,\n           row_number() OVER (PARTITION BY category_id ORDER BY price DESC, id) AS rn\n    FROM products p\n) t\nWHERE rn = 1\nORDER BY category_id;\n", "explanation": "★「分組取前 N 名」是面試最常考的視窗函數題。\n要每組前 3 名就改成 rn <= 3；同分要一起並列就改用 rank() 或 dense_rank()。\n", "result": {"columns": ["category_id", "id", "name", "price"], "rows": [[2, 540, "Sony 手機 I447", 29949.0], [3, 1277, "Apple 筆電 N731", 59249.0], [5, 627, "JBL 無線耳機 V398", 6779.0], [6, 559, "Audio-Technica 有線耳機 C203", 2349.0], [7, 626, "ESR 手機配件 V682", 969.0], [9, 911, "膳魔師 廚房用品 S292", 1579.0], [10, 1294, "IKEA 寢具 Z619", 2999.0], [11, 114, "天馬 收納 H542", 789.0], [13, 118, "UNIQLO 男裝 C928", 1589.0], [14, 1129, "GU 女裝 O406", 1799.0]], "total": 19}}, {"id": "monthly-revenue-diff", "chapter": "視窗函數", "title": "每月營收與差額（LAG）", "prompt": "2026 年 1 ~ 9 月，每月已送達（delivered）訂單的營收，以及跟上個月相比增加多少。\n營收 = quantity × unit_price × (1 − discount) 加總，四捨五入到整數；差額用四捨五入後的營收相減。\n第一個月沒有上個月，差額顯示 NULL。\n顯示：月份（日期，例如 2026-01-01）、營收、差額。\n排序：月份。\n", "hints": ["date_trunc('month', order_date)::date 把時間截到當月 1 號。", "先用 CTE 算出每月營收，外層再用 lag(revenue) OVER (ORDER BY month) 取上個月。"], "ordered": true, "answer": "WITH monthly AS (\n    SELECT date_trunc('month', o.order_date)::date AS month,\n           round(sum(oi.quantity * oi.unit_price * (1 - oi.discount))) AS revenue\n    FROM orders o\n    JOIN order_items oi ON oi.order_id = o.id\n    WHERE o.status = 'delivered'\n      AND o.order_date >= '2026-01-01' AND o.order_date < '2026-10-01'\n    GROUP BY 1\n)\nSELECT month, revenue,\n       revenue - lag(revenue) OVER (ORDER BY month) AS diff\nFROM monthly\nORDER BY month;\n", "explanation": "lag() 取前一列、lead() 取後一列，常用來算月增率、年增率、相隔天數。\n把每月營收先放進 CTE，外層的視窗函數就清楚很多。\n", "result": {"columns": ["month", "revenue", "diff"], "rows": [["2026-01-01", 34018789, null], ["2026-02-01", 29021196, -4997593], ["2026-03-01", 33809671, 4788475], ["2026-04-01", 34632714, 823043], ["2026-05-01", 36308874, 1676160], ["2026-06-01", 36198308, -110566], ["2026-07-01", 36746481, 548173], ["2026-08-01", 36347356, -399125], ["2026-09-01", 22410672, -13936684]], "total": 9}}, {"id": "cumulative-signups", "chapter": "視窗函數", "title": "累計註冊人數", "prompt": "2026 年 1 ~ 6 月，每月新註冊的會員數，以及從 2026 年 1 月累計到該月的人數。\n顯示：月份（日期，例如 2026-01-01）、新會員數、累計人數。\n排序：月份。\n", "hints": ["累計加總：sum(…) OVER (ORDER BY month)。", "先用 CTE 算出每月人數，外層再累計，比較不容易寫錯。"], "ordered": true, "answer": "WITH m AS (\n    SELECT date_trunc('month', signup_date)::date AS month, count(*) AS new_members\n    FROM customers\n    WHERE signup_date >= '2026-01-01' AND signup_date < '2026-07-01'\n    GROUP BY 1\n)\nSELECT month, new_members,\n       sum(new_members) OVER (ORDER BY month) AS cumulative\nFROM m\nORDER BY month;\n", "explanation": "sum() 加上 OVER (ORDER BY …) 就變成累計加總，視窗預設是「從第一列到目前這一列」。\n把 ORDER BY 拿掉，每一列都會得到全部的總和。\n", "result": {"columns": ["month", "new_members", "cumulative"], "rows": [["2026-01-01", 378, 378], ["2026-02-01", 341, 719], ["2026-03-01", 378, 1097], ["2026-04-01", 365, 1462], ["2026-05-01", 378, 1840], ["2026-06-01", 353, 2193]], "total": 6}}, {"id": "order-gap-days", "chapter": "視窗函數", "title": "兩次下單相隔幾天", "prompt": "會員 id 1 依下單時間排序的前 10 筆訂單，以及每筆跟「上一筆」相隔幾天。\n相隔天數 = 這筆的下單日期 − 上一筆的下單日期（只看日期），第一筆顯示 NULL。\n顯示：訂單 id、下單日期（date）、相隔天數。\n排序：下單時間。\n", "hints": ["order_date::date 把時間轉成日期；date 減 date 會得到整數天數。", "lag(order_date::date) OVER (ORDER BY order_date) 取上一筆的日期。"], "ordered": true, "answer": "SELECT id,\n       order_date::date AS order_day,\n       order_date::date - lag(order_date::date) OVER (ORDER BY order_date) AS gap_days\nFROM orders\nWHERE customer_id = 1\nORDER BY order_date\nLIMIT 10;\n", "explanation": "注意執行順序：WHERE → 視窗函數 → ORDER BY → LIMIT。\n所以 lag() 看得到所有符合 WHERE 的列，LIMIT 10 只是最後截斷顯示。\n", "result": {"columns": ["id", "order_day", "gap_days"], "rows": [[10, "2022-01-09", null], [17, "2022-01-11", 2], [49, "2022-01-26", 15], [55, "2022-01-27", 1], [68, "2022-01-30", 3], [79, "2022-02-02", 3], [148, "2022-02-18", 16], [207, "2022-03-01", 11], [237, "2022-03-07", 6], [333, "2022-03-21", 14]], "total": 10}}, {"id": "category-descendants", "chapter": "遞迴 CTE", "title": "3C電子底下的所有分類", "prompt": "列出「3C電子」底下的所有子孫分類（不含 3C電子 本身）。\n層級：直接的子分類是 1，再下一層是 2。\n顯示：分類 id、名稱、層級。\n排序：分類 id。\n", "hints": ["WITH RECURSIVE t AS ( 起點 UNION ALL 遞迴部分 ) SELECT … FROM t", "起點：parent_id 等於 3C電子 id 的分類，層級 1。", "遞迴部分：categories JOIN t ON categories.parent_id = t.id，層級 + 1。"], "ordered": true, "answer": "WITH RECURSIVE t AS (\n    SELECT id, name, 1 AS depth\n    FROM categories\n    WHERE parent_id = (SELECT id FROM categories WHERE name = '3C電子')\n    UNION ALL\n    SELECT c.id, c.name, t.depth + 1\n    FROM categories c\n    JOIN t ON c.parent_id = t.id\n)\nSELECT id, name, depth\nFROM t\nORDER BY id;\n", "explanation": "遞迴 CTE 分兩段：起點（anchor）只跑一次；遞迴部分拿上一輪的結果繼續往下找，直到找不到新資料為止。\n常見用途：組織圖、分類樹、留言串、BOM 物料表。\n", "result": {"columns": ["id", "name", "depth"], "rows": [[2, "手機", 1], [3, "筆電", 1], [4, "耳機", 1], [5, "無線耳機", 2], [6, "有線耳機", 2], [7, "手機配件", 1]], "total": 6}}, {"id": "jsonb-storage", "chapter": "JSONB", "title": "256GB 的手機", "prompt": "products.specs 是 JSONB。列出「手機」分類（category_id = 2）中，規格 storage_gb 是 256 的商品。\n顯示：商品 id、名稱、顏色（specs 裡的 color）。\n排序：商品 id。\n", "hints": ["->> 取出文字：specs->>'color'；-> 取出 JSONB：specs->'warranty'。", "篩選可以寫 (specs->>'storage_gb')::int = 256，或用包含運算子 specs @> '{\"storage_gb\": 256}'。"], "ordered": true, "answer": "SELECT id, name, specs->>'color' AS color\nFROM products\nWHERE category_id = 2\n  AND specs @> '{\"storage_gb\": 256}'\nORDER BY id;\n", "explanation": "-> 回傳 JSONB，->> 回傳 text。要比較數字時，記得先把 ->> 的結果轉型：(specs->>'storage_gb')::int。\n@> 是「包含」：左邊的 JSON 有沒有包含右邊這一段。它的好處是能用 GIN 索引（索引實驗室有示範）。\n", "result": {"columns": ["id", "name", "color"], "rows": [[62, "ASUS 手機 V121", "黑"], [76, "Apple 手機 B948", "藍"], [126, "Sony 手機 C992", "銀"], [395, "小米 手機 O256", "白"], [665, "小米 手機 S110", "銀"], [688, "ASUS 手機 W417", "黑"], [729, "ASUS 手機 Q952", "銀"], [783, "Sony 手機 K167", "白"], [867, "Samsung 手機 M403", "黑"], [906, "Apple 手機 A113", "白"]], "total": 17}}, {"id": "jsonb-color-count", "chapter": "JSONB", "title": "服飾各顏色的商品數", "prompt": "統計男裝、女裝（category_id 13、14）各顏色的商品數，沒有規格（specs 是 NULL）的商品不算。\n顯示：顏色、商品數。\n排序：商品數由多到少；數量相同依顏色。\n", "hints": ["GROUP BY specs->>'color' 就能依 JSON 裡的值分組。"], "ordered": true, "answer": "SELECT specs->>'color' AS color, count(*) AS products\nFROM products\nWHERE category_id IN (13, 14) AND specs IS NOT NULL\nGROUP BY 1\nORDER BY products DESC, color;\n", "explanation": "JSONB 裡的值可以像一般欄位一樣用在 SELECT、WHERE、GROUP BY、ORDER BY。\n彈性欄位（每個分類的規格都不同）很適合用 JSONB，不用為了每種規格開一個欄位。\n", "result": {"columns": ["color", "products"], "rows": [["黑", 35], ["綠", 34], ["藍", 29], ["白", 25], ["灰", 24], ["紅", 14]], "total": 6}}, {"id": "jsonb-noise-cancelling", "chapter": "JSONB", "title": "降噪耳機的平均價格", "prompt": "規格中 noise_cancelling 為 true 的商品，平均價格是多少？四捨五入到整數。\n結果只有一個數字。\n", "hints": ["可以寫 (specs->>'noise_cancelling')::boolean，或 specs @> '{\"noise_cancelling\": true}'。"], "ordered": true, "answer": "SELECT round(avg(price)) AS avg_price\nFROM products\nWHERE specs @> '{\"noise_cancelling\": true}';\n", "explanation": "注意 JSON 的 true 是布林值，跟字串 \"true\" 不一樣：'{\"noise_cancelling\": \"true\"}' 是查不到東西的。\n", "result": {"columns": ["avg_price"], "rows": [[3939]], "total": 1}}, {"id": "jsonb-nested", "chapter": "JSONB", "title": "保固兩年的商品（巢狀 JSON）", "prompt": "規格中 warranty.years 等於 2 的商品，依分類統計數量。（warranty 是巢狀物件，例如 {\"years\": 2, \"type\": \"原廠\"}）\n顯示：分類名稱、商品數。\n排序：商品數由多到少；數量相同依分類名稱。\n", "hints": ["一層一層取：specs->'warranty'->>'years'，或用路徑：specs #>> '{warranty,years}'。"], "ordered": true, "answer": "SELECT c.name, count(*) AS products\nFROM products p\nJOIN categories c ON c.id = p.category_id\nWHERE (p.specs->'warranty'->>'years')::int = 2\nGROUP BY c.name\nORDER BY products DESC, c.name;\n", "explanation": "中間層要用 ->（保持 JSONB 才能繼續往下取），最後一層才用 ->> 取出文字。\n#> 與 #>> 可以一次指定整條路徑。\n", "result": {"columns": ["name", "products"], "rows": [["有線耳機", 43], ["無線耳機", 36], ["手機", 35], ["筆電", 34]], "total": 4}}, {"id": "jsonb-key-exists", "chapter": "JSONB", "title": "有電池續航規格的商品", "prompt": "規格裡有 battery_hours 這個鍵的商品有幾件？\n結果只有一個數字。\n", "hints": ["? 運算子判斷 JSONB 有沒有某個鍵：specs ? 'battery_hours'。"], "ordered": true, "answer": "SELECT count(*) AS products\nFROM products\nWHERE specs ? 'battery_hours';\n", "explanation": "? 判斷單一鍵；?| 判斷「任一鍵存在」；?& 判斷「全部鍵都存在」。\n★ 在 JDBC 的 PreparedStatement 裡，? 會被當成參數佔位符，Java 程式要寫成 ?? 或改用 jsonb_exists() 函數，這是實務上常踩的坑。\n", "result": {"columns": ["products"], "rows": [[69]], "total": 1}}, {"id": "jsonb-array-elements", "chapter": "JSONB", "title": "各尺寸有幾件服飾（展開 JSON 陣列）", "prompt": "男裝、女裝（category_id 13、14）的 specs.sizes 是 JSON 陣列，例如 [\"M\", \"L\", \"XL\"]。\n統計每個尺寸有幾件商品提供。\n顯示：尺寸、商品數。\n排序：不拘。\n", "hints": ["jsonb_array_elements_text(specs->'sizes') 會把陣列展開成多列。", "寫在 FROM 裡：FROM products p, jsonb_array_elements_text(p.specs->'sizes') AS s(size)。"], "ordered": false, "answer": "SELECT s.size, count(*) AS products\nFROM products p,\n     jsonb_array_elements_text(p.specs->'sizes') AS s(size)\nWHERE p.category_id IN (13, 14)\nGROUP BY s.size;\n", "explanation": "FROM 裡的函數可以引用前面表格的欄位（隱含的 LATERAL），每件商品會展開成「有幾個尺寸就幾列」。\nspecs 是 NULL 的商品展開後沒有資料列，自然不會被算進去。\n", "result": {"columns": ["size", "products"], "rows": [["XXL", 46], ["M", 161], ["XL", 108], ["S", 86], ["L", 161]], "total": 5}}, {"id": "array-any", "chapter": "Array", "title": "特價商品數（ANY）", "prompt": "products.tags 是 text[]。有「特價」標籤的商品有幾件？\n結果只有一個數字。\n", "hints": ["'特價' = ANY(tags)：陣列裡任何一個元素等於「特價」就成立。"], "ordered": true, "answer": "SELECT count(*) AS products\nFROM products\nWHERE '特價' = ANY(tags);\n", "explanation": "ANY(陣列) 是「其中任何一個」。也可以寫 tags @> ARRAY['特價']，後者能用 GIN 索引。\nJava 端常用 = ANY(?) 搭配 setArray 傳一整串 id，取代自己組字串的 IN (…)。\n", "result": {"columns": ["products"], "rows": [[303]], "total": 1}}, {"id": "array-contains", "chapter": "Array", "title": "熱銷又限量（@>）", "prompt": "同時有「熱銷」和「限量」兩個標籤的商品。\n顯示：商品 id、名稱。\n排序：商品 id。\n", "hints": ["tags @> ARRAY['熱銷', '限量']：左邊的陣列「包含」右邊所有元素。"], "ordered": true, "answer": "SELECT id, name\nFROM products\nWHERE tags @> ARRAY['熱銷', '限量']\nORDER BY id;\n", "explanation": "@> 包含（全部都要有）、<@ 被包含、&& 重疊（有任何一個相同）。\n", "result": {"columns": ["id", "name"], "rows": [[77, "卡迪那 零食 A757"], [84, "ESR 手機配件 I142"], [100, "Belkin 手機配件 Y235"], [112, "華元 零食 I789"], [116, "UNIQLO 男裝 L278"], [215, "宜得利 寢具 Y998"], [251, "Lativ 男裝 N182"], [270, "Skechers 休閒鞋 L248"], [472, "1028 彩妝 S547"], [488, "IKEA 寢具 S227"]], "total": 21}}, {"id": "array-overlap", "chapter": "Array", "title": "環保或獨家（&&）", "prompt": "有「環保」或「獨家」任一個標籤的商品有幾件？\n結果只有一個數字。\n", "hints": ["&& 是「重疊」：兩個陣列只要有任何一個相同元素就成立。"], "ordered": true, "answer": "SELECT count(*) AS products\nFROM products\nWHERE tags && ARRAY['環保', '獨家'];\n", "explanation": "等同 '環保' = ANY(tags) OR '獨家' = ANY(tags)，但 && 比較簡潔，也能用 GIN 索引。\n", "result": {"columns": ["products"], "rows": [[231]], "total": 1}}, {"id": "array-unnest", "chapter": "Array", "title": "各標籤的商品數（unnest）", "prompt": "統計每個標籤各有幾件商品。\n顯示：標籤、商品數。\n排序：商品數由多到少；數量相同依標籤。\n", "hints": ["unnest(tags) 會把陣列展開成多列，一個元素一列。"], "ordered": true, "answer": "SELECT tag, count(*) AS products\nFROM products, unnest(tags) AS tag\nGROUP BY tag\nORDER BY products DESC, tag;\n", "explanation": "unnest 是陣列版的「展開」，對應 JSONB 的 jsonb_array_elements。\n反過來把多列聚合成陣列用 array_agg()。\n", "result": {"columns": ["tag", "products"], "rows": [["熱銷", 381], ["特價", 303], ["團購", 203], ["環保", 142], ["限量", 109], ["新品", 100], ["獨家", 93]], "total": 7}}, {"id": "array-empty", "chapter": "Array", "title": "沒有任何標籤的商品", "prompt": "沒有任何標籤（空陣列）的商品有幾件？\n結果只有一個數字。\n", "hints": ["cardinality(tags) 回傳陣列的元素個數。", "也可以直接比較：tags = '{}'。"], "ordered": true, "answer": "SELECT count(*) AS products\nFROM products\nWHERE cardinality(tags) = 0;\n", "explanation": "★ 小心 array_length(tags, 1)：空陣列會回傳 NULL 而不是 0，寫 array_length(tags, 1) = 0 會一筆都查不到。\ncardinality() 對空陣列回傳 0，比較不會出錯。\n", "result": {"columns": ["products"], "rows": [[554]], "total": 1}}, {"id": "gs-daily-zero", "chapter": "generate_series", "title": "每天的訂單數（沒有訂單也要顯示 0）", "prompt": "2026 年 9 月的每一天，出貨到「台東縣」的訂單有幾筆？沒有訂單的日子也要列出來，顯示 0。\n顯示：日期（date）、訂單數。\n排序：日期。\n", "hints": ["直接 GROUP BY 訂單日期的話，沒有訂單的日子根本不會出現。要先「產生」完整的日期清單。", "generate_series('2026-09-01'::date, '2026-09-30'::date, interval '1 day') 會產生 30 列。", "再用 LEFT JOIN 接上訂單，count(o.id) 才會在沒有訂單時得到 0。"], "ordered": true, "answer": "SELECT d::date AS day, count(o.id) AS orders\nFROM generate_series('2026-09-01'::date, '2026-09-30'::date, interval '1 day') AS d\nLEFT JOIN orders o\n       ON o.shipping_city = '台東縣'\n      AND o.order_date >= d\n      AND o.order_date <  d + interval '1 day'\nGROUP BY d\nORDER BY d;\n", "explanation": "報表「補零」的標準做法：用 generate_series 產生完整的時間軸，再 LEFT JOIN 實際資料。\n注意城市條件要放在 ON：放在 WHERE 的話，沒有訂單的日子會被濾掉（陷阱題第 1 題的道理）。\n", "result": {"columns": ["day", "orders"], "rows": [["2026-09-01", 4], ["2026-09-02", 5], ["2026-09-03", 0], ["2026-09-04", 2], ["2026-09-05", 2], ["2026-09-06", 1], ["2026-09-07", 5], ["2026-09-08", 4], ["2026-09-09", 5], ["2026-09-10", 7]], "total": 30}}, {"id": "gs-monthly-signups", "chapter": "generate_series", "title": "2026 年每月新會員（含 0）", "prompt": "2026 年 1 ~ 12 月，每個月有幾位新註冊會員？沒有人註冊的月份顯示 0。\n顯示：月份（date，例如 2026-01-01）、新會員數。\n排序：月份。\n", "hints": ["generate_series('2026-01-01'::date, '2026-12-01'::date, interval '1 month')"], "ordered": true, "answer": "SELECT m::date AS month, count(c.id) AS new_members\nFROM generate_series('2026-01-01'::date, '2026-12-01'::date, interval '1 month') AS m\nLEFT JOIN customers c\n       ON c.signup_date >= m\n      AND c.signup_date <  m + interval '1 month'\nGROUP BY m\nORDER BY m;\n", "explanation": "資料只到 2026 年 6 月，所以 7 ~ 12 月都是 0。如果直接對 customers 做 GROUP BY，只會得到 6 列。\n", "result": {"columns": ["month", "new_members"], "rows": [["2026-01-01", 378], ["2026-02-01", 341], ["2026-03-01", 378], ["2026-04-01", 365], ["2026-05-01", 378], ["2026-06-01", 353], ["2026-07-01", 0], ["2026-08-01", 0], ["2026-09-01", 0], ["2026-10-01", 0]], "total": 12}}, {"id": "write-insert-returning", "chapter": "寫入（RETURNING / UPSERT）", "title": "新增會員並拿回資料（INSERT … RETURNING）", "mode": "write", "prompt": "新增一位會員：姓名「王小明」、email「xiaoming@example.com」、註冊日 2026-10-01。\n用 RETURNING 回傳：姓名、email、vip_level（沒有指定，看看預設值是什麼）。\n", "hints": ["INSERT INTO customers (name, email, signup_date) VALUES (…) RETURNING …"], "ordered": true, "answer": "INSERT INTO customers (name, email, signup_date)\nVALUES ('王小明', 'xiaoming@example.com', '2026-10-01')\nRETURNING name, email, vip_level;\n", "explanation": "RETURNING 讓 INSERT / UPDATE / DELETE 直接回傳被影響的資料，省掉再查一次。最常見的用途是拿回自動產生的 id。\n★ 這題刻意不比對 id：序列（serial）不受交易控制，就算 ROLLBACK，用掉的號碼也不會還回去，所以每次執行 id 都不同。\n這也是正式環境的 id 常常「跳號」的原因，面試被問到可以這樣解釋。\n", "result": {"columns": ["name", "email", "vip_level"], "rows": [["王小明", "xiaoming@example.com", "normal"]], "total": 1}}, {"id": "write-update-returning", "chapter": "寫入（RETURNING / UPSERT）", "title": "飲料漲價 10%（UPDATE … RETURNING）", "mode": "write", "prompt": "「飲料」分類的商品全部漲價 10%，新價格四捨五入到整數。\n用 RETURNING 回傳：商品 id、新價格。\n排序：不拘。\n", "hints": ["UPDATE products SET price = round(price * 1.1) WHERE … RETURNING id, price", "分類可以用子查詢找：category_id = (SELECT id FROM categories WHERE name = '飲料')"], "ordered": false, "answer": "UPDATE products\nSET price = round(price * 1.1)\nWHERE category_id = (SELECT id FROM categories WHERE name = '飲料')\nRETURNING id, price;\n", "explanation": "RETURNING 回傳的是「更新後」的值。PostgreSQL 18 起可以寫 RETURNING old.price, new.price 同時拿到新舊值。\n沙盒可以一次執行多句：試著在後面加一句 SELECT，就能看到交易內已經改好的資料（但批改看的是最後一個回傳的結果，交作業時要拿掉）。\n", "result": {"columns": ["id", "price"], "rows": [[352, 76.0], [484, 65.0], [1133, 76.0], [1142, 43.0], [1257, 76.0], [2, 21.0], [30, 65.0], [34, 76.0], [79, 43.0], [87, 76.0]], "total": 83}}, {"id": "write-delete-returning", "chapter": "寫入（RETURNING / UPSERT）", "title": "刪除待處理訂單（DELETE … RETURNING）", "mode": "write", "prompt": "刪除所有狀態是 pending 的訂單。用 RETURNING 回傳：訂單 id、會員 id。\n排序：不拘。\n", "hints": ["order_items 的外鍵設了 ON DELETE CASCADE，刪訂單時明細會自動一起刪。"], "ordered": false, "answer": "DELETE FROM orders\nWHERE status = 'pending'\nRETURNING id, customer_id;\n", "explanation": "DELETE … RETURNING 常用在「搬資料」：WITH moved AS (DELETE … RETURNING *) INSERT INTO archive SELECT * FROM moved;\n一句完成刪除與歸檔，而且在同一個交易裡。\n", "result": {"columns": ["id", "customer_id"], "rows": [[78907, 17631], [78911, 18042], [78912, 18476], [78915, 17006], [78917, 15373], [78920, 11999], [78923, 15926], [78928, 15820], [78937, 1954], [78938, 16233]], "total": 329}}, {"id": "write-upsert-update", "chapter": "寫入（RETURNING / UPSERT）", "title": "有就更新、沒有就新增（UPSERT）", "mode": "write", "prompt": "一次寫入兩個分類：\n(2, '智慧型手機', 上層 1)：id 2 已經存在，要把名稱更新成「智慧型手機」\n(28, '寵物用品', 沒有上層)：id 28 不存在，要新增\n用 RETURNING 回傳：id、name、parent_id。\n排序：不拘。\n", "hints": ["INSERT … ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name", "EXCLUDED 代表「這次想插入、但撞到衝突的那一列」。"], "ordered": false, "answer": "INSERT INTO categories (id, name, parent_id)\nVALUES (2, '智慧型手機', 1),\n       (28, '寵物用品', NULL)\nON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name\nRETURNING id, name, parent_id;\n", "explanation": "★ UPSERT 是原子操作：不會有「先查有沒有、再決定 INSERT 或 UPDATE」之間被別人插隊的競態問題（race condition）。\nON CONFLICT 後面要指定一個有 UNIQUE 或主鍵約束的欄位。JPA 的 save() 做不到這件事，實務上常要寫原生 SQL。\n", "result": {"columns": ["id", "name", "parent_id"], "rows": [[2, "智慧型手機", 1], [28, "寵物用品", null]], "total": 2}}, {"id": "write-upsert-nothing", "chapter": "寫入（RETURNING / UPSERT）", "title": "重複就跳過（ON CONFLICT DO NOTHING）", "mode": "write", "prompt": "一次新增兩位會員（註冊日都是 2026-10-01）：\n「舊會員」email user00001@example.com（這個 email 已經存在）\n「新會員」email new0001@example.com\nemail 重複的直接跳過，不要報錯。用 RETURNING 回傳：姓名、email。\n", "hints": ["ON CONFLICT (email) DO NOTHING"], "ordered": true, "answer": "INSERT INTO customers (name, email, signup_date)\nVALUES ('舊會員', 'user00001@example.com', '2026-10-01'),\n       ('新會員', 'new0001@example.com', '2026-10-01')\nON CONFLICT (email) DO NOTHING\nRETURNING name, email;\n", "explanation": "DO NOTHING 跳過的那一列不會出現在 RETURNING 裡，所以只回傳一列。\n匯入資料、處理重複送出的請求（冪等性）都很常用這個寫法。\n", "result": {"columns": ["name", "email"], "rows": [["新會員", "new0001@example.com"]], "total": 1}}, {"id": "write-update-from", "chapter": "寫入（RETURNING / UPSERT）", "title": "有退貨的金卡會員降級（UPDATE … FROM）", "mode": "write", "prompt": "把「曾經有退貨（returned）訂單」的 gold 會員，等級降為 silver。\n用 RETURNING 回傳：會員 id。\n排序：不拘。\n", "hints": ["UPDATE customers c SET … FROM orders o WHERE o.customer_id = c.id AND …", "也可以用 WHERE EXISTS (…)。"], "ordered": false, "answer": "UPDATE customers c\nSET vip_level = 'silver'\nFROM orders o\nWHERE o.customer_id = c.id\n  AND o.status = 'returned'\n  AND c.vip_level = 'gold'\nRETURNING c.id;\n", "explanation": "UPDATE … FROM 是 PostgreSQL 用其他表的資料來更新的寫法（MySQL 是 UPDATE … JOIN）。\n一位會員有多筆退貨，也只會被更新一次、回傳一次。\n★ 但如果 SET 用到 FROM 表的欄位，而且對到多筆，「用哪一筆的值」是不確定的。這種情況要先彙總好再更新。\n", "result": {"columns": ["id"], "rows": [[13], [10], [8], [81], [30], [2], [1], [75], [455], [124]], "total": 344}}, {"id": "write-jsonb-merge", "chapter": "寫入（RETURNING / UPSERT）", "title": "在 JSONB 裡加一個欄位", "mode": "write", "prompt": "有「特價」標籤、而且有規格（specs 不是 NULL）的商品，在 specs 加上 \"on_sale\": true。\n用 RETURNING 回傳：商品 id、specs 裡 on_sale 的值（文字）。\n排序：不拘。\n", "hints": ["JSONB 用 || 合併：specs || '{\"on_sale\": true}'，相同的鍵會被右邊覆蓋。", "也可以用 jsonb_set(specs, '{on_sale}', 'true')。"], "ordered": false, "answer": "UPDATE products\nSET specs = specs || '{\"on_sale\": true}'\nWHERE '特價' = ANY(tags) AND specs IS NOT NULL\nRETURNING id, specs->>'on_sale';\n", "explanation": "★ 陷阱：NULL || '{\"on_sale\": true}' 的結果是 NULL（陷阱題有示範）。\n如果要連沒有規格的商品一起處理，要寫 COALESCE(specs, '{}') || '{\"on_sale\": true}'。\n刪除一個鍵用減號：specs - 'on_sale'。\n", "result": {"columns": ["id", "?column?"], "rows": [[7, "true"], [10, "true"], [24, "true"], [14, "true"], [15, "true"], [26, "true"], [32, "true"], [40, "true"], [43, "true"], [50, "true"]], "total": 288}}], "traps": [{"id": "left-join-where", "title": "LEFT JOIN 的條件放 ON 還是 WHERE", "question": "這兩段 SQL 算出來的會員數一樣嗎？", "sqls": [{"label": "A：條件放在 ON", "sql": "SELECT count(DISTINCT c.id) AS members\nFROM customers c\nLEFT JOIN orders o\n       ON o.customer_id = c.id\n      AND o.status = 'returned';\n"}, {"label": "B：條件放在 WHERE", "sql": "SELECT count(DISTINCT c.id) AS members\nFROM customers c\nLEFT JOIN orders o\n       ON o.customer_id = c.id\nWHERE o.status = 'returned';\n"}], "options": ["一樣", "不一樣，A 比較多", "不一樣，B 比較多"], "answer": 1, "explanation": "A 的條件在 ON 裡：先依條件配對，對不上的會員照樣保留（訂單欄位補 NULL），所以 2 萬位會員全部都在。\nB 的條件在 WHERE：LEFT JOIN 完之後才過濾。沒有退貨的會員，o.status 是 NULL，NULL = 'returned' 不成立，全被濾掉。\n結果 B 的 LEFT JOIN 等於變成了 INNER JOIN。\n口訣：要「保留左表」就把右表的條件放 ON；要「篩掉資料」才放 WHERE。\n", "results": [{"columns": ["members"], "rows": [[20000]], "total": 1}, {"columns": ["members"], "rows": [[5141]], "total": 1}]}, {"id": "not-in-null", "title": "NOT IN 遇到 NULL", "question": "想找「底下沒有子分類」的分類（葉節點），A 會回傳幾筆？", "sqls": [{"label": "A：NOT IN", "sql": "SELECT id, name\nFROM categories\nWHERE id NOT IN (SELECT parent_id FROM categories);\n"}, {"label": "B：NOT EXISTS", "sql": "SELECT id, name\nFROM categories c\nWHERE NOT EXISTS (\n    SELECT 1 FROM categories ch WHERE ch.parent_id = c.id\n);\n"}], "options": ["跟 B 一樣多", "0 筆", "27 筆（全部分類）", "執行錯誤"], "answer": 1, "explanation": "最上層分類的 parent_id 是 NULL，所以子查詢的結果裡有 NULL。\nid NOT IN (2, 4, NULL) 會展開成 id <> 2 AND id <> 4 AND id <> NULL。\n任何值跟 NULL 比較都是「未知」，不是 true，所以每一列都不成立，結果是 0 筆，而且不會報錯。\n★ 找「不存在」請用 NOT EXISTS；一定要用 NOT IN 的話，子查詢要加 WHERE parent_id IS NOT NULL。\n", "results": [{"columns": ["id", "name"], "rows": [], "total": 0}, {"columns": ["id", "name"], "rows": [[20, "飲料"], [26, "健身器材"], [27, "露營用品"], [11, "收納"], [17, "休閒鞋"], [10, "寢具"], [2, "手機"], [13, "男裝"], [21, "生鮮"], [5, "無線耳機"]], "total": 19}]}, {"id": "count-star-left-join", "title": "LEFT JOIN 之後的 count(*)", "question": "會員 19999 從來沒有下過單。A 的 count(*) 會算出多少？", "sqls": [{"label": "A：count(*)", "sql": "SELECT c.id, count(*) AS orders\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nWHERE c.id = 19999\nGROUP BY c.id;\n"}, {"label": "B：count(o.id)", "sql": "SELECT c.id, count(o.id) AS orders\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nWHERE c.id = 19999\nGROUP BY c.id;\n"}], "options": ["0", "1", "NULL"], "answer": 1, "explanation": "LEFT JOIN 對不到訂單時，還是會產生「一列」：會員欄位有值，訂單欄位全是 NULL。\ncount(*) 數的是列數，所以是 1；count(o.id) 不算 NULL，才是正確的 0。\n做「每個 X 有幾個 Y、沒有的顯示 0」這種報表時一定要注意。\n", "results": [{"columns": ["id", "orders"], "rows": [[19999, 1]], "total": 1}, {"columns": ["id", "orders"], "rows": [[19999, 0]], "total": 1}]}, {"id": "count-column-null", "title": "count(*) 與 count(欄位)", "question": "count(*) 和 count(birth_date) 的結果？", "sqls": [{"label": "A：count(*)", "sql": "SELECT count(*) AS cnt FROM customers;\n"}, {"label": "B：count(birth_date)", "sql": "SELECT count(birth_date) AS cnt FROM customers;\n"}], "options": ["一樣", "count(birth_date) 比較少", "count(birth_date) 比較多"], "answer": 1, "explanation": "count(*) 數「列數」；count(欄位) 只數那個欄位不是 NULL 的列。\n有些會員沒填生日（NULL），所以 B 比較少。\nsum、avg、max、min 一樣會跳過 NULL。\n", "results": [{"columns": ["cnt"], "rows": [[20000]], "total": 1}, {"columns": ["cnt"], "rows": [[18859]], "total": 1}]}, {"id": "equals-null", "title": "= NULL", "question": "想找「沒有填城市」的會員，A 會回傳多少？", "sqls": [{"label": "A：= NULL", "sql": "SELECT count(*) AS members FROM customers WHERE city = NULL;\n"}, {"label": "B：IS NULL", "sql": "SELECT count(*) AS members FROM customers WHERE city IS NULL;\n"}], "options": ["跟 B 一樣", "0", "執行錯誤"], "answer": 1, "explanation": "NULL 代表「未知」，任何值跟 NULL 用 =、<>、> 比較，結果都是未知（不是 true），所以 WHERE 一筆都不會通過。\n判斷 NULL 只能用 IS NULL / IS NOT NULL。\n", "results": [{"columns": ["members"], "rows": [[0]], "total": 1}, {"columns": ["members"], "rows": [[616]], "total": 1}]}, {"id": "integer-division", "title": "整數除法", "question": "A 算出來的取消率是多少？", "sqls": [{"label": "A：整數相除", "sql": "SELECT count(*) FILTER (WHERE status = 'cancelled') / count(*) AS cancel_rate\nFROM orders;\n"}, {"label": "B：先乘 100.0", "sql": "SELECT round(100.0 * count(*) FILTER (WHERE status = 'cancelled') / count(*), 2) AS cancel_pct\nFROM orders;\n"}], "options": ["約 0.1", "0", "約 10", "執行錯誤"], "answer": 1, "explanation": "count(*) 的型別是整數（bigint），整數除以整數的結果還是整數，小數直接捨去：8000 / 80000 = 0。\n只要其中一邊是小數就會得到小數，常見寫法是 100.0 * a / b，或 a::numeric / b。\nJava 的 int / int 也是一樣的道理。\n", "results": [{"columns": ["cancel_rate"], "rows": [[0]], "total": 1}, {"columns": ["cancel_pct"], "rows": [[10.14]], "total": 1}]}, {"id": "and-or-precedence", "title": "AND 和 OR 的優先順序", "question": "A 查到的是「台北市的取消或退貨訂單」嗎？", "sqls": [{"label": "A：沒有括號", "sql": "SELECT count(*) AS orders\nFROM orders\nWHERE status = 'cancelled' OR status = 'returned'\n  AND shipping_city = '台北市';\n"}, {"label": "B：加上括號", "sql": "SELECT count(*) AS orders\nFROM orders\nWHERE (status = 'cancelled' OR status = 'returned')\n  AND shipping_city = '台北市';\n"}], "options": ["是，跟 B 一樣", "不是，A 比較多", "不是，A 比較少"], "answer": 1, "explanation": "AND 的優先順序比 OR 高，A 實際上是：\nstatus = 'cancelled' OR (status = 'returned' AND shipping_city = '台北市')\n也就是「所有城市的取消訂單」加上「台北市的退貨訂單」，所以比較多。\nOR 跟 AND 混用時一律加括號。用 status IN ('cancelled', 'returned') 也能避免這個問題。\n", "results": [{"columns": ["orders"], "rows": [[9482]], "total": 1}, {"columns": ["orders"], "rows": [[3124]], "total": 1}]}, {"id": "between-timestamp", "title": "BETWEEN 與時間", "question": "想查 2026 年 1 月的訂單。A 的筆數跟 B 一樣嗎？", "sqls": [{"label": "A：BETWEEN", "sql": "SELECT count(*) AS orders\nFROM orders\nWHERE order_date BETWEEN '2026-01-01' AND '2026-01-31';\n"}, {"label": "B：>= 與 <", "sql": "SELECT count(*) AS orders\nFROM orders\nWHERE order_date >= '2026-01-01' AND order_date < '2026-02-01';\n"}], "options": ["一樣", "A 比較少", "A 比較多"], "answer": 1, "explanation": "order_date 是時間戳記。'2026-01-31' 會被當成 2026-01-31 00:00:00，\n所以 1/31 當天 00:00 之後的訂單全部被漏掉。\n時間範圍一律寫成「>= 起點 AND < 下一段的起點」，不管欄位是 date 還是 timestamp 都不會出錯。\n", "results": [{"columns": ["orders"], "rows": [[2564]], "total": 1}, {"columns": ["orders"], "rows": [[2668]], "total": 1}]}, {"id": "jsonb-text-compare", "title": "JSONB 取出來是文字", "question": "想找容量大於 64GB 的手機。A 的筆數跟 B 一樣嗎？", "sqls": [{"label": "A：直接比較 ->> 的結果", "sql": "SELECT count(*) AS phones\nFROM products\nWHERE category_id = 2 AND specs->>'storage_gb' > '64';\n"}, {"label": "B：先轉成數字", "sql": "SELECT count(*) AS phones\nFROM products\nWHERE category_id = 2 AND (specs->>'storage_gb')::int > 64;\n"}], "options": ["一樣", "A 比較少", "A 比較多"], "answer": 1, "explanation": "->> 取出來的是 text，text 比大小是從第一個字開始逐字比較：\n'128' > '64' 先比 '1' 和 '6'，'1' 比較小，所以是 false；'256'、'512' 也一樣輸給 '6'。\n結果 A 一筆都查不到，而且不會有任何錯誤訊息。\nJSONB 裡的數字要比較大小，一定要先轉型：(specs->>'storage_gb')::int。\n", "results": [{"columns": ["phones"], "rows": [[0]], "total": 1}, {"columns": ["phones"], "rows": [[52]], "total": 1}]}, {"id": "jsonb-null-concat", "title": "NULL 合併 JSONB", "question": "有些商品的 specs 是 NULL。A 對它們執行 specs || '{\"on_sale\": true}'，結果是什麼？", "sqls": [{"label": "A：直接合併", "sql": "SELECT id, specs || '{\"on_sale\": true}' AS merged\nFROM products\nWHERE specs IS NULL\nORDER BY id\nLIMIT 5;\n"}, {"label": "B：先用 COALESCE 補成空物件", "sql": "SELECT id, COALESCE(specs, '{}') || '{\"on_sale\": true}' AS merged\nFROM products\nWHERE specs IS NULL\nORDER BY id\nLIMIT 5;\n"}], "options": ["{\"on_sale\": true}", "NULL", "執行錯誤"], "answer": 1, "explanation": "在 SQL 裡，NULL 參與幾乎所有運算的結果都是 NULL：NULL || 任何東西 = NULL、NULL + 1 = NULL。\n所以 UPDATE … SET specs = specs || '{…}' 時，原本是 NULL 的商品不會被加上新欄位，也不會有任何錯誤訊息。\n要先用 COALESCE(specs, '{}') 補成空物件。\n", "results": [{"columns": ["id", "merged"], "rows": [[1, null], [5, null], [25, null], [54, null], [60, null]], "total": 5}, {"columns": ["id", "merged"], "rows": [[1, "{\"on_sale\": true}"], [5, "{\"on_sale\": true}"], [25, "{\"on_sale\": true}"], [54, "{\"on_sale\": true}"], [60, "{\"on_sale\": true}"]], "total": 5}]}], "steps": [{"id": "seq-scan", "title": "沒有索引的查詢", "goal": "perf.orders_big 有 200 萬筆訂單，除了主鍵沒有任何索引。\n先找出「會員 4242 最近的 5 筆訂單」，看看 PostgreSQL 怎麼執行。\n", "sqls": [{"label": "會員 4242 最近 5 筆訂單", "sql": "EXPLAIN ANALYZE\nSELECT id, order_date, status, amount\nFROM perf.orders_big\nWHERE customer_id = 4242\nORDER BY order_date DESC\nLIMIT 5;\n"}], "ddl": [], "question": "結果只有 5 筆，為什麼要花幾十毫秒？注意計畫裡的 Seq Scan 和 Rows Removed by Filter。", "takeaway": "Seq Scan = 從第一筆讀到最後一筆。沒有索引，資料庫不知道 4242 的訂單在哪裡，只能把 200 萬筆全部讀一遍再過濾。\nRows Removed by Filter 就是白讀的筆數。Parallel 表示 PostgreSQL 開了多個 worker 一起掃，但還是全表掃描。\n"}, {"id": "single-index", "title": "建立單欄索引", "goal": "在 customer_id 建一個 B-tree 索引，再執行一次同一個查詢，比較執行時間。\n", "sqls": [{"label": "會員 4242 最近 5 筆訂單", "sql": "EXPLAIN ANALYZE\nSELECT id, order_date, status, amount\nFROM perf.orders_big\nWHERE customer_id = 4242\nORDER BY order_date DESC\nLIMIT 5;\n"}], "ddl": ["CREATE INDEX idx_customer ON perf.orders_big (customer_id);"], "question": "掃描方式變成什麼？計畫裡還有沒有 Sort？", "takeaway": "變成 Bitmap Index Scan + Bitmap Heap Scan：先在索引裡找到符合的資料位置，再回到表裡讀出那幾列。速度通常快上百倍。\n但還有一個 Sort：索引只依 customer_id 排序，同一位會員的訂單在索引裡沒有照 order_date 排，\n所以要把這位會員的訂單全部讀出來、排序之後，才知道最近的 5 筆是哪些。\n建索引本身也要時間，看一下「建立耗時」和索引大小。\n"}, {"id": "composite-index", "title": "複合索引把排序也省掉", "goal": "建一個 (customer_id, order_date) 的複合索引，再跑一次。\n可以先刪掉 idx_customer，比較清楚是哪個索引在作用。\n", "sqls": [{"label": "會員 4242 最近 5 筆訂單", "sql": "EXPLAIN ANALYZE\nSELECT id, order_date, status, amount\nFROM perf.orders_big\nWHERE customer_id = 4242\nORDER BY order_date DESC\nLIMIT 5;\n"}], "ddl": ["DROP INDEX perf.idx_customer;", "CREATE INDEX idx_customer_date ON perf.orders_big (customer_id, order_date);"], "question": "Sort 節點還在嗎？", "takeaway": "複合索引先依 customer_id 排，customer_id 相同時再依 order_date 排。\n找到 4242 之後，資料本來就照時間排好了：從尾端往回讀（Index Scan Backward）5 筆就停，不用 Sort，也不用讀其他訂單。\n★ 設計索引時，WHERE 的等值條件放前面、ORDER BY 的欄位放後面。\n補充：如果拿掉 LIMIT，符合的資料又很少（這位會員只有 6 筆），優化器可能還是選 Bitmap Scan 再排序，\n因為排 6 筆幾乎不花時間。資料越多、或者有 LIMIT 時，複合索引的優勢越明顯。\n"}, {"id": "leftmost-prefix", "title": "欄位順序很重要（最左前綴）", "goal": "在只有 (customer_id, order_date) 索引的情況下，改成「只用日期」查某一天的訂單。\n", "sqls": [{"label": "查 2026-09-01 一整天的訂單", "sql": "EXPLAIN ANALYZE\nSELECT id, customer_id, amount\nFROM perf.orders_big\nWHERE order_date >= '2026-09-01' AND order_date < '2026-09-02';\n"}], "ddl": ["CREATE INDEX idx_date ON perf.orders_big (order_date);"], "question": "先不要建 idx_date，直接跑。複合索引裡明明有 order_date，為什麼用不上？", "takeaway": "★ 最左前綴原則：(customer_id, order_date) 的索引就像電話簿「先依姓、再依名」排序，只知道名字沒辦法翻。\n查詢條件沒有 customer_id，就用不到這個索引的排序，只能全表掃描。\n建了 idx_date 之後再跑一次，就會變成 Index Scan 或 Bitmap Scan。\n"}, {"id": "function-on-column", "title": "對欄位套函數，索引就失效", "goal": "確認已經有 idx_date（上一步建的）。比較兩種「查某一天」的寫法。\n", "sqls": [{"label": "A：把欄位轉成日期再比較", "sql": "EXPLAIN ANALYZE\nSELECT count(*)\nFROM perf.orders_big\nWHERE (order_date AT TIME ZONE 'Asia/Taipei')::date = '2026-09-01';\n"}, {"label": "B：用範圍比較", "sql": "EXPLAIN ANALYZE\nSELECT count(*)\nFROM perf.orders_big\nWHERE order_date >= '2026-09-01' AND order_date < '2026-09-02';\n"}], "ddl": ["CREATE INDEX idx_date ON perf.orders_big (order_date);"], "question": "兩種寫法查的是同一天，執行計畫一樣嗎？", "takeaway": "索引存的是 order_date 原本的值。A 把欄位先轉換才比較，資料庫得把每一列都算一遍，索引派不上用場（Seq Scan）。\nB 直接拿欄位跟範圍比，可以在索引裡快速定位；而且 count(*) 只需要知道有幾筆，連表都不用讀（Index Only Scan）。\n★ 原則：函數、運算放在「常數那一邊」，不要包住欄位。同理：WHERE amount * 2 > 1000 要改寫成 amount > 500。\n"}, {"id": "low-selectivity", "title": "選擇性太低，資料庫不用索引", "goal": "在 status 建索引。status 只有 4 種值：delivered 佔 82%，pending 只佔 3%。\n", "sqls": [{"label": "A：查 delivered（82%）", "sql": "EXPLAIN ANALYZE\nSELECT sum(amount)\nFROM perf.orders_big\nWHERE status = 'delivered';\n"}, {"label": "B：查 pending（3%）", "sql": "EXPLAIN ANALYZE\nSELECT sum(amount)\nFROM perf.orders_big\nWHERE status = 'pending';\n"}], "ddl": ["CREATE INDEX idx_status ON perf.orders_big (status);"], "question": "兩個查詢都有索引可用，PostgreSQL 都用了嗎？", "takeaway": "查 delivered 時，八成的資料都符合，透過索引一筆一筆回表讀反而更慢，所以優化器選擇全表掃描。\n查 pending 只有 3%，用索引就划算（Bitmap Scan）。不過 3% 也有 6 萬筆，回表讀取還是要時間，所以快得沒有前面幾步那麼誇張。\n★ 「有建索引不代表一定會用」。優化器會依統計資料估算成本，選擇它認為最快的方式。選擇性低的欄位（性別、狀態）單獨建索引通常沒什麼用。\n"}, {"id": "index-only-scan", "title": "Index Only Scan：連表都不用讀", "goal": "確認有 (customer_id, order_date) 的複合索引。比較「只查索引裡有的欄位」和「多查一個欄位」。\n", "sqls": [{"label": "A：只查 customer_id、order_date", "sql": "EXPLAIN ANALYZE\nSELECT customer_id, order_date\nFROM perf.orders_big\nWHERE customer_id BETWEEN 1000 AND 1200;\n"}, {"label": "B：多查 amount", "sql": "EXPLAIN ANALYZE\nSELECT customer_id, order_date, amount\nFROM perf.orders_big\nWHERE customer_id BETWEEN 1000 AND 1200;\n"}], "ddl": ["CREATE INDEX idx_customer_date ON perf.orders_big (customer_id, order_date);"], "question": "A 和 B 的掃描方式有什麼不同？Heap Fetches 是多少？", "takeaway": "A 需要的欄位全都在索引裡，直接從索引讀出來就好，叫 Index Only Scan，不用回表。\nB 多要了 amount，索引裡沒有，只好回表去讀。\n這也是為什麼 SELECT * 不好：它讓 Index Only Scan 幾乎不可能發生。\nPostgreSQL 11 起可以用 INCLUDE 把欄位「附帶」進索引：CREATE INDEX … (customer_id, order_date) INCLUDE (amount)。\n★ 最後看一下索引清單的大小：索引會佔空間，而且每次 INSERT / UPDATE / DELETE 都要同步更新，寫入會變慢。這就是不能每個欄位都建索引的原因。\n"}, {"id": "partial-index", "title": "Partial Index：只替需要的資料建索引", "goal": "客服常查「最新的待處理（pending）訂單」。pending 只佔 3%，其他 97% 的訂單根本不會用這個條件查。\n比較兩種索引：一般的 status 索引，和「只收錄 pending 訂單」的部分索引。\n", "sqls": [{"label": "最新 20 筆 pending 訂單", "sql": "EXPLAIN ANALYZE\nSELECT id, customer_id, order_date\nFROM perf.orders_big\nWHERE status = 'pending'\nORDER BY order_date DESC\nLIMIT 20;\n"}], "ddl": ["CREATE INDEX idx_status ON perf.orders_big (status);", "CREATE INDEX idx_pending ON perf.orders_big (order_date) WHERE status = 'pending';"], "question": "先沒有索引跑一次，再分別建兩個索引。哪一個比較快？兩個索引的大小差多少？", "takeaway": "部分索引（Partial Index）只收錄符合 WHERE 條件的資料列。idx_pending 只有 6 萬筆，大小大約只有完整索引的十分之一。\n它依 order_date 排序，所以「最新 20 筆」直接從尾端讀 20 筆就好（Index Scan Backward），不用排序。\n★ 查詢的 WHERE 必須「蘊含」索引的條件（這裡是 status = 'pending'），優化器才會用它。\n常見用途：只索引未刪除的資料（WHERE deleted_at IS NULL）、只索引未處理的工作（WHERE done = false）。\n"}, {"id": "expression-index", "title": "Expression Index：替運算結果建索引", "goal": "第 5 步說「欄位外面包函數，索引就失效」。但如果查詢沒辦法改寫（例如程式裡固定這樣查），還有另一招：\n直接替「函數的結果」建索引。\n", "sqls": [{"label": "用「台灣日期」查某一天", "sql": "EXPLAIN ANALYZE\nSELECT count(*)\nFROM perf.orders_big\nWHERE (order_date AT TIME ZONE 'Asia/Taipei')::date = '2026-09-01';\n"}], "ddl": ["CREATE INDEX idx_order_day ON perf.orders_big (((order_date AT TIME ZONE 'Asia/Taipei')::date));"], "question": "建立運算式索引前後，執行計畫有什麼不同？", "takeaway": "運算式索引（Expression Index）存的是運算後的值，查詢時只要寫出「一模一樣」的運算式就能用上。\n最經典的例子是不分大小寫的 email 查詢：CREATE INDEX ON users (lower(email))，搭配 WHERE lower(email) = lower(?)。\n★ 運算式裡只能用 IMMUTABLE（輸入一樣、結果永遠一樣）的函數。now()、或依賴時區設定的轉換都不行，\n所以這裡要明確寫出 AT TIME ZONE 'Asia/Taipei'。\n"}, {"id": "brin-index", "title": "BRIN：超小的索引，但有前提", "goal": "perf.order_events 是依時間順序寫入的事件紀錄（像 log），資料在磁碟上的順序跟 event_time 一致。\nperf.orders_big 的 order_date 則是隨機順序寫入的。分別在兩張表建 BRIN 索引，比較效果。\n", "sqls": [{"label": "A：order_events 查某一天", "sql": "EXPLAIN ANALYZE\nSELECT count(*)\nFROM perf.order_events\nWHERE event_time >= '2026-01-01' AND event_time < '2026-01-02';\n"}, {"label": "B：orders_big 查某一天", "sql": "EXPLAIN ANALYZE\nSELECT count(*)\nFROM perf.orders_big\nWHERE order_date >= '2026-01-01' AND order_date < '2026-01-02';\n"}], "ddl": ["CREATE INDEX idx_events_brin ON perf.order_events USING brin (event_time);", "CREATE INDEX idx_orders_brin ON perf.orders_big USING brin (order_date);", "CREATE INDEX idx_events_btree ON perf.order_events (event_time);"], "question": "兩張表都有 BRIN 索引，A 和 B 都用上了嗎？再建一個 B-tree 比較大小。", "takeaway": "BRIN（Block Range Index）不記錄每一筆資料，只記錄「每一段磁碟區塊裡的最小值和最大值」，所以小得驚人（幾十 KB，B-tree 要幾十 MB）。\norder_events 依時間寫入，每一段區塊的時間範圍都很窄，查某一天只要讀少數幾段（Heap Blocks: lossy 那一行）。\norders_big 是隨機順序，每一段區塊都橫跨好幾年，BRIN 篩不掉任何區塊，優化器乾脆不用它，直接全表掃描。\n★ BRIN 適合「只會往後附加、而且跟時間相關」的大表：log、IoT 感測資料、交易紀錄。TimescaleDB 也大量利用這個特性。\n"}, {"id": "gin-jsonb", "title": "GIN：替 JSONB 建索引", "goal": "order_events.meta 是 JSONB，例如 {\"channel\": \"app\", \"device\": \"ios\", \"coupon\": \"VIP2026\"}。\n只有大約千分之一的事件用了 VIP2026 優惠券。比較兩種查詢寫法在建 GIN 索引前後的差異。\n", "sqls": [{"label": "A：用 @> 包含", "sql": "EXPLAIN ANALYZE\nSELECT count(*)\nFROM perf.order_events\nWHERE meta @> '{\"coupon\": \"VIP2026\"}';\n"}, {"label": "B：用 ->> 取值比較", "sql": "EXPLAIN ANALYZE\nSELECT count(*)\nFROM perf.order_events\nWHERE meta->>'coupon' = 'VIP2026';\n"}], "ddl": ["CREATE INDEX idx_events_meta ON perf.order_events USING gin (meta);"], "question": "建了 GIN 索引後，A 和 B 都變快了嗎？", "takeaway": "GIN（Generalized Inverted Index）是「倒排索引」：把 JSON 裡的每個鍵值、陣列裡的每個元素都拆開來，記錄它們出現在哪些資料列。\n它支援 @>、?、?|、?& 這些運算子，所以 A 變成 Bitmap Index Scan；B 的 ->> 加 = 不在支援範圍，還是全表掃描。\n★ 要用 GIN 就要寫 @>。如果某個鍵很常被查，也可以只替它建 B-tree 運算式索引：CREATE INDEX ON … ((meta->>'coupon'))。\ntext[] 陣列的 @>、&& 也是用 GIN。全文檢索、pg_trgm 模糊搜尋同樣是 GIN 的應用（Elasticsearch 的核心也是倒排索引）。\n"}], "hasResults": true, "built": "2026-10-05"}</script>
+<script>
+// 兩份靜態頁共用：SQL 上色、複製按鈕、HTML 跳脫
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const SQL_KEYWORDS = new Set(`
+  select from where group by having order limit offset join left right full inner outer cross on using as and or not
+  in is null exists distinct union all intersect except case when then else end with recursive insert into values
+  update set delete returning conflict do nothing create index unique table drop alter add column primary key
+  references foreign check default constraint cascade begin commit rollback over partition window rows range
+  between preceding following current row asc desc nulls first last filter lateral explain analyze true false
+  interval date timestamp timestamptz int integer bigint numeric text boolean jsonb serial unbound include brin
+  gin btree hash concurrently if only like ilike any array for share zone at time cast varchar char smallint
+  identity generated always schema role grant usage to owner vacuum`.trim().split(/\s+/));
+
+const SQL_TOKEN = /(--[^\n]*)|(\/\*[\s\S]*?\*\/)|('(?:[^']|'')*')|("(?:[^"]|"")*")|(->>|->|#>>|#>|@>|<@|&&|\|\||::|\?\||\?&)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
+
+function highlightSQL(text) {
+  let out = "", last = 0, m;
+  SQL_TOKEN.lastIndex = 0;
+  while ((m = SQL_TOKEN.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    const [tok, cmt1, cmt2, str, ident, op, num, word] = m;
+    if (cmt1 || cmt2) out += `<span class="hl-cmt">${esc(tok)}</span>`;
+    else if (str) out += `<span class="hl-str">${esc(tok)}</span>`;
+    else if (ident) out += esc(tok);
+    else if (op) out += `<span class="hl-op">${esc(tok)}</span>`;
+    else if (num) out += `<span class="hl-num">${esc(tok)}</span>`;
+    else if (word) {
+      const isCall = /^\s*\(/.test(text.slice(m.index + tok.length));
+      if (SQL_KEYWORDS.has(word.toLowerCase()) && !(isCall && !/^(in|exists|any|values|over|filter|on|using|as|array|interval)$/i.test(word))) {
+        out += `<span class="hl-kw">${esc(tok)}</span>`;
+      } else if (isCall) out += `<span class="hl-fn">${esc(tok)}</span>`;
+      else out += esc(tok);
+    }
+    last = m.index + tok.length;
+  }
+  return out + esc(text.slice(last));
+}
+
+/** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
+function enhanceCode(root) {
+  root.querySelectorAll("pre.code").forEach((pre) => {
+    if (pre.dataset.ready) return;
+    pre.dataset.ready = "1";
+    const code = pre.querySelector("code") ?? pre;
+    const raw = code.textContent;
+    if (pre.dataset.lang !== "text") code.innerHTML = highlightSQL(raw);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "copy";
+    btn.textContent = "複製";
+    btn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(raw);
+        btn.textContent = "已複製";
+      } catch {
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(code);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        btn.textContent = "已選取，按 Ctrl+C";
+      }
+      setTimeout(() => (btn.textContent = "複製"), 1600);
+    });
+    pre.appendChild(btn);
+  });
+}
+
+const store = {
+  get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 無法儲存就算了 */ } },
+};
+
+// 題庫：練習題 / 陷阱題 / 索引實驗三個分頁，資料來自頁面裡嵌入的 JSON
+(() => {
+  const data = JSON.parse(document.getElementById("data").textContent);
+  const bank = document.getElementById("bank");
+  const input = document.getElementById("q");
+  const KNOWN_KEY = "pg-bank-known";
+  const known = store.get(KNOWN_KEY, {});
+  const state = { tab: "practice", chapter: "全部", showAnswers: false, hideKnown: false };
+
+  const TABS = [
+    { id: "practice", label: "練習題", n: data.exercises.length },
+    { id: "traps", label: "陷阱題", n: data.traps.length },
+    { id: "lab", label: "索引實驗室", n: data.steps.length },
+  ];
+  document.getElementById("sub").textContent =
+    `練習題 ${data.exercises.length} · 陷阱題 ${data.traps.length} · 索引實驗 ${data.steps.length} 步 · 更新於 ${data.built}`;
+
+  const chapters = [...new Set(data.exercises.map((e) => e.chapter))];
+
+  // ---------- 共用片段 ----------
+  const code = (sql) => `<pre class="code"><code>${esc(String(sql).trim())}</code></pre>`;
+
+  function resultTable(r) {
+    if (!r) return "";
+    if (r.rows.length === 0) return `<p class="result-head">執行結果：0 筆</p>`;
+    const head = r.columns.map((c) => `<th>${esc(c)}</th>`).join("");
+    const body = r.rows.map((row) => "<tr>" + row.map((v) =>
+      v === null ? '<td class="nul">NULL</td>'
+      : typeof v === "number" ? `<td class="num">${v.toLocaleString("zh-TW")}</td>`
+      : `<td>${esc(v)}</td>`).join("") + "</tr>").join("");
+    const more = r.total > r.rows.length ? `，以下只列前 ${r.rows.length} 筆` : "";
+    return `<p class="result-head">執行結果：共 ${r.total.toLocaleString("zh-TW")} 筆${more}</p>
+      <div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+
+  const matches = (q, ...texts) => !q || texts.some((t) => String(t ?? "").toLowerCase().includes(q));
+
+  // ---------- 分頁 ----------
+  function renderTabs() {
+    document.getElementById("tabs").innerHTML = TABS.map((t) =>
+      `<a href="#${t.id}" ${t.id === state.tab ? 'aria-current="page"' : ""}>${esc(t.label)}<span class="n">${t.n}</span></a>`).join("");
+  }
+
+  function render() {
+    renderTabs();
+    const q = input.value.trim().toLowerCase();
+    const note = `<p class="note">這是離線複習版：可以看題目、提示、答案與正確的執行結果。
+      要實際寫 SQL、自動批改，請啟動展示台後打開 <a href="http://localhost:8081/#/postgres">http://localhost:8081</a>。</p>`;
+    if (state.tab === "practice") bank.innerHTML = note + renderPractice(q);
+    else if (state.tab === "traps") bank.innerHTML = note + renderTraps(q);
+    else bank.innerHTML = note + renderLab(q);
+    enhanceCode(bank);
+  }
+
+  // ---------- 練習題 ----------
+  function renderPractice(q) {
+    const doneCount = data.exercises.filter((e) => known[e.id]).length;
+    const filters = `
+      <div class="filters">
+        <div class="chips" role="group" aria-label="章節">
+          ${["全部", ...chapters].map((c) =>
+            `<button type="button" class="chip-btn" data-chapter="${esc(c)}" aria-pressed="${state.chapter === c}">${esc(c)}</button>`).join("")}
+        </div>
+        <div class="toggles">
+          <span class="progress">已標記會了 <b>${doneCount}</b> / ${data.exercises.length}</span>
+          <label><input type="checkbox" data-toggle="showAnswers" ${state.showAnswers ? "checked" : ""}> 展開所有答案</label>
+          <label><input type="checkbox" data-toggle="hideKnown" ${state.hideKnown ? "checked" : ""}> 隱藏已會的</label>
+        </div>
+      </div>`;
+    let html = "", chapter = null, shown = 0;
+    data.exercises.forEach((e, i) => {
+      if (state.chapter !== "全部" && e.chapter !== state.chapter) return;
+      if (state.hideKnown && known[e.id]) return;
+      if (!matches(q, e.title, e.prompt, e.answer, e.explanation, e.chapter, ...(e.hints ?? []))) return;
+      if (e.chapter !== chapter) {
+        chapter = e.chapter;
+        const total = data.exercises.filter((x) => x.chapter === chapter).length;
+        html += `<h2 class="chapter-head">${esc(chapter)}<span>${total} 題</span></h2>`;
+      }
+      shown++;
+      const write = e.mode === "write";
+      html += `
+        <article class="card ${known[e.id] ? "known" : ""}" data-id="${esc(e.id)}">
+          <div class="card-head">
+            <span class="num">#${i + 1}</span>
+            <h3>${esc(e.title)}</h3>
+            ${write ? '<span class="tag write">寫入題</span>' : ""}
+            <span class="tag">${e.ordered ? "要照指定順序" : "順序不拘"}</span>
+            <label class="known-box"><input type="checkbox" data-known="${esc(e.id)}" ${known[e.id] ? "checked" : ""}> 我會了</label>
+          </div>
+          <p class="prompt">${esc(e.prompt.trim())}</p>
+          ${e.hints?.length ? `<details class="hint"><summary>提示（${e.hints.length}）</summary>
+            <ol>${e.hints.map((h) => `<li>${esc(h)}</li>`).join("")}</ol></details>` : ""}
+          <details class="ans" ${state.showAnswers ? "open" : ""}><summary>看答案</summary>
+            ${code(e.answer)}
+            <div class="explain">${esc(e.explanation.trim())}</div>
+            ${resultTable(e.result)}
+          </details>
+        </article>`;
+    });
+    return filters + (shown ? html : '<p class="empty">沒有符合條件的題目。</p>');
+  }
+
+  // ---------- 陷阱題 ----------
+  function renderTraps(q) {
+    const list = data.traps.filter((t) => matches(q, t.title, t.question, t.explanation, ...t.sqls.map((s) => s.sql)));
+    if (!list.length) return '<p class="empty">沒有符合條件的題目。</p>';
+    return list.map((t) => `
+      <article class="card" data-trap="${esc(t.id)}">
+        <div class="card-head"><span class="num">#${data.traps.indexOf(t) + 1}</span><h3>${esc(t.title)}</h3></div>
+        <div class="pair">
+          ${t.sqls.map((s) => `<div><div class="pair-label">${esc(s.label)}</div>${code(s.sql)}</div>`).join("")}
+        </div>
+        <p class="question">${esc(t.question)}</p>
+        <div class="options">
+          ${t.options.map((o, i) => `<button type="button" class="option" data-choice="${i}">${esc(o)}</button>`).join("")}
+        </div>
+        <div class="reveal" hidden></div>
+      </article>`).join("");
+  }
+
+  function answerTrap(card, choice) {
+    const t = data.traps.find((x) => x.id === card.dataset.trap);
+    const buttons = [...card.querySelectorAll("[data-choice]")];
+    buttons.forEach((b) => (b.disabled = true));
+    buttons[t.answer].classList.add("correct");
+    if (choice !== t.answer) buttons[choice].classList.add("wrong");
+    const reveal = card.querySelector(".reveal");
+    reveal.hidden = false;
+    reveal.innerHTML = `
+      <p class="verdict ${choice === t.answer ? "ok" : "bad"}">${choice === t.answer ? "✓ 猜對了！" : `✗ 答案是「${esc(t.options[t.answer])}」`}</p>
+      <div class="explain">${esc(t.explanation.trim())}</div>
+      ${t.results ? `<div class="pair">${t.results.map((r, i) =>
+        `<div><div class="pair-label">${esc(t.sqls[i].label)}</div>${resultTable(r)}</div>`).join("")}</div>` : ""}
+      <button type="button" class="retry">重新作答</button>`;
+  }
+
+  // ---------- 索引實驗 ----------
+  function renderLab(q) {
+    const list = data.steps.filter((s) => matches(q, s.title, s.goal, s.question, s.takeaway, ...s.ddl, ...s.sqls.map((x) => x.sql)));
+    if (!list.length) return '<p class="empty">沒有符合條件的步驟。</p>';
+    return `<p class="note">實驗對象是 perf schema 的兩張 200 萬筆大表：perf.orders_big（隨機順序寫入）、perf.order_events（依時間順序寫入）。
+      每一步先不建索引跑一次 EXPLAIN ANALYZE，再建立索引重跑，比較執行計畫和時間。</p>` +
+      list.map((s) => `
+      <article class="card">
+        <div class="card-head"><span class="num">步驟 ${data.steps.indexOf(s) + 1}</span><h3>${esc(s.title)}</h3></div>
+        <p class="goal">${esc(s.goal.trim())}</p>
+        ${s.ddl.length ? `<div class="step-label">這一步會用到的索引</div>${code(s.ddl.join("\n"))}` : ""}
+        ${s.sqls.map((x) => `<div class="step-label">${esc(x.label)}</div>${code(x.sql)}`).join("")}
+        ${s.question ? `<p class="question">想一想：${esc(s.question)}</p>` : ""}
+        <details ${state.showAnswers ? "open" : ""}><summary>看解說</summary><div class="explain">${esc(s.takeaway.trim())}</div></details>
+      </article>`).join("");
+  }
+
+  // ---------- 事件 ----------
+  bank.addEventListener("click", (e) => {
+    const chap = e.target.closest("[data-chapter]");
+    if (chap) { state.chapter = chap.dataset.chapter; render(); return; }
+    const opt = e.target.closest("[data-choice]");
+    if (opt && !opt.disabled) { answerTrap(opt.closest("[data-trap]"), Number(opt.dataset.choice)); return; }
+    const retry = e.target.closest(".retry");
+    if (retry) {
+      const card = retry.closest("[data-trap]");
+      card.querySelectorAll("[data-choice]").forEach((b) => { b.disabled = false; b.className = "option"; });
+      const reveal = card.querySelector(".reveal");
+      reveal.hidden = true; reveal.innerHTML = "";
+    }
+  });
+  bank.addEventListener("change", (e) => {
+    const k = e.target.closest("[data-known]");
+    if (k) {
+      known[k.dataset.known] = k.checked;
+      if (!k.checked) delete known[k.dataset.known];
+      store.set(KNOWN_KEY, known);
+      k.closest(".card").classList.toggle("known", k.checked);
+      const p = bank.querySelector(".progress b");
+      if (p) p.textContent = data.exercises.filter((x) => known[x.id]).length;
+      return;
+    }
+    const t = e.target.closest("[data-toggle]");
+    if (t) { state[t.dataset.toggle] = t.checked; render(); }
+  });
+
+  let timer = null;
+  input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(render, 150); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "/" && document.activeElement !== input) { e.preventDefault(); input.focus(); }
+  });
+
+  // 分頁：點擊直接切換（網址的 #practice / #traps / #lab 只是方便分享或重新整理後回到同一頁）
+  function openTab(id) {
+    state.tab = TABS.some((t) => t.id === id) ? id : "practice";
+    render();
+    window.scrollTo(0, 0);
+  }
+  document.getElementById("tabs").addEventListener("click", (e) => {
+    const a = e.target.closest("a[href^='#']");
+    if (!a) return;
+    e.preventDefault();
+    const id = a.getAttribute("href").slice(1);
+    try { history.replaceState(null, "", "#" + id); } catch { /* 有些環境不允許改網址 */ }
+    openTab(id);
+  });
+  window.addEventListener("hashchange", () => openTab(location.hash.slice(1)));
+  openTab(location.hash.slice(1));
+})();
+
+</script>
+</body>
+</html>

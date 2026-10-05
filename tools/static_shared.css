@@ -1,0 +1,93 @@
+/* 兩份靜態頁共用：上方固定標題列 + 內容區；色彩沿用展示台的 PostgreSQL 藍 */
+:root {
+  --bg: #F3F5F8;
+  --surface: #FFFFFF;
+  --ink: #16202B;
+  --muted: #5B6878;
+  --line: #D9DFE7;
+  --accent: #336791;
+  --accent-soft: #E3ECF4;
+  --accent-ink: #FFFFFF;
+  --code-bg: #F6F8FA;
+  --star: #B86E00;
+  --ok: #2F7D5B;
+  --ok-soft: #DDF1E7;
+  --bad: #B3261E;
+  --bad-soft: #FBE4E2;
+  --warn-soft: #FBF0D9;
+  --mark: #FFE58A;
+  --hl-kw: #1F5FA8;
+  --hl-fn: #8A3FB0;
+  --hl-str: #2F7D5B;
+  --hl-num: #A85A00;
+  --hl-cmt: #7A8694;
+  --hl-op: #B3261E;
+  --font-body: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E141B; --surface: #161F29; --ink: #E3E9F0; --muted: #94A3B4; --line: #26323F;
+    --accent: #6FA3D3; --accent-soft: #1B2C3D; --accent-ink: #0E141B; --code-bg: #111921;
+    --star: #E9B14F; --ok: #6CCB9E; --ok-soft: #12301F; --bad: #FF8A80; --bad-soft: #3A1715;
+    --warn-soft: #33280F; --mark: #6B5A12;
+    --hl-kw: #79B8FF; --hl-fn: #D2A8FF; --hl-str: #7EE2B8; --hl-num: #FFAB70; --hl-cmt: #7D8B99; --hl-op: #FF9E9E;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E141B; --surface: #161F29; --ink: #E3E9F0; --muted: #94A3B4; --line: #26323F;
+  --accent: #6FA3D3; --accent-soft: #1B2C3D; --accent-ink: #0E141B; --code-bg: #111921;
+  --star: #E9B14F; --ok: #6CCB9E; --ok-soft: #12301F; --bad: #FF8A80; --bad-soft: #3A1715;
+  --warn-soft: #33280F; --mark: #6B5A12;
+  --hl-kw: #79B8FF; --hl-fn: #D2A8FF; --hl-str: #7EE2B8; --hl-num: #FFAB70; --hl-cmt: #7D8B99; --hl-op: #FF9E9E;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: 84px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.7; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.35; }
+code, pre { font-family: var(--font-mono); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+mark { background: var(--mark); color: inherit; border-radius: 2px; }
+
+.top { position: sticky; top: 0; z-index: 10; background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1240px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+.brand { font-size: 1.1rem; margin-right: 10px; }
+.sub { color: var(--muted); font-size: .82rem; }
+.search input {
+  width: min(340px, 80vw); font: inherit; font-size: .9rem; padding: 7px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+.search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* 程式碼區塊 */
+pre.code { position: relative; margin: 10px 0; padding: 12px 14px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+pre.code code { white-space: pre; }
+.copy {
+  position: absolute; top: 6px; right: 6px; font: inherit; font-family: var(--font-body); font-size: .72rem;
+  padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  cursor: pointer; opacity: 0; transition: opacity .15s;
+}
+pre.code:hover .copy, .copy:focus-visible { opacity: 1; }
+.copy:focus-visible { outline: 2px solid var(--accent); }
+@media (hover: none) { .copy { opacity: 1; } }
+.hl-kw { color: var(--hl-kw); font-weight: 600; }
+.hl-fn { color: var(--hl-fn); }
+.hl-str { color: var(--hl-str); }
+.hl-num { color: var(--hl-num); }
+.hl-cmt { color: var(--hl-cmt); font-style: italic; }
+.hl-op { color: var(--hl-op); font-weight: 600; }
+
+/* 表格 */
+.table-wrap { overflow-x: auto; margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.table-wrap table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+.table-wrap th, .table-wrap td { padding: 7px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.table-wrap th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
+.table-wrap tr:last-child td { border-bottom: 0; }
+.table-wrap td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table-wrap code, .doc p code, .doc li code, blockquote code { background: var(--accent-soft); padding: 0 4px; border-radius: 4px; font-size: .85em; }
+.star { color: var(--star); font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }

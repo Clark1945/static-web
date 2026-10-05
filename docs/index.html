@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PostgreSQL 學習筆記</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* 兩份靜態頁共用：上方固定標題列 + 內容區；色彩沿用展示台的 PostgreSQL 藍 */
+:root {
+  --bg: #F3F5F8;
+  --surface: #FFFFFF;
+  --ink: #16202B;
+  --muted: #5B6878;
+  --line: #D9DFE7;
+  --accent: #336791;
+  --accent-soft: #E3ECF4;
+  --accent-ink: #FFFFFF;
+  --code-bg: #F6F8FA;
+  --star: #B86E00;
+  --ok: #2F7D5B;
+  --ok-soft: #DDF1E7;
+  --bad: #B3261E;
+  --bad-soft: #FBE4E2;
+  --warn-soft: #FBF0D9;
+  --mark: #FFE58A;
+  --hl-kw: #1F5FA8;
+  --hl-fn: #8A3FB0;
+  --hl-str: #2F7D5B;
+  --hl-num: #A85A00;
+  --hl-cmt: #7A8694;
+  --hl-op: #B3261E;
+  --font-body: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E141B; --surface: #161F29; --ink: #E3E9F0; --muted: #94A3B4; --line: #26323F;
+    --accent: #6FA3D3; --accent-soft: #1B2C3D; --accent-ink: #0E141B; --code-bg: #111921;
+    --star: #E9B14F; --ok: #6CCB9E; --ok-soft: #12301F; --bad: #FF8A80; --bad-soft: #3A1715;
+    --warn-soft: #33280F; --mark: #6B5A12;
+    --hl-kw: #79B8FF; --hl-fn: #D2A8FF; --hl-str: #7EE2B8; --hl-num: #FFAB70; --hl-cmt: #7D8B99; --hl-op: #FF9E9E;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E141B; --surface: #161F29; --ink: #E3E9F0; --muted: #94A3B4; --line: #26323F;
+  --accent: #6FA3D3; --accent-soft: #1B2C3D; --accent-ink: #0E141B; --code-bg: #111921;
+  --star: #E9B14F; --ok: #6CCB9E; --ok-soft: #12301F; --bad: #FF8A80; --bad-soft: #3A1715;
+  --warn-soft: #33280F; --mark: #6B5A12;
+  --hl-kw: #79B8FF; --hl-fn: #D2A8FF; --hl-str: #7EE2B8; --hl-num: #FFAB70; --hl-cmt: #7D8B99; --hl-op: #FF9E9E;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: 84px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.7; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.35; }
+code, pre { font-family: var(--font-mono); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+mark { background: var(--mark); color: inherit; border-radius: 2px; }
+
+.top { position: sticky; top: 0; z-index: 10; background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1240px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+.brand { font-size: 1.1rem; margin-right: 10px; }
+.sub { color: var(--muted); font-size: .82rem; }
+.search input {
+  width: min(340px, 80vw); font: inherit; font-size: .9rem; padding: 7px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+.search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* 程式碼區塊 */
+pre.code { position: relative; margin: 10px 0; padding: 12px 14px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+pre.code code { white-space: pre; }
+.copy {
+  position: absolute; top: 6px; right: 6px; font: inherit; font-family: var(--font-body); font-size: .72rem;
+  padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  cursor: pointer; opacity: 0; transition: opacity .15s;
+}
+pre.code:hover .copy, .copy:focus-visible { opacity: 1; }
+.copy:focus-visible { outline: 2px solid var(--accent); }
+@media (hover: none) { .copy { opacity: 1; } }
+.hl-kw { color: var(--hl-kw); font-weight: 600; }
+.hl-fn { color: var(--hl-fn); }
+.hl-str { color: var(--hl-str); }
+.hl-num { color: var(--hl-num); }
+.hl-cmt { color: var(--hl-cmt); font-style: italic; }
+.hl-op { color: var(--hl-op); font-weight: 600; }
+
+/* 表格 */
+.table-wrap { overflow-x: auto; margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.table-wrap table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+.table-wrap th, .table-wrap td { padding: 7px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.table-wrap th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
+.table-wrap tr:last-child td { border-bottom: 0; }
+.table-wrap td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table-wrap code, .doc p code, .doc li code, blockquote code { background: var(--accent-soft); padding: 0 4px; border-radius: 4px; font-size: .85em; }
+.star { color: var(--star); font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+
+
+.home { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+.lead { font-size: 1.05rem; color: var(--muted); max-width: 62ch; margin: 0 0 24px; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.home-card { display: grid; gap: 8px; padding: 20px; border-radius: 12px; background: var(--surface);
+  border: 1px solid var(--line); text-decoration: none; color: inherit; transition: border-color .15s; }
+.home-card:hover { border-color: var(--accent); }
+.home-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.home-card b { font-size: 1.15rem; color: var(--accent); }
+.home-card span { font-size: .9rem; color: var(--muted); }
+.foot { color: var(--muted); font-size: .8rem; margin-top: 32px; }
+
+</style>
+</head>
+<body>
+
+<header class="top"><div class="top-in"><div><b class="brand">PostgreSQL 學習筆記</b>
+  <span class="sub">面試準備 · shop 練習資料庫</span></div></div></header>
+<main class="home">
+  <p class="lead">一個台灣電商「shop」的模擬資料庫（會員、訂單、明細、商品、分類，約 30 萬筆），
+    從 JOIN、視窗函數一路練到 JSONB、UPSERT 與各種索引。</p>
+  <div class="home-grid">
+    <a class="home-card" href="cheatsheet.html">
+      <b>CheatSheet</b>
+      <span>SQL 執行順序、JOIN、NULL、子查詢、CTE、視窗函數、DML、索引、交易，以及 JSONB / Array / UPSERT 等 PostgreSQL 進階語法。</span>
+    </a>
+    <a class="home-card" href="question-bank.html">
+      <b>題庫</b>
+      <span>練習題 43 題、陷阱題 10 題、索引實驗 11 步。附提示、答案、解說與正確答案的實際執行結果。</span>
+    </a>
+  </div>
+  <p class="foot">更新於 2026-10-05</p>
+</main>
+<script>
+// 兩份靜態頁共用：SQL 上色、複製按鈕、HTML 跳脫
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const SQL_KEYWORDS = new Set(`
+  select from where group by having order limit offset join left right full inner outer cross on using as and or not
+  in is null exists distinct union all intersect except case when then else end with recursive insert into values
+  update set delete returning conflict do nothing create index unique table drop alter add column primary key
+  references foreign check default constraint cascade begin commit rollback over partition window rows range
+  between preceding following current row asc desc nulls first last filter lateral explain analyze true false
+  interval date timestamp timestamptz int integer bigint numeric text boolean jsonb serial unbound include brin
+  gin btree hash concurrently if only like ilike any array for share zone at time cast varchar char smallint
+  identity generated always schema role grant usage to owner vacuum`.trim().split(/\s+/));
+
+const SQL_TOKEN = /(--[^\n]*)|(\/\*[\s\S]*?\*\/)|('(?:[^']|'')*')|("(?:[^"]|"")*")|(->>|->|#>>|#>|@>|<@|&&|\|\||::|\?\||\?&)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
+
+function highlightSQL(text) {
+  let out = "", last = 0, m;
+  SQL_TOKEN.lastIndex = 0;
+  while ((m = SQL_TOKEN.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    const [tok, cmt1, cmt2, str, ident, op, num, word] = m;
+    if (cmt1 || cmt2) out += `<span class="hl-cmt">${esc(tok)}</span>`;
+    else if (str) out += `<span class="hl-str">${esc(tok)}</span>`;
+    else if (ident) out += esc(tok);
+    else if (op) out += `<span class="hl-op">${esc(tok)}</span>`;
+    else if (num) out += `<span class="hl-num">${esc(tok)}</span>`;
+    else if (word) {
+      const isCall = /^\s*\(/.test(text.slice(m.index + tok.length));
+      if (SQL_KEYWORDS.has(word.toLowerCase()) && !(isCall && !/^(in|exists|any|values|over|filter|on|using|as|array|interval)$/i.test(word))) {
+        out += `<span class="hl-kw">${esc(tok)}</span>`;
+      } else if (isCall) out += `<span class="hl-fn">${esc(tok)}</span>`;
+      else out += esc(tok);
+    }
+    last = m.index + tok.length;
+  }
+  return out + esc(text.slice(last));
+}
+
+/** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
+function enhanceCode(root) {
+  root.querySelectorAll("pre.code").forEach((pre) => {
+    if (pre.dataset.ready) return;
+    pre.dataset.ready = "1";
+    const code = pre.querySelector("code") ?? pre;
+    const raw = code.textContent;
+    if (pre.dataset.lang !== "text") code.innerHTML = highlightSQL(raw);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "copy";
+    btn.textContent = "複製";
+    btn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(raw);
+        btn.textContent = "已複製";
+      } catch {
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(code);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        btn.textContent = "已選取，按 Ctrl+C";
+      }
+      setTimeout(() => (btn.textContent = "複製"), 1600);
+    });
+    pre.appendChild(btn);
+  });
+}
+
+const store = {
+  get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 無法儲存就算了 */ } },
+};
+
+
+</script>
+</body>
+</html>

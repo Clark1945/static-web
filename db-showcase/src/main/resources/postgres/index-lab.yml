@@ -1,0 +1,267 @@
+# 索引實驗室的引導步驟（對象：perf.orders_big，200 萬筆）
+# sqls：可以載入編輯器的查詢；ddl：建議建立的索引
+# takeaway：重點解說，前端預設收起來，先讓使用者自己觀察
+
+- id: seq-scan
+  title: 沒有索引的查詢
+  goal: |
+    perf.orders_big 有 200 萬筆訂單，除了主鍵沒有任何索引。
+    先找出「會員 4242 最近的 5 筆訂單」，看看 PostgreSQL 怎麼執行。
+  sqls:
+    - label: 會員 4242 最近 5 筆訂單
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT id, order_date, status, amount
+        FROM perf.orders_big
+        WHERE customer_id = 4242
+        ORDER BY order_date DESC
+        LIMIT 5;
+  ddl: []
+  question: 結果只有 5 筆，為什麼要花幾十毫秒？注意計畫裡的 Seq Scan 和 Rows Removed by Filter。
+  takeaway: |
+    Seq Scan = 從第一筆讀到最後一筆。沒有索引，資料庫不知道 4242 的訂單在哪裡，只能把 200 萬筆全部讀一遍再過濾。
+    Rows Removed by Filter 就是白讀的筆數。Parallel 表示 PostgreSQL 開了多個 worker 一起掃，但還是全表掃描。
+
+- id: single-index
+  title: 建立單欄索引
+  goal: |
+    在 customer_id 建一個 B-tree 索引，再執行一次同一個查詢，比較執行時間。
+  sqls:
+    - label: 會員 4242 最近 5 筆訂單
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT id, order_date, status, amount
+        FROM perf.orders_big
+        WHERE customer_id = 4242
+        ORDER BY order_date DESC
+        LIMIT 5;
+  ddl:
+    - CREATE INDEX idx_customer ON perf.orders_big (customer_id);
+  question: 掃描方式變成什麼？計畫裡還有沒有 Sort？
+  takeaway: |
+    變成 Bitmap Index Scan + Bitmap Heap Scan：先在索引裡找到符合的資料位置，再回到表裡讀出那幾列。速度通常快上百倍。
+    但還有一個 Sort：索引只依 customer_id 排序，同一位會員的訂單在索引裡沒有照 order_date 排，
+    所以要把這位會員的訂單全部讀出來、排序之後，才知道最近的 5 筆是哪些。
+    建索引本身也要時間，看一下「建立耗時」和索引大小。
+
+- id: composite-index
+  title: 複合索引把排序也省掉
+  goal: |
+    建一個 (customer_id, order_date) 的複合索引，再跑一次。
+    可以先刪掉 idx_customer，比較清楚是哪個索引在作用。
+  sqls:
+    - label: 會員 4242 最近 5 筆訂單
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT id, order_date, status, amount
+        FROM perf.orders_big
+        WHERE customer_id = 4242
+        ORDER BY order_date DESC
+        LIMIT 5;
+  ddl:
+    - DROP INDEX perf.idx_customer;
+    - CREATE INDEX idx_customer_date ON perf.orders_big (customer_id, order_date);
+  question: Sort 節點還在嗎？
+  takeaway: |
+    複合索引先依 customer_id 排，customer_id 相同時再依 order_date 排。
+    找到 4242 之後，資料本來就照時間排好了：從尾端往回讀（Index Scan Backward）5 筆就停，不用 Sort，也不用讀其他訂單。
+    ★ 設計索引時，WHERE 的等值條件放前面、ORDER BY 的欄位放後面。
+    補充：如果拿掉 LIMIT，符合的資料又很少（這位會員只有 6 筆），優化器可能還是選 Bitmap Scan 再排序，
+    因為排 6 筆幾乎不花時間。資料越多、或者有 LIMIT 時，複合索引的優勢越明顯。
+
+- id: leftmost-prefix
+  title: 欄位順序很重要（最左前綴）
+  goal: |
+    在只有 (customer_id, order_date) 索引的情況下，改成「只用日期」查某一天的訂單。
+  sqls:
+    - label: 查 2026-09-01 一整天的訂單
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT id, customer_id, amount
+        FROM perf.orders_big
+        WHERE order_date >= '2026-09-01' AND order_date < '2026-09-02';
+  ddl:
+    - CREATE INDEX idx_date ON perf.orders_big (order_date);
+  question: 先不要建 idx_date，直接跑。複合索引裡明明有 order_date，為什麼用不上？
+  takeaway: |
+    ★ 最左前綴原則：(customer_id, order_date) 的索引就像電話簿「先依姓、再依名」排序，只知道名字沒辦法翻。
+    查詢條件沒有 customer_id，就用不到這個索引的排序，只能全表掃描。
+    建了 idx_date 之後再跑一次，就會變成 Index Scan 或 Bitmap Scan。
+
+- id: function-on-column
+  title: 對欄位套函數，索引就失效
+  goal: |
+    確認已經有 idx_date（上一步建的）。比較兩種「查某一天」的寫法。
+  sqls:
+    - label: A：把欄位轉成日期再比較
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT count(*)
+        FROM perf.orders_big
+        WHERE (order_date AT TIME ZONE 'Asia/Taipei')::date = '2026-09-01';
+    - label: B：用範圍比較
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT count(*)
+        FROM perf.orders_big
+        WHERE order_date >= '2026-09-01' AND order_date < '2026-09-02';
+  ddl:
+    - CREATE INDEX idx_date ON perf.orders_big (order_date);
+  question: 兩種寫法查的是同一天，執行計畫一樣嗎？
+  takeaway: |
+    索引存的是 order_date 原本的值。A 把欄位先轉換才比較，資料庫得把每一列都算一遍，索引派不上用場（Seq Scan）。
+    B 直接拿欄位跟範圍比，可以在索引裡快速定位；而且 count(*) 只需要知道有幾筆，連表都不用讀（Index Only Scan）。
+    ★ 原則：函數、運算放在「常數那一邊」，不要包住欄位。同理：WHERE amount * 2 > 1000 要改寫成 amount > 500。
+
+- id: low-selectivity
+  title: 選擇性太低，資料庫不用索引
+  goal: |
+    在 status 建索引。status 只有 4 種值：delivered 佔 82%，pending 只佔 3%。
+  sqls:
+    - label: A：查 delivered（82%）
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT sum(amount)
+        FROM perf.orders_big
+        WHERE status = 'delivered';
+    - label: B：查 pending（3%）
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT sum(amount)
+        FROM perf.orders_big
+        WHERE status = 'pending';
+  ddl:
+    - CREATE INDEX idx_status ON perf.orders_big (status);
+  question: 兩個查詢都有索引可用，PostgreSQL 都用了嗎？
+  takeaway: |
+    查 delivered 時，八成的資料都符合，透過索引一筆一筆回表讀反而更慢，所以優化器選擇全表掃描。
+    查 pending 只有 3%，用索引就划算（Bitmap Scan）。不過 3% 也有 6 萬筆，回表讀取還是要時間，所以快得沒有前面幾步那麼誇張。
+    ★ 「有建索引不代表一定會用」。優化器會依統計資料估算成本，選擇它認為最快的方式。選擇性低的欄位（性別、狀態）單獨建索引通常沒什麼用。
+
+- id: index-only-scan
+  title: Index Only Scan：連表都不用讀
+  goal: |
+    確認有 (customer_id, order_date) 的複合索引。比較「只查索引裡有的欄位」和「多查一個欄位」。
+  sqls:
+    - label: A：只查 customer_id、order_date
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT customer_id, order_date
+        FROM perf.orders_big
+        WHERE customer_id BETWEEN 1000 AND 1200;
+    - label: B：多查 amount
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT customer_id, order_date, amount
+        FROM perf.orders_big
+        WHERE customer_id BETWEEN 1000 AND 1200;
+  ddl:
+    - CREATE INDEX idx_customer_date ON perf.orders_big (customer_id, order_date);
+  question: A 和 B 的掃描方式有什麼不同？Heap Fetches 是多少？
+  takeaway: |
+    A 需要的欄位全都在索引裡，直接從索引讀出來就好，叫 Index Only Scan，不用回表。
+    B 多要了 amount，索引裡沒有，只好回表去讀。
+    這也是為什麼 SELECT * 不好：它讓 Index Only Scan 幾乎不可能發生。
+    PostgreSQL 11 起可以用 INCLUDE 把欄位「附帶」進索引：CREATE INDEX … (customer_id, order_date) INCLUDE (amount)。
+    ★ 最後看一下索引清單的大小：索引會佔空間，而且每次 INSERT / UPDATE / DELETE 都要同步更新，寫入會變慢。這就是不能每個欄位都建索引的原因。
+
+- id: partial-index
+  title: Partial Index：只替需要的資料建索引
+  goal: |
+    客服常查「最新的待處理（pending）訂單」。pending 只佔 3%，其他 97% 的訂單根本不會用這個條件查。
+    比較兩種索引：一般的 status 索引，和「只收錄 pending 訂單」的部分索引。
+  sqls:
+    - label: 最新 20 筆 pending 訂單
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT id, customer_id, order_date
+        FROM perf.orders_big
+        WHERE status = 'pending'
+        ORDER BY order_date DESC
+        LIMIT 20;
+  ddl:
+    - CREATE INDEX idx_status ON perf.orders_big (status);
+    - CREATE INDEX idx_pending ON perf.orders_big (order_date) WHERE status = 'pending';
+  question: 先沒有索引跑一次，再分別建兩個索引。哪一個比較快？兩個索引的大小差多少？
+  takeaway: |
+    部分索引（Partial Index）只收錄符合 WHERE 條件的資料列。idx_pending 只有 6 萬筆，大小大約只有完整索引的十分之一。
+    它依 order_date 排序，所以「最新 20 筆」直接從尾端讀 20 筆就好（Index Scan Backward），不用排序。
+    ★ 查詢的 WHERE 必須「蘊含」索引的條件（這裡是 status = 'pending'），優化器才會用它。
+    常見用途：只索引未刪除的資料（WHERE deleted_at IS NULL）、只索引未處理的工作（WHERE done = false）。
+
+- id: expression-index
+  title: Expression Index：替運算結果建索引
+  goal: |
+    第 5 步說「欄位外面包函數，索引就失效」。但如果查詢沒辦法改寫（例如程式裡固定這樣查），還有另一招：
+    直接替「函數的結果」建索引。
+  sqls:
+    - label: 用「台灣日期」查某一天
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT count(*)
+        FROM perf.orders_big
+        WHERE (order_date AT TIME ZONE 'Asia/Taipei')::date = '2026-09-01';
+  ddl:
+    - CREATE INDEX idx_order_day ON perf.orders_big (((order_date AT TIME ZONE 'Asia/Taipei')::date));
+  question: 建立運算式索引前後，執行計畫有什麼不同？
+  takeaway: |
+    運算式索引（Expression Index）存的是運算後的值，查詢時只要寫出「一模一樣」的運算式就能用上。
+    最經典的例子是不分大小寫的 email 查詢：CREATE INDEX ON users (lower(email))，搭配 WHERE lower(email) = lower(?)。
+    ★ 運算式裡只能用 IMMUTABLE（輸入一樣、結果永遠一樣）的函數。now()、或依賴時區設定的轉換都不行，
+    所以這裡要明確寫出 AT TIME ZONE 'Asia/Taipei'。
+
+- id: brin-index
+  title: BRIN：超小的索引，但有前提
+  goal: |
+    perf.order_events 是依時間順序寫入的事件紀錄（像 log），資料在磁碟上的順序跟 event_time 一致。
+    perf.orders_big 的 order_date 則是隨機順序寫入的。分別在兩張表建 BRIN 索引，比較效果。
+  sqls:
+    - label: A：order_events 查某一天
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT count(*)
+        FROM perf.order_events
+        WHERE event_time >= '2026-01-01' AND event_time < '2026-01-02';
+    - label: B：orders_big 查某一天
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT count(*)
+        FROM perf.orders_big
+        WHERE order_date >= '2026-01-01' AND order_date < '2026-01-02';
+  ddl:
+    - CREATE INDEX idx_events_brin ON perf.order_events USING brin (event_time);
+    - CREATE INDEX idx_orders_brin ON perf.orders_big USING brin (order_date);
+    - CREATE INDEX idx_events_btree ON perf.order_events (event_time);
+  question: 兩張表都有 BRIN 索引，A 和 B 都用上了嗎？再建一個 B-tree 比較大小。
+  takeaway: |
+    BRIN（Block Range Index）不記錄每一筆資料，只記錄「每一段磁碟區塊裡的最小值和最大值」，所以小得驚人（幾十 KB，B-tree 要幾十 MB）。
+    order_events 依時間寫入，每一段區塊的時間範圍都很窄，查某一天只要讀少數幾段（Heap Blocks: lossy 那一行）。
+    orders_big 是隨機順序，每一段區塊都橫跨好幾年，BRIN 篩不掉任何區塊，優化器乾脆不用它，直接全表掃描。
+    ★ BRIN 適合「只會往後附加、而且跟時間相關」的大表：log、IoT 感測資料、交易紀錄。TimescaleDB 也大量利用這個特性。
+
+- id: gin-jsonb
+  title: GIN：替 JSONB 建索引
+  goal: |
+    order_events.meta 是 JSONB，例如 {"channel": "app", "device": "ios", "coupon": "VIP2026"}。
+    只有大約千分之一的事件用了 VIP2026 優惠券。比較兩種查詢寫法在建 GIN 索引前後的差異。
+  sqls:
+    - label: A：用 @> 包含
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT count(*)
+        FROM perf.order_events
+        WHERE meta @> '{"coupon": "VIP2026"}';
+    - label: B：用 ->> 取值比較
+      sql: |
+        EXPLAIN ANALYZE
+        SELECT count(*)
+        FROM perf.order_events
+        WHERE meta->>'coupon' = 'VIP2026';
+  ddl:
+    - CREATE INDEX idx_events_meta ON perf.order_events USING gin (meta);
+  question: 建了 GIN 索引後，A 和 B 都變快了嗎？
+  takeaway: |
+    GIN（Generalized Inverted Index）是「倒排索引」：把 JSON 裡的每個鍵值、陣列裡的每個元素都拆開來，記錄它們出現在哪些資料列。
+    它支援 @>、?、?|、?& 這些運算子，所以 A 變成 Bitmap Index Scan；B 的 ->> 加 = 不在支援範圍，還是全表掃描。
+    ★ 要用 GIN 就要寫 @>。如果某個鍵很常被查，也可以只替它建 B-tree 運算式索引：CREATE INDEX ON … ((meta->>'coupon'))。
+    text[] 陣列的 @>、&& 也是用 GIN。全文檢索、pg_trgm 模糊搜尋同樣是 GIN 的應用（Elasticsearch 的核心也是倒排索引）。

@@ -1,0 +1,253 @@
+# PostgreSQL 陷阱題：先猜答案，再執行兩段 SQL 對照
+# answer 是 options 的索引（從 0 開始）
+
+- id: left-join-where
+  title: LEFT JOIN 的條件放 ON 還是 WHERE
+  question: 這兩段 SQL 算出來的會員數一樣嗎？
+  sqls:
+    - label: A：條件放在 ON
+      sql: |
+        SELECT count(DISTINCT c.id) AS members
+        FROM customers c
+        LEFT JOIN orders o
+               ON o.customer_id = c.id
+              AND o.status = 'returned';
+    - label: B：條件放在 WHERE
+      sql: |
+        SELECT count(DISTINCT c.id) AS members
+        FROM customers c
+        LEFT JOIN orders o
+               ON o.customer_id = c.id
+        WHERE o.status = 'returned';
+  options:
+    - 一樣
+    - 不一樣，A 比較多
+    - 不一樣，B 比較多
+  answer: 1
+  explanation: |
+    A 的條件在 ON 裡：先依條件配對，對不上的會員照樣保留（訂單欄位補 NULL），所以 2 萬位會員全部都在。
+    B 的條件在 WHERE：LEFT JOIN 完之後才過濾。沒有退貨的會員，o.status 是 NULL，NULL = 'returned' 不成立，全被濾掉。
+    結果 B 的 LEFT JOIN 等於變成了 INNER JOIN。
+    口訣：要「保留左表」就把右表的條件放 ON；要「篩掉資料」才放 WHERE。
+
+- id: not-in-null
+  title: NOT IN 遇到 NULL
+  question: 想找「底下沒有子分類」的分類（葉節點），A 會回傳幾筆？
+  sqls:
+    - label: A：NOT IN
+      sql: |
+        SELECT id, name
+        FROM categories
+        WHERE id NOT IN (SELECT parent_id FROM categories);
+    - label: B：NOT EXISTS
+      sql: |
+        SELECT id, name
+        FROM categories c
+        WHERE NOT EXISTS (
+            SELECT 1 FROM categories ch WHERE ch.parent_id = c.id
+        );
+  options:
+    - 跟 B 一樣多
+    - 0 筆
+    - 27 筆（全部分類）
+    - 執行錯誤
+  answer: 1
+  explanation: |
+    最上層分類的 parent_id 是 NULL，所以子查詢的結果裡有 NULL。
+    id NOT IN (2, 4, NULL) 會展開成 id <> 2 AND id <> 4 AND id <> NULL。
+    任何值跟 NULL 比較都是「未知」，不是 true，所以每一列都不成立，結果是 0 筆，而且不會報錯。
+    ★ 找「不存在」請用 NOT EXISTS；一定要用 NOT IN 的話，子查詢要加 WHERE parent_id IS NOT NULL。
+
+- id: count-star-left-join
+  title: LEFT JOIN 之後的 count(*)
+  question: 會員 19999 從來沒有下過單。A 的 count(*) 會算出多少？
+  sqls:
+    - label: A：count(*)
+      sql: |
+        SELECT c.id, count(*) AS orders
+        FROM customers c
+        LEFT JOIN orders o ON o.customer_id = c.id
+        WHERE c.id = 19999
+        GROUP BY c.id;
+    - label: B：count(o.id)
+      sql: |
+        SELECT c.id, count(o.id) AS orders
+        FROM customers c
+        LEFT JOIN orders o ON o.customer_id = c.id
+        WHERE c.id = 19999
+        GROUP BY c.id;
+  options:
+    - "0"
+    - "1"
+    - "NULL"
+  answer: 1
+  explanation: |
+    LEFT JOIN 對不到訂單時，還是會產生「一列」：會員欄位有值，訂單欄位全是 NULL。
+    count(*) 數的是列數，所以是 1；count(o.id) 不算 NULL，才是正確的 0。
+    做「每個 X 有幾個 Y、沒有的顯示 0」這種報表時一定要注意。
+
+- id: count-column-null
+  title: count(*) 與 count(欄位)
+  question: count(*) 和 count(birth_date) 的結果？
+  sqls:
+    - label: A：count(*)
+      sql: |
+        SELECT count(*) AS cnt FROM customers;
+    - label: B：count(birth_date)
+      sql: |
+        SELECT count(birth_date) AS cnt FROM customers;
+  options:
+    - 一樣
+    - count(birth_date) 比較少
+    - count(birth_date) 比較多
+  answer: 1
+  explanation: |
+    count(*) 數「列數」；count(欄位) 只數那個欄位不是 NULL 的列。
+    有些會員沒填生日（NULL），所以 B 比較少。
+    sum、avg、max、min 一樣會跳過 NULL。
+
+- id: equals-null
+  title: "= NULL"
+  question: 想找「沒有填城市」的會員，A 會回傳多少？
+  sqls:
+    - label: A：= NULL
+      sql: |
+        SELECT count(*) AS members FROM customers WHERE city = NULL;
+    - label: B：IS NULL
+      sql: |
+        SELECT count(*) AS members FROM customers WHERE city IS NULL;
+  options:
+    - 跟 B 一樣
+    - "0"
+    - 執行錯誤
+  answer: 1
+  explanation: |
+    NULL 代表「未知」，任何值跟 NULL 用 =、<>、> 比較，結果都是未知（不是 true），所以 WHERE 一筆都不會通過。
+    判斷 NULL 只能用 IS NULL / IS NOT NULL。
+
+- id: integer-division
+  title: 整數除法
+  question: A 算出來的取消率是多少？
+  sqls:
+    - label: A：整數相除
+      sql: |
+        SELECT count(*) FILTER (WHERE status = 'cancelled') / count(*) AS cancel_rate
+        FROM orders;
+    - label: B：先乘 100.0
+      sql: |
+        SELECT round(100.0 * count(*) FILTER (WHERE status = 'cancelled') / count(*), 2) AS cancel_pct
+        FROM orders;
+  options:
+    - 約 0.1
+    - "0"
+    - 約 10
+    - 執行錯誤
+  answer: 1
+  explanation: |
+    count(*) 的型別是整數（bigint），整數除以整數的結果還是整數，小數直接捨去：8000 / 80000 = 0。
+    只要其中一邊是小數就會得到小數，常見寫法是 100.0 * a / b，或 a::numeric / b。
+    Java 的 int / int 也是一樣的道理。
+
+- id: and-or-precedence
+  title: AND 和 OR 的優先順序
+  question: A 查到的是「台北市的取消或退貨訂單」嗎？
+  sqls:
+    - label: A：沒有括號
+      sql: |
+        SELECT count(*) AS orders
+        FROM orders
+        WHERE status = 'cancelled' OR status = 'returned'
+          AND shipping_city = '台北市';
+    - label: B：加上括號
+      sql: |
+        SELECT count(*) AS orders
+        FROM orders
+        WHERE (status = 'cancelled' OR status = 'returned')
+          AND shipping_city = '台北市';
+  options:
+    - 是，跟 B 一樣
+    - 不是，A 比較多
+    - 不是，A 比較少
+  answer: 1
+  explanation: |
+    AND 的優先順序比 OR 高，A 實際上是：
+    status = 'cancelled' OR (status = 'returned' AND shipping_city = '台北市')
+    也就是「所有城市的取消訂單」加上「台北市的退貨訂單」，所以比較多。
+    OR 跟 AND 混用時一律加括號。用 status IN ('cancelled', 'returned') 也能避免這個問題。
+
+- id: between-timestamp
+  title: BETWEEN 與時間
+  question: 想查 2026 年 1 月的訂單。A 的筆數跟 B 一樣嗎？
+  sqls:
+    - label: A：BETWEEN
+      sql: |
+        SELECT count(*) AS orders
+        FROM orders
+        WHERE order_date BETWEEN '2026-01-01' AND '2026-01-31';
+    - label: B：>= 與 <
+      sql: |
+        SELECT count(*) AS orders
+        FROM orders
+        WHERE order_date >= '2026-01-01' AND order_date < '2026-02-01';
+  options:
+    - 一樣
+    - A 比較少
+    - A 比較多
+  answer: 1
+  explanation: |
+    order_date 是時間戳記。'2026-01-31' 會被當成 2026-01-31 00:00:00，
+    所以 1/31 當天 00:00 之後的訂單全部被漏掉。
+    時間範圍一律寫成「>= 起點 AND < 下一段的起點」，不管欄位是 date 還是 timestamp 都不會出錯。
+
+- id: jsonb-text-compare
+  title: JSONB 取出來是文字
+  question: 想找容量大於 64GB 的手機。A 的筆數跟 B 一樣嗎？
+  sqls:
+    - label: A：直接比較 ->> 的結果
+      sql: |
+        SELECT count(*) AS phones
+        FROM products
+        WHERE category_id = 2 AND specs->>'storage_gb' > '64';
+    - label: B：先轉成數字
+      sql: |
+        SELECT count(*) AS phones
+        FROM products
+        WHERE category_id = 2 AND (specs->>'storage_gb')::int > 64;
+  options:
+    - 一樣
+    - A 比較少
+    - A 比較多
+  answer: 1
+  explanation: |
+    ->> 取出來的是 text，text 比大小是從第一個字開始逐字比較：
+    '128' > '64' 先比 '1' 和 '6'，'1' 比較小，所以是 false；'256'、'512' 也一樣輸給 '6'。
+    結果 A 一筆都查不到，而且不會有任何錯誤訊息。
+    JSONB 裡的數字要比較大小，一定要先轉型：(specs->>'storage_gb')::int。
+
+- id: jsonb-null-concat
+  title: NULL 合併 JSONB
+  question: "有些商品的 specs 是 NULL。A 對它們執行 specs || '{\"on_sale\": true}'，結果是什麼？"
+  sqls:
+    - label: A：直接合併
+      sql: |
+        SELECT id, specs || '{"on_sale": true}' AS merged
+        FROM products
+        WHERE specs IS NULL
+        ORDER BY id
+        LIMIT 5;
+    - label: B：先用 COALESCE 補成空物件
+      sql: |
+        SELECT id, COALESCE(specs, '{}') || '{"on_sale": true}' AS merged
+        FROM products
+        WHERE specs IS NULL
+        ORDER BY id
+        LIMIT 5;
+  options:
+    - '{"on_sale": true}'
+    - "NULL"
+    - 執行錯誤
+  answer: 1
+  explanation: |
+    在 SQL 裡，NULL 參與幾乎所有運算的結果都是 NULL：NULL || 任何東西 = NULL、NULL + 1 = NULL。
+    所以 UPDATE … SET specs = specs || '{…}' 時，原本是 NULL 的商品不會被加上新欄位，也不會有任何錯誤訊息。
+    要先用 COALESCE(specs, '{}') 補成空物件。

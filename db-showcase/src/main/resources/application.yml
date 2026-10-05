@@ -1,0 +1,19 @@
+server:
+  port: 8081
+
+spring:
+  datasource:                     # PostgreSQL（pg-lab 容器）
+    url: jdbc:postgresql://localhost:5434/shop
+    username: lab
+    password: lab
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true          # 瀏覽器每次都先確認 CSS / JS 有沒有更新，避免改版後看到舊畫面
+
+showcase:
+  postgres:
+    max-rows: 500                 # 最多回傳幾筆給前端
+    statement-timeout: 15s        # 單一查詢最長執行時間
+  # 之後串接其他資料庫時，各自的設定加在這裡（redis、mongodb、cassandra…）

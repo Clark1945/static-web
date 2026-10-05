@@ -1,0 +1,925 @@
+# PostgreSQL 練習題
+# ordered: true  → 批改時連資料順序也要一樣
+#          false → 只比對內容，順序不拘
+# 欄位名稱不比對（別名自由取），只比對欄位數量與每一格的值
+
+- id: status-count
+  chapter: 基礎彙總
+  title: 各狀態訂單數
+  prompt: |
+    統計每種訂單狀態各有幾筆訂單。
+    顯示：status、訂單數。
+    排序：訂單數由多到少。
+  hints:
+    - 用 GROUP BY status 把同一種狀態的訂單分成一組。
+    - count(*) 算每組的筆數，ORDER BY 後面可以直接用 SELECT 取的別名。
+  ordered: true
+  answer: |
+    SELECT status, count(*) AS orders
+    FROM orders
+    GROUP BY status
+    ORDER BY orders DESC;
+  explanation: |
+    最基本的分組彙總。注意 ORDER BY 可以用 SELECT 的別名 orders，但 WHERE 不行：
+    WHERE 執行時 SELECT 還沒跑，別名還不存在。
+
+- id: having
+  chapter: 基礎彙總
+  title: 下單超過 50 次的會員
+  prompt: |
+    找出下單次數超過 50 次的會員。
+    顯示：會員 id、下單次數。
+    排序：下單次數由多到少；次數相同時，會員 id 由小到大。
+  hints:
+    - 先用 GROUP BY customer_id 算出每位會員的下單次數。
+    - 「分組之後」的條件要寫在 HAVING，不能寫在 WHERE。
+  ordered: true
+  answer: |
+    SELECT customer_id, count(*) AS orders
+    FROM orders
+    GROUP BY customer_id
+    HAVING count(*) > 50
+    ORDER BY orders DESC, customer_id;
+  explanation: |
+    ★ 面試常考：WHERE 在分組「之前」過濾資料列，HAVING 在分組「之後」過濾群組。
+    聚合函數（count、sum…）只能出現在 HAVING，寫在 WHERE 會直接報錯。
+
+- id: distinct-city
+  chapter: 基礎彙總
+  title: 不重複的出貨城市
+  prompt: |
+    列出所有訂單中出現過的出貨城市（shipping_city），不能重複。
+    顯示：城市。
+    排序：城市名稱。
+  hints:
+    - SELECT DISTINCT 會把完全相同的資料列合併成一列。
+  ordered: true
+  answer: |
+    SELECT DISTINCT shipping_city
+    FROM orders
+    ORDER BY shipping_city;
+  explanation: |
+    DISTINCT 和 GROUP BY shipping_city 結果一樣。只要去重複用 DISTINCT 比較直覺；
+    需要同時算數量時才用 GROUP BY。
+
+- id: vip-count
+  chapter: 基礎彙總
+  title: 各 VIP 等級人數
+  prompt: |
+    統計每個 VIP 等級（vip_level）各有幾位會員。
+    顯示：vip_level、會員數。
+    排序：不拘。
+  hints:
+    - 跟第一題一樣的寫法，換成 customers 表。
+  ordered: false
+  answer: |
+    SELECT vip_level, count(*) AS members
+    FROM customers
+    GROUP BY vip_level;
+  explanation: |
+    這題不要求順序，所以沒寫 ORDER BY 也算對。
+    但要記得：沒寫 ORDER BY 時，資料庫「不保證」回傳順序，每次執行都可能不同。
+
+- id: never-ordered
+  chapter: JOIN
+  title: 從沒下過單的會員
+  prompt: |
+    列出從沒下過任何訂單的會員。
+    顯示：會員 id、姓名、註冊日。
+    排序：註冊日由早到晚；同一天依 id 由小到大。只取前 10 筆。
+  hints:
+    - INNER JOIN 會把沒有訂單的會員濾掉，要用 LEFT JOIN 讓所有會員都留下來。
+    - LEFT JOIN 對不到訂單時，訂單的欄位全部是 NULL，用 WHERE o.id IS NULL 把他們挑出來。
+  ordered: true
+  answer: |
+    SELECT c.id, c.name, c.signup_date
+    FROM customers c
+    LEFT JOIN orders o ON o.customer_id = c.id
+    WHERE o.id IS NULL
+    ORDER BY c.signup_date, c.id
+    LIMIT 10;
+  explanation: |
+    「找出沒有對應資料的列」有兩種標準寫法：
+    LEFT JOIN … WHERE 右表.id IS NULL，或 WHERE NOT EXISTS (子查詢)。
+    兩種結果一樣，PostgreSQL 通常會把它們最佳化成同一種執行計畫（Anti Join）。
+
+- id: products-per-category
+  chapter: JOIN
+  title: 每個分類的商品數（含 0）
+  prompt: |
+    統計每個分類各有幾件商品，沒有商品的分類也要列出來，數量顯示 0。
+    顯示：分類 id、分類名稱、商品數。
+    排序：分類 id。
+  hints:
+    - 以 categories 為主表，LEFT JOIN products。
+    - count(*) 會把「補 NULL 的那一列」也算成 1，要改用 count(p.id)。
+  ordered: true
+  answer: |
+    SELECT c.id, c.name, count(p.id) AS products
+    FROM categories c
+    LEFT JOIN products p ON p.category_id = c.id
+    GROUP BY c.id, c.name
+    ORDER BY c.id;
+  explanation: |
+    ★ 陷阱：LEFT JOIN 之後用 count(*)，沒有商品的分類會得到 1 而不是 0，
+    因為 LEFT JOIN 還是產生了一列（右邊全是 NULL）。count(欄位) 不算 NULL，才會得到 0。
+
+- id: category-parent
+  chapter: JOIN
+  title: 分類與上層分類（SELF JOIN）
+  prompt: |
+    列出每個分類，以及它的上層分類名稱。最上層的分類沒有上層，顯示「無」。
+    顯示：分類 id、分類名稱、上層分類名稱。
+    排序：分類 id。
+  hints:
+    - categories 要 JOIN 自己，所以同一張表要取兩個不同的別名，例如 c 和 p。
+    - 最上層分類的 parent_id 是 NULL，用 LEFT JOIN 才不會被濾掉，再用 COALESCE 把 NULL 換成「無」。
+  ordered: true
+  answer: |
+    SELECT c.id, c.name, COALESCE(p.name, '無') AS parent
+    FROM categories c
+    LEFT JOIN categories p ON p.id = c.parent_id
+    ORDER BY c.id;
+  explanation: |
+    SELF JOIN 就是同一張表當兩張用。常見情境：員工與主管、分類與上層分類、推薦人與被推薦人。
+
+- id: top-categories-2026
+  chapter: JOIN
+  title: 2026 年最暢銷的分類
+  prompt: |
+    統計 2026 年下單、而且狀態是 delivered 的訂單中，各分類賣出的商品件數（quantity 加總）。
+    顯示：分類名稱、件數。
+    排序：件數由多到少，取前 5 名。
+  hints:
+    - 要串四張表：orders → order_items → products → categories。
+    - 日期範圍建議寫成 order_date >= '2026-01-01' AND order_date < '2027-01-01'。
+  ordered: true
+  answer: |
+    SELECT c.name, sum(oi.quantity) AS qty
+    FROM orders o
+    JOIN order_items oi ON oi.order_id = o.id
+    JOIN products p     ON p.id = oi.product_id
+    JOIN categories c   ON c.id = p.category_id
+    WHERE o.status = 'delivered'
+      AND o.order_date >= '2026-01-01' AND o.order_date < '2027-01-01'
+    GROUP BY c.name
+    ORDER BY qty DESC
+    LIMIT 5;
+  explanation: |
+    日期範圍用「>= 起點 AND < 下一個起點」最安全：不會漏掉最後一天的下午，也能用到索引。
+    寫成 extract(year FROM order_date) = 2026 結果一樣，但欄位被函數包住後，一般索引就用不到了。
+
+- id: profile-completeness
+  chapter: "NULL"
+  title: 會員資料完整度
+  prompt: |
+    統計會員資料的完整度，結果只有一列。
+    顯示：會員總數、有填生日的人數、有填城市的人數。
+  hints:
+    - count(*) 算列數；count(欄位) 只算那個欄位「不是 NULL」的列。
+  ordered: true
+  answer: |
+    SELECT count(*)          AS total,
+           count(birth_date) AS has_birth_date,
+           count(city)       AS has_city
+    FROM customers;
+  explanation: |
+    ★ count(*) 和 count(欄位) 的差別是面試常考題。sum、avg、max、min 也一樣會忽略 NULL，
+    所以 avg(欄位) 是「有值的那些」的平均，不是全部人的平均。
+
+- id: city-with-unknown
+  chapter: "NULL"
+  title: 各城市會員數（含未填寫）
+  prompt: |
+    統計各城市的會員數，沒有填城市的會員歸到「未填寫」。
+    顯示：城市、人數。
+    排序：人數由多到少；人數相同時依城市名稱。
+  hints:
+    - COALESCE(city, '未填寫') 會把 NULL 換成「未填寫」。
+    - GROUP BY 也要用同一個 COALESCE 運算式（或寫 GROUP BY 1）。
+  ordered: true
+  answer: |
+    SELECT COALESCE(city, '未填寫') AS city, count(*) AS members
+    FROM customers
+    GROUP BY COALESCE(city, '未填寫')
+    ORDER BY members DESC, city;
+  explanation: |
+    其實不用 COALESCE，GROUP BY city 也會把所有 NULL 分在同一組。
+    COALESCE 是讓報表顯示得比較友善。
+
+- id: phones-above-avg
+  chapter: 子查詢
+  title: 比全站平均還貴的手機
+  prompt: |
+    列出「手機」分類中，價格高於「全部商品平均價格」的商品。
+    顯示：商品 id、名稱、價格。
+    排序：價格由高到低；同價依 id 由小到大。
+  hints:
+    - 全部商品的平均價格可以用子查詢算：(SELECT avg(price) FROM products)。
+    - 要 JOIN categories 才能用分類名稱「手機」篩選。
+  ordered: true
+  answer: |
+    SELECT p.id, p.name, p.price
+    FROM products p
+    JOIN categories c ON c.id = p.category_id
+    WHERE c.name = '手機'
+      AND p.price > (SELECT avg(price) FROM products)
+    ORDER BY p.price DESC, p.id;
+  explanation: |
+    回傳單一值的子查詢叫「純量子查詢」，可以放在任何需要一個值的地方。
+    它跟外層無關，所以只會執行一次。
+
+- id: never-sold
+  chapter: 子查詢
+  title: 從沒賣出過的商品（NOT EXISTS）
+  prompt: |
+    找出從來沒有出現在任何訂單明細裡的商品。
+    顯示：商品 id、名稱、上架日期（created_at）。
+    排序：商品 id。
+  hints:
+    - WHERE NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.product_id = p.id)
+  ordered: true
+  answer: |
+    SELECT p.id, p.name, p.created_at
+    FROM products p
+    WHERE NOT EXISTS (
+        SELECT 1 FROM order_items oi WHERE oi.product_id = p.id
+    )
+    ORDER BY p.id;
+  explanation: |
+    EXISTS 只關心「有沒有」，找到一筆就停，所以子查詢習慣寫 SELECT 1。
+    ★ 找「不存在」優先用 NOT EXISTS，不要用 NOT IN：子查詢只要有一個 NULL，NOT IN 就會一筆都查不到（陷阱題有示範）。
+
+- id: gold-returned
+  chapter: 子查詢
+  title: 有退貨紀錄的金卡會員
+  prompt: |
+    VIP 等級是 gold、而且曾經有退貨（status = 'returned'）訂單的會員有幾位？
+    結果只有一個數字。
+  hints:
+    - 用 EXISTS 檢查「這位會員有沒有退貨訂單」。
+    - 如果用 JOIN 寫，記得一位會員可能有好幾筆退貨，要 count(DISTINCT c.id)。
+  ordered: true
+  answer: |
+    SELECT count(*) AS members
+    FROM customers c
+    WHERE c.vip_level = 'gold'
+      AND EXISTS (
+          SELECT 1 FROM orders o
+          WHERE o.customer_id = c.id AND o.status = 'returned'
+      );
+  explanation: |
+    ★ 用 JOIN 寫很容易算錯：一位會員有 3 筆退貨，JOIN 後就變成 3 列，count(*) 會重複計算。
+    EXISTS 天生不會重複，這是它比 JOIN 適合「判斷有沒有」的原因。
+
+- id: price-level
+  chapter: CASE WHEN
+  title: 商品價格分級
+  prompt: |
+    把商品依價格分成三級：10000 以上是「高價」、1000 以上是「中價」、其餘是「平價」。
+    統計每一級的商品數。
+    顯示：級別、商品數。
+    排序：不拘。
+  hints:
+    - CASE WHEN price >= 10000 THEN '高價' WHEN price >= 1000 THEN '中價' ELSE '平價' END
+    - GROUP BY 可以寫 GROUP BY 1，代表依 SELECT 的第 1 個欄位分組。
+  ordered: false
+  answer: |
+    SELECT CASE WHEN price >= 10000 THEN '高價'
+                WHEN price >= 1000  THEN '中價'
+                ELSE '平價' END AS level,
+           count(*) AS products
+    FROM products
+    GROUP BY 1;
+  explanation: |
+    CASE WHEN 由上往下判斷，第一個成立就停，所以條件的順序很重要。
+    如果先寫 price >= 1000，高價商品也會被歸到「中價」。
+
+- id: cancel-rate-by-year
+  chapter: CASE WHEN
+  title: 每年的取消率
+  prompt: |
+    統計每一年（依下單時間）的訂單數、取消數（status = 'cancelled'）與取消率。
+    取消率用百分比表示，四捨五入到小數第 1 位（例如 9.8）。
+    顯示：年份、訂單數、取消數、取消率。
+    排序：年份。
+  hints:
+    - extract(year FROM order_date) 取出年份。
+    - 取消數可以用 count(*) FILTER (WHERE status = 'cancelled')，或 sum(CASE WHEN … THEN 1 ELSE 0 END)。
+    - ★ 整數除以整數會變成整數（9 / 100 = 0），要寫 100.0 * … 才會有小數。
+  ordered: true
+  answer: |
+    SELECT extract(year FROM order_date)::int AS year,
+           count(*) AS orders,
+           count(*) FILTER (WHERE status = 'cancelled') AS cancelled,
+           round(100.0 * count(*) FILTER (WHERE status = 'cancelled') / count(*), 1) AS cancel_pct
+    FROM orders
+    GROUP BY 1
+    ORDER BY 1;
+  explanation: |
+    「條件彙總」是報表最常用的技巧：一次掃描就算出多種條件的數量。
+    FILTER 是 PostgreSQL 的寫法；sum(CASE WHEN …) 是所有資料庫都通用的寫法，兩種都要會。
+
+- id: union-members
+  chapter: 集合運算
+  title: 取消或退貨過的會員（UNION）
+  prompt: |
+    有「取消」或「退貨」訂單紀錄的會員，總共有幾位？
+    結果只有一個數字。可以試著用 UNION 寫。
+  hints:
+    - 先寫兩個查詢：取消過的 customer_id、退貨過的 customer_id，再用 UNION 合併（UNION 會去除重複）。
+    - 合併後的結果放進 FROM ( … ) t，外層再 count(*)。
+  ordered: true
+  answer: |
+    SELECT count(*) AS members
+    FROM (
+        SELECT customer_id FROM orders WHERE status = 'cancelled'
+        UNION
+        SELECT customer_id FROM orders WHERE status = 'returned'
+    ) t;
+  explanation: |
+    ★ UNION 會去除重複，UNION ALL 不會。這題要算「幾位會員」，同一人兩種都有只能算一次，所以用 UNION。
+    更簡單的寫法是 count(DISTINCT customer_id) … WHERE status IN ('cancelled', 'returned')。
+
+- id: except-churned
+  chapter: 集合運算
+  title: 2025 年有買、2026 年沒買（EXCEPT）
+  prompt: |
+    2025 年有下單、但 2026 年完全沒有下單的會員有幾位？
+    結果只有一個數字。
+  hints:
+    - A EXCEPT B：在 A 裡面、但不在 B 裡面的資料。
+    - A = 2025 年下過單的 customer_id；B = 2026 年下過單的 customer_id。
+  ordered: true
+  answer: |
+    SELECT count(*) AS members
+    FROM (
+        SELECT customer_id FROM orders
+        WHERE order_date >= '2025-01-01' AND order_date < '2026-01-01'
+        EXCEPT
+        SELECT customer_id FROM orders
+        WHERE order_date >= '2026-01-01' AND order_date < '2027-01-01'
+    ) t;
+  explanation: |
+    這就是「流失會員」的算法。EXCEPT 也會去除重複。
+    同樣的需求也能用 NOT EXISTS 寫，大資料量時通常更好最佳化。
+
+- id: first-order
+  chapter: 視窗函數
+  title: 每位會員的第一筆訂單（DISTINCT ON）
+  prompt: |
+    會員 id 1 到 10，每人的第一筆訂單（下單時間最早的那筆）。
+    顯示：會員 id、訂單 id、下單時間。
+    排序：會員 id。
+  hints:
+    - PostgreSQL 專屬寫法：SELECT DISTINCT ON (customer_id) … ORDER BY customer_id, order_date
+    - 通用寫法：用 row_number() OVER (PARTITION BY customer_id ORDER BY order_date)，外層取編號 1。
+  ordered: true
+  answer: |
+    SELECT DISTINCT ON (customer_id)
+           customer_id, id AS order_id, order_date
+    FROM orders
+    WHERE customer_id BETWEEN 1 AND 10
+    ORDER BY customer_id, order_date;
+  explanation: |
+    DISTINCT ON (欄位) 會在每組裡保留 ORDER BY 排序後的第一列，是 PostgreSQL「分組取第一筆」最簡潔的寫法。
+    ORDER BY 的開頭必須跟 DISTINCT ON 的欄位一樣。面試時如果對方不是用 PostgreSQL，就改用 row_number()。
+
+- id: top-product-per-category
+  chapter: 視窗函數
+  title: 每個分類最貴的商品
+  prompt: |
+    找出每個分類中價格最高的商品（同價時取商品 id 較小的）。只列出有商品的分類。
+    顯示：分類 id、商品 id、商品名稱、價格。
+    排序：分類 id。
+  hints:
+    - row_number() OVER (PARTITION BY category_id ORDER BY price DESC, id) 幫每個分類內的商品編號。
+    - 視窗函數不能直接寫在 WHERE，要包一層子查詢或 CTE，外層再篩 rn = 1。
+  ordered: true
+  answer: |
+    SELECT category_id, id, name, price
+    FROM (
+        SELECT p.*,
+               row_number() OVER (PARTITION BY category_id ORDER BY price DESC, id) AS rn
+        FROM products p
+    ) t
+    WHERE rn = 1
+    ORDER BY category_id;
+  explanation: |
+    ★「分組取前 N 名」是面試最常考的視窗函數題。
+    要每組前 3 名就改成 rn <= 3；同分要一起並列就改用 rank() 或 dense_rank()。
+
+- id: monthly-revenue-diff
+  chapter: 視窗函數
+  title: 每月營收與差額（LAG）
+  prompt: |
+    2026 年 1 ~ 9 月，每月已送達（delivered）訂單的營收，以及跟上個月相比增加多少。
+    營收 = quantity × unit_price × (1 − discount) 加總，四捨五入到整數；差額用四捨五入後的營收相減。
+    第一個月沒有上個月，差額顯示 NULL。
+    顯示：月份（日期，例如 2026-01-01）、營收、差額。
+    排序：月份。
+  hints:
+    - date_trunc('month', order_date)::date 把時間截到當月 1 號。
+    - 先用 CTE 算出每月營收，外層再用 lag(revenue) OVER (ORDER BY month) 取上個月。
+  ordered: true
+  answer: |
+    WITH monthly AS (
+        SELECT date_trunc('month', o.order_date)::date AS month,
+               round(sum(oi.quantity * oi.unit_price * (1 - oi.discount))) AS revenue
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.status = 'delivered'
+          AND o.order_date >= '2026-01-01' AND o.order_date < '2026-10-01'
+        GROUP BY 1
+    )
+    SELECT month, revenue,
+           revenue - lag(revenue) OVER (ORDER BY month) AS diff
+    FROM monthly
+    ORDER BY month;
+  explanation: |
+    lag() 取前一列、lead() 取後一列，常用來算月增率、年增率、相隔天數。
+    把每月營收先放進 CTE，外層的視窗函數就清楚很多。
+
+- id: cumulative-signups
+  chapter: 視窗函數
+  title: 累計註冊人數
+  prompt: |
+    2026 年 1 ~ 6 月，每月新註冊的會員數，以及從 2026 年 1 月累計到該月的人數。
+    顯示：月份（日期，例如 2026-01-01）、新會員數、累計人數。
+    排序：月份。
+  hints:
+    - 累計加總：sum(…) OVER (ORDER BY month)。
+    - 先用 CTE 算出每月人數，外層再累計，比較不容易寫錯。
+  ordered: true
+  answer: |
+    WITH m AS (
+        SELECT date_trunc('month', signup_date)::date AS month, count(*) AS new_members
+        FROM customers
+        WHERE signup_date >= '2026-01-01' AND signup_date < '2026-07-01'
+        GROUP BY 1
+    )
+    SELECT month, new_members,
+           sum(new_members) OVER (ORDER BY month) AS cumulative
+    FROM m
+    ORDER BY month;
+  explanation: |
+    sum() 加上 OVER (ORDER BY …) 就變成累計加總，視窗預設是「從第一列到目前這一列」。
+    把 ORDER BY 拿掉，每一列都會得到全部的總和。
+
+- id: order-gap-days
+  chapter: 視窗函數
+  title: 兩次下單相隔幾天
+  prompt: |
+    會員 id 1 依下單時間排序的前 10 筆訂單，以及每筆跟「上一筆」相隔幾天。
+    相隔天數 = 這筆的下單日期 − 上一筆的下單日期（只看日期），第一筆顯示 NULL。
+    顯示：訂單 id、下單日期（date）、相隔天數。
+    排序：下單時間。
+  hints:
+    - order_date::date 把時間轉成日期；date 減 date 會得到整數天數。
+    - lag(order_date::date) OVER (ORDER BY order_date) 取上一筆的日期。
+  ordered: true
+  answer: |
+    SELECT id,
+           order_date::date AS order_day,
+           order_date::date - lag(order_date::date) OVER (ORDER BY order_date) AS gap_days
+    FROM orders
+    WHERE customer_id = 1
+    ORDER BY order_date
+    LIMIT 10;
+  explanation: |
+    注意執行順序：WHERE → 視窗函數 → ORDER BY → LIMIT。
+    所以 lag() 看得到所有符合 WHERE 的列，LIMIT 10 只是最後截斷顯示。
+
+- id: category-descendants
+  chapter: 遞迴 CTE
+  title: 3C電子底下的所有分類
+  prompt: |
+    列出「3C電子」底下的所有子孫分類（不含 3C電子 本身）。
+    層級：直接的子分類是 1，再下一層是 2。
+    顯示：分類 id、名稱、層級。
+    排序：分類 id。
+  hints:
+    - WITH RECURSIVE t AS ( 起點 UNION ALL 遞迴部分 ) SELECT … FROM t
+    - 起點：parent_id 等於 3C電子 id 的分類，層級 1。
+    - 遞迴部分：categories JOIN t ON categories.parent_id = t.id，層級 + 1。
+  ordered: true
+  answer: |
+    WITH RECURSIVE t AS (
+        SELECT id, name, 1 AS depth
+        FROM categories
+        WHERE parent_id = (SELECT id FROM categories WHERE name = '3C電子')
+        UNION ALL
+        SELECT c.id, c.name, t.depth + 1
+        FROM categories c
+        JOIN t ON c.parent_id = t.id
+    )
+    SELECT id, name, depth
+    FROM t
+    ORDER BY id;
+  explanation: |
+    遞迴 CTE 分兩段：起點（anchor）只跑一次；遞迴部分拿上一輪的結果繼續往下找，直到找不到新資料為止。
+    常見用途：組織圖、分類樹、留言串、BOM 物料表。
+
+# ======================= PostgreSQL 進階 =======================
+
+- id: jsonb-storage
+  chapter: JSONB
+  title: 256GB 的手機
+  prompt: |
+    products.specs 是 JSONB。列出「手機」分類（category_id = 2）中，規格 storage_gb 是 256 的商品。
+    顯示：商品 id、名稱、顏色（specs 裡的 color）。
+    排序：商品 id。
+  hints:
+    - "->> 取出文字：specs->>'color'；-> 取出 JSONB：specs->'warranty'。"
+    - "篩選可以寫 (specs->>'storage_gb')::int = 256，或用包含運算子 specs @> '{\"storage_gb\": 256}'。"
+  ordered: true
+  answer: |
+    SELECT id, name, specs->>'color' AS color
+    FROM products
+    WHERE category_id = 2
+      AND specs @> '{"storage_gb": 256}'
+    ORDER BY id;
+  explanation: |
+    -> 回傳 JSONB，->> 回傳 text。要比較數字時，記得先把 ->> 的結果轉型：(specs->>'storage_gb')::int。
+    @> 是「包含」：左邊的 JSON 有沒有包含右邊這一段。它的好處是能用 GIN 索引（索引實驗室有示範）。
+
+- id: jsonb-color-count
+  chapter: JSONB
+  title: 服飾各顏色的商品數
+  prompt: |
+    統計男裝、女裝（category_id 13、14）各顏色的商品數，沒有規格（specs 是 NULL）的商品不算。
+    顯示：顏色、商品數。
+    排序：商品數由多到少；數量相同依顏色。
+  hints:
+    - "GROUP BY specs->>'color' 就能依 JSON 裡的值分組。"
+  ordered: true
+  answer: |
+    SELECT specs->>'color' AS color, count(*) AS products
+    FROM products
+    WHERE category_id IN (13, 14) AND specs IS NOT NULL
+    GROUP BY 1
+    ORDER BY products DESC, color;
+  explanation: |
+    JSONB 裡的值可以像一般欄位一樣用在 SELECT、WHERE、GROUP BY、ORDER BY。
+    彈性欄位（每個分類的規格都不同）很適合用 JSONB，不用為了每種規格開一個欄位。
+
+- id: jsonb-noise-cancelling
+  chapter: JSONB
+  title: 降噪耳機的平均價格
+  prompt: |
+    規格中 noise_cancelling 為 true 的商品，平均價格是多少？四捨五入到整數。
+    結果只有一個數字。
+  hints:
+    - "可以寫 (specs->>'noise_cancelling')::boolean，或 specs @> '{\"noise_cancelling\": true}'。"
+  ordered: true
+  answer: |
+    SELECT round(avg(price)) AS avg_price
+    FROM products
+    WHERE specs @> '{"noise_cancelling": true}';
+  explanation: |
+    注意 JSON 的 true 是布林值，跟字串 "true" 不一樣：'{"noise_cancelling": "true"}' 是查不到東西的。
+
+- id: jsonb-nested
+  chapter: JSONB
+  title: 保固兩年的商品（巢狀 JSON）
+  prompt: |
+    規格中 warranty.years 等於 2 的商品，依分類統計數量。（warranty 是巢狀物件，例如 {"years": 2, "type": "原廠"}）
+    顯示：分類名稱、商品數。
+    排序：商品數由多到少；數量相同依分類名稱。
+  hints:
+    - "一層一層取：specs->'warranty'->>'years'，或用路徑：specs #>> '{warranty,years}'。"
+  ordered: true
+  answer: |
+    SELECT c.name, count(*) AS products
+    FROM products p
+    JOIN categories c ON c.id = p.category_id
+    WHERE (p.specs->'warranty'->>'years')::int = 2
+    GROUP BY c.name
+    ORDER BY products DESC, c.name;
+  explanation: |
+    中間層要用 ->（保持 JSONB 才能繼續往下取），最後一層才用 ->> 取出文字。
+    #> 與 #>> 可以一次指定整條路徑。
+
+- id: jsonb-key-exists
+  chapter: JSONB
+  title: 有電池續航規格的商品
+  prompt: |
+    規格裡有 battery_hours 這個鍵的商品有幾件？
+    結果只有一個數字。
+  hints:
+    - "? 運算子判斷 JSONB 有沒有某個鍵：specs ? 'battery_hours'。"
+  ordered: true
+  answer: |
+    SELECT count(*) AS products
+    FROM products
+    WHERE specs ? 'battery_hours';
+  explanation: |
+    ? 判斷單一鍵；?| 判斷「任一鍵存在」；?& 判斷「全部鍵都存在」。
+    ★ 在 JDBC 的 PreparedStatement 裡，? 會被當成參數佔位符，Java 程式要寫成 ?? 或改用 jsonb_exists() 函數，這是實務上常踩的坑。
+
+- id: jsonb-array-elements
+  chapter: JSONB
+  title: 各尺寸有幾件服飾（展開 JSON 陣列）
+  prompt: |
+    男裝、女裝（category_id 13、14）的 specs.sizes 是 JSON 陣列，例如 ["M", "L", "XL"]。
+    統計每個尺寸有幾件商品提供。
+    顯示：尺寸、商品數。
+    排序：不拘。
+  hints:
+    - "jsonb_array_elements_text(specs->'sizes') 會把陣列展開成多列。"
+    - "寫在 FROM 裡：FROM products p, jsonb_array_elements_text(p.specs->'sizes') AS s(size)。"
+  ordered: false
+  answer: |
+    SELECT s.size, count(*) AS products
+    FROM products p,
+         jsonb_array_elements_text(p.specs->'sizes') AS s(size)
+    WHERE p.category_id IN (13, 14)
+    GROUP BY s.size;
+  explanation: |
+    FROM 裡的函數可以引用前面表格的欄位（隱含的 LATERAL），每件商品會展開成「有幾個尺寸就幾列」。
+    specs 是 NULL 的商品展開後沒有資料列，自然不會被算進去。
+
+- id: array-any
+  chapter: Array
+  title: 特價商品數（ANY）
+  prompt: |
+    products.tags 是 text[]。有「特價」標籤的商品有幾件？
+    結果只有一個數字。
+  hints:
+    - "'特價' = ANY(tags)：陣列裡任何一個元素等於「特價」就成立。"
+  ordered: true
+  answer: |
+    SELECT count(*) AS products
+    FROM products
+    WHERE '特價' = ANY(tags);
+  explanation: |
+    ANY(陣列) 是「其中任何一個」。也可以寫 tags @> ARRAY['特價']，後者能用 GIN 索引。
+    Java 端常用 = ANY(?) 搭配 setArray 傳一整串 id，取代自己組字串的 IN (…)。
+
+- id: array-contains
+  chapter: Array
+  title: 熱銷又限量（@>）
+  prompt: |
+    同時有「熱銷」和「限量」兩個標籤的商品。
+    顯示：商品 id、名稱。
+    排序：商品 id。
+  hints:
+    - "tags @> ARRAY['熱銷', '限量']：左邊的陣列「包含」右邊所有元素。"
+  ordered: true
+  answer: |
+    SELECT id, name
+    FROM products
+    WHERE tags @> ARRAY['熱銷', '限量']
+    ORDER BY id;
+  explanation: |
+    @> 包含（全部都要有）、<@ 被包含、&& 重疊（有任何一個相同）。
+
+- id: array-overlap
+  chapter: Array
+  title: 環保或獨家（&&）
+  prompt: |
+    有「環保」或「獨家」任一個標籤的商品有幾件？
+    結果只有一個數字。
+  hints:
+    - "&& 是「重疊」：兩個陣列只要有任何一個相同元素就成立。"
+  ordered: true
+  answer: |
+    SELECT count(*) AS products
+    FROM products
+    WHERE tags && ARRAY['環保', '獨家'];
+  explanation: |
+    等同 '環保' = ANY(tags) OR '獨家' = ANY(tags)，但 && 比較簡潔，也能用 GIN 索引。
+
+- id: array-unnest
+  chapter: Array
+  title: 各標籤的商品數（unnest）
+  prompt: |
+    統計每個標籤各有幾件商品。
+    顯示：標籤、商品數。
+    排序：商品數由多到少；數量相同依標籤。
+  hints:
+    - unnest(tags) 會把陣列展開成多列，一個元素一列。
+  ordered: true
+  answer: |
+    SELECT tag, count(*) AS products
+    FROM products, unnest(tags) AS tag
+    GROUP BY tag
+    ORDER BY products DESC, tag;
+  explanation: |
+    unnest 是陣列版的「展開」，對應 JSONB 的 jsonb_array_elements。
+    反過來把多列聚合成陣列用 array_agg()。
+
+- id: array-empty
+  chapter: Array
+  title: 沒有任何標籤的商品
+  prompt: |
+    沒有任何標籤（空陣列）的商品有幾件？
+    結果只有一個數字。
+  hints:
+    - cardinality(tags) 回傳陣列的元素個數。
+    - "也可以直接比較：tags = '{}'。"
+  ordered: true
+  answer: |
+    SELECT count(*) AS products
+    FROM products
+    WHERE cardinality(tags) = 0;
+  explanation: |
+    ★ 小心 array_length(tags, 1)：空陣列會回傳 NULL 而不是 0，寫 array_length(tags, 1) = 0 會一筆都查不到。
+    cardinality() 對空陣列回傳 0，比較不會出錯。
+
+- id: gs-daily-zero
+  chapter: generate_series
+  title: 每天的訂單數（沒有訂單也要顯示 0）
+  prompt: |
+    2026 年 9 月的每一天，出貨到「台東縣」的訂單有幾筆？沒有訂單的日子也要列出來，顯示 0。
+    顯示：日期（date）、訂單數。
+    排序：日期。
+  hints:
+    - 直接 GROUP BY 訂單日期的話，沒有訂單的日子根本不會出現。要先「產生」完整的日期清單。
+    - "generate_series('2026-09-01'::date, '2026-09-30'::date, interval '1 day') 會產生 30 列。"
+    - 再用 LEFT JOIN 接上訂單，count(o.id) 才會在沒有訂單時得到 0。
+  ordered: true
+  answer: |
+    SELECT d::date AS day, count(o.id) AS orders
+    FROM generate_series('2026-09-01'::date, '2026-09-30'::date, interval '1 day') AS d
+    LEFT JOIN orders o
+           ON o.shipping_city = '台東縣'
+          AND o.order_date >= d
+          AND o.order_date <  d + interval '1 day'
+    GROUP BY d
+    ORDER BY d;
+  explanation: |
+    報表「補零」的標準做法：用 generate_series 產生完整的時間軸，再 LEFT JOIN 實際資料。
+    注意城市條件要放在 ON：放在 WHERE 的話，沒有訂單的日子會被濾掉（陷阱題第 1 題的道理）。
+
+- id: gs-monthly-signups
+  chapter: generate_series
+  title: 2026 年每月新會員（含 0）
+  prompt: |
+    2026 年 1 ~ 12 月，每個月有幾位新註冊會員？沒有人註冊的月份顯示 0。
+    顯示：月份（date，例如 2026-01-01）、新會員數。
+    排序：月份。
+  hints:
+    - "generate_series('2026-01-01'::date, '2026-12-01'::date, interval '1 month')"
+  ordered: true
+  answer: |
+    SELECT m::date AS month, count(c.id) AS new_members
+    FROM generate_series('2026-01-01'::date, '2026-12-01'::date, interval '1 month') AS m
+    LEFT JOIN customers c
+           ON c.signup_date >= m
+          AND c.signup_date <  m + interval '1 month'
+    GROUP BY m
+    ORDER BY m;
+  explanation: |
+    資料只到 2026 年 6 月，所以 7 ~ 12 月都是 0。如果直接對 customers 做 GROUP BY，只會得到 6 列。
+
+- id: write-insert-returning
+  chapter: 寫入（RETURNING / UPSERT）
+  title: 新增會員並拿回資料（INSERT … RETURNING）
+  mode: write
+  prompt: |
+    新增一位會員：姓名「王小明」、email「xiaoming@example.com」、註冊日 2026-10-01。
+    用 RETURNING 回傳：姓名、email、vip_level（沒有指定，看看預設值是什麼）。
+  hints:
+    - INSERT INTO customers (name, email, signup_date) VALUES (…) RETURNING …
+  ordered: true
+  answer: |
+    INSERT INTO customers (name, email, signup_date)
+    VALUES ('王小明', 'xiaoming@example.com', '2026-10-01')
+    RETURNING name, email, vip_level;
+  explanation: |
+    RETURNING 讓 INSERT / UPDATE / DELETE 直接回傳被影響的資料，省掉再查一次。最常見的用途是拿回自動產生的 id。
+    ★ 這題刻意不比對 id：序列（serial）不受交易控制，就算 ROLLBACK，用掉的號碼也不會還回去，所以每次執行 id 都不同。
+    這也是正式環境的 id 常常「跳號」的原因，面試被問到可以這樣解釋。
+
+- id: write-update-returning
+  chapter: 寫入（RETURNING / UPSERT）
+  title: 飲料漲價 10%（UPDATE … RETURNING）
+  mode: write
+  prompt: |
+    「飲料」分類的商品全部漲價 10%，新價格四捨五入到整數。
+    用 RETURNING 回傳：商品 id、新價格。
+    排序：不拘。
+  hints:
+    - UPDATE products SET price = round(price * 1.1) WHERE … RETURNING id, price
+    - "分類可以用子查詢找：category_id = (SELECT id FROM categories WHERE name = '飲料')"
+  ordered: false
+  answer: |
+    UPDATE products
+    SET price = round(price * 1.1)
+    WHERE category_id = (SELECT id FROM categories WHERE name = '飲料')
+    RETURNING id, price;
+  explanation: |
+    RETURNING 回傳的是「更新後」的值。PostgreSQL 18 起可以寫 RETURNING old.price, new.price 同時拿到新舊值。
+    沙盒可以一次執行多句：試著在後面加一句 SELECT，就能看到交易內已經改好的資料（但批改看的是最後一個回傳的結果，交作業時要拿掉）。
+
+- id: write-delete-returning
+  chapter: 寫入（RETURNING / UPSERT）
+  title: 刪除待處理訂單（DELETE … RETURNING）
+  mode: write
+  prompt: |
+    刪除所有狀態是 pending 的訂單。用 RETURNING 回傳：訂單 id、會員 id。
+    排序：不拘。
+  hints:
+    - order_items 的外鍵設了 ON DELETE CASCADE，刪訂單時明細會自動一起刪。
+  ordered: false
+  answer: |
+    DELETE FROM orders
+    WHERE status = 'pending'
+    RETURNING id, customer_id;
+  explanation: |
+    DELETE … RETURNING 常用在「搬資料」：WITH moved AS (DELETE … RETURNING *) INSERT INTO archive SELECT * FROM moved;
+    一句完成刪除與歸檔，而且在同一個交易裡。
+
+- id: write-upsert-update
+  chapter: 寫入（RETURNING / UPSERT）
+  title: 有就更新、沒有就新增（UPSERT）
+  mode: write
+  prompt: |
+    一次寫入兩個分類：
+    (2, '智慧型手機', 上層 1)：id 2 已經存在，要把名稱更新成「智慧型手機」
+    (28, '寵物用品', 沒有上層)：id 28 不存在，要新增
+    用 RETURNING 回傳：id、name、parent_id。
+    排序：不拘。
+  hints:
+    - INSERT … ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+    - EXCLUDED 代表「這次想插入、但撞到衝突的那一列」。
+  ordered: false
+  answer: |
+    INSERT INTO categories (id, name, parent_id)
+    VALUES (2, '智慧型手機', 1),
+           (28, '寵物用品', NULL)
+    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+    RETURNING id, name, parent_id;
+  explanation: |
+    ★ UPSERT 是原子操作：不會有「先查有沒有、再決定 INSERT 或 UPDATE」之間被別人插隊的競態問題（race condition）。
+    ON CONFLICT 後面要指定一個有 UNIQUE 或主鍵約束的欄位。JPA 的 save() 做不到這件事，實務上常要寫原生 SQL。
+
+- id: write-upsert-nothing
+  chapter: 寫入（RETURNING / UPSERT）
+  title: 重複就跳過（ON CONFLICT DO NOTHING）
+  mode: write
+  prompt: |
+    一次新增兩位會員（註冊日都是 2026-10-01）：
+    「舊會員」email user00001@example.com（這個 email 已經存在）
+    「新會員」email new0001@example.com
+    email 重複的直接跳過，不要報錯。用 RETURNING 回傳：姓名、email。
+  hints:
+    - ON CONFLICT (email) DO NOTHING
+  ordered: true
+  answer: |
+    INSERT INTO customers (name, email, signup_date)
+    VALUES ('舊會員', 'user00001@example.com', '2026-10-01'),
+           ('新會員', 'new0001@example.com', '2026-10-01')
+    ON CONFLICT (email) DO NOTHING
+    RETURNING name, email;
+  explanation: |
+    DO NOTHING 跳過的那一列不會出現在 RETURNING 裡，所以只回傳一列。
+    匯入資料、處理重複送出的請求（冪等性）都很常用這個寫法。
+
+- id: write-update-from
+  chapter: 寫入（RETURNING / UPSERT）
+  title: 有退貨的金卡會員降級（UPDATE … FROM）
+  mode: write
+  prompt: |
+    把「曾經有退貨（returned）訂單」的 gold 會員，等級降為 silver。
+    用 RETURNING 回傳：會員 id。
+    排序：不拘。
+  hints:
+    - UPDATE customers c SET … FROM orders o WHERE o.customer_id = c.id AND …
+    - 也可以用 WHERE EXISTS (…)。
+  ordered: false
+  answer: |
+    UPDATE customers c
+    SET vip_level = 'silver'
+    FROM orders o
+    WHERE o.customer_id = c.id
+      AND o.status = 'returned'
+      AND c.vip_level = 'gold'
+    RETURNING c.id;
+  explanation: |
+    UPDATE … FROM 是 PostgreSQL 用其他表的資料來更新的寫法（MySQL 是 UPDATE … JOIN）。
+    一位會員有多筆退貨，也只會被更新一次、回傳一次。
+    ★ 但如果 SET 用到 FROM 表的欄位，而且對到多筆，「用哪一筆的值」是不確定的。這種情況要先彙總好再更新。
+
+- id: write-jsonb-merge
+  chapter: 寫入（RETURNING / UPSERT）
+  title: 在 JSONB 裡加一個欄位
+  mode: write
+  prompt: |
+    有「特價」標籤、而且有規格（specs 不是 NULL）的商品，在 specs 加上 "on_sale": true。
+    用 RETURNING 回傳：商品 id、specs 裡 on_sale 的值（文字）。
+    排序：不拘。
+  hints:
+    - "JSONB 用 || 合併：specs || '{\"on_sale\": true}'，相同的鍵會被右邊覆蓋。"
+    - "也可以用 jsonb_set(specs, '{on_sale}', 'true')。"
+  ordered: false
+  answer: |
+    UPDATE products
+    SET specs = specs || '{"on_sale": true}'
+    WHERE '特價' = ANY(tags) AND specs IS NOT NULL
+    RETURNING id, specs->>'on_sale';
+  explanation: |
+    ★ 陷阱：NULL || '{"on_sale": true}' 的結果是 NULL（陷阱題有示範）。
+    如果要連沒有規格的商品一起處理，要寫 COALESCE(specs, '{}') || '{"on_sale": true}'。
+    刪除一個鍵用減號：specs - 'on_sale'。

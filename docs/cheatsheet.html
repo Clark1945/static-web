@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PostgreSQL CheatSheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* 兩份靜態頁共用：上方固定標題列 + 內容區；色彩沿用展示台的 PostgreSQL 藍 */
+:root {
+  --bg: #F3F5F8;
+  --surface: #FFFFFF;
+  --ink: #16202B;
+  --muted: #5B6878;
+  --line: #D9DFE7;
+  --accent: #336791;
+  --accent-soft: #E3ECF4;
+  --accent-ink: #FFFFFF;
+  --code-bg: #F6F8FA;
+  --star: #B86E00;
+  --ok: #2F7D5B;
+  --ok-soft: #DDF1E7;
+  --bad: #B3261E;
+  --bad-soft: #FBE4E2;
+  --warn-soft: #FBF0D9;
+  --mark: #FFE58A;
+  --hl-kw: #1F5FA8;
+  --hl-fn: #8A3FB0;
+  --hl-str: #2F7D5B;
+  --hl-num: #A85A00;
+  --hl-cmt: #7A8694;
+  --hl-op: #B3261E;
+  --font-body: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E141B; --surface: #161F29; --ink: #E3E9F0; --muted: #94A3B4; --line: #26323F;
+    --accent: #6FA3D3; --accent-soft: #1B2C3D; --accent-ink: #0E141B; --code-bg: #111921;
+    --star: #E9B14F; --ok: #6CCB9E; --ok-soft: #12301F; --bad: #FF8A80; --bad-soft: #3A1715;
+    --warn-soft: #33280F; --mark: #6B5A12;
+    --hl-kw: #79B8FF; --hl-fn: #D2A8FF; --hl-str: #7EE2B8; --hl-num: #FFAB70; --hl-cmt: #7D8B99; --hl-op: #FF9E9E;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E141B; --surface: #161F29; --ink: #E3E9F0; --muted: #94A3B4; --line: #26323F;
+  --accent: #6FA3D3; --accent-soft: #1B2C3D; --accent-ink: #0E141B; --code-bg: #111921;
+  --star: #E9B14F; --ok: #6CCB9E; --ok-soft: #12301F; --bad: #FF8A80; --bad-soft: #3A1715;
+  --warn-soft: #33280F; --mark: #6B5A12;
+  --hl-kw: #79B8FF; --hl-fn: #D2A8FF; --hl-str: #7EE2B8; --hl-num: #FFAB70; --hl-cmt: #7D8B99; --hl-op: #FF9E9E;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: 84px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.7; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.35; }
+code, pre { font-family: var(--font-mono); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+mark { background: var(--mark); color: inherit; border-radius: 2px; }
+
+.top { position: sticky; top: 0; z-index: 10; background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1240px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+.brand { font-size: 1.1rem; margin-right: 10px; }
+.sub { color: var(--muted); font-size: .82rem; }
+.search input {
+  width: min(340px, 80vw); font: inherit; font-size: .9rem; padding: 7px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+.search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* 程式碼區塊 */
+pre.code { position: relative; margin: 10px 0; padding: 12px 14px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+pre.code code { white-space: pre; }
+.copy {
+  position: absolute; top: 6px; right: 6px; font: inherit; font-family: var(--font-body); font-size: .72rem;
+  padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  cursor: pointer; opacity: 0; transition: opacity .15s;
+}
+pre.code:hover .copy, .copy:focus-visible { opacity: 1; }
+.copy:focus-visible { outline: 2px solid var(--accent); }
+@media (hover: none) { .copy { opacity: 1; } }
+.hl-kw { color: var(--hl-kw); font-weight: 600; }
+.hl-fn { color: var(--hl-fn); }
+.hl-str { color: var(--hl-str); }
+.hl-num { color: var(--hl-num); }
+.hl-cmt { color: var(--hl-cmt); font-style: italic; }
+.hl-op { color: var(--hl-op); font-weight: 600; }
+
+/* 表格 */
+.table-wrap { overflow-x: auto; margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.table-wrap table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+.table-wrap th, .table-wrap td { padding: 7px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.table-wrap th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
+.table-wrap tr:last-child td { border-bottom: 0; }
+.table-wrap td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table-wrap code, .doc p code, .doc li code, blockquote code { background: var(--accent-soft); padding: 0 4px; border-radius: 4px; font-size: .85em; }
+.star { color: var(--star); font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+
+/* CheatSheet：左側目錄（跟著捲動標示目前章節）＋ 右側內文，內文寬度控制在好讀的範圍 */
+.layout { max-width: 1240px; margin: 0 auto; padding-inline: 20px; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 36px; }
+.toc {
+  position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 80px); overflow-y: auto;
+  padding-block: 24px; display: grid; gap: 1px; font-size: .86rem;
+}
+.toc a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-radius: 6px; border-left: 2px solid transparent; }
+.toc a:hover { color: var(--ink); background: var(--surface); }
+.toc a.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); font-weight: 500; }
+.toc a.toc-3 { padding-left: 24px; font-size: .8rem; }
+.toc a[hidden] { display: none; }
+.toc a:focus-visible { outline: 2px solid var(--accent); }
+
+.doc { padding-block: 24px 120px; min-width: 0; max-width: 860px; }
+.doc > p:first-child { color: var(--muted); margin-top: 0; }
+.sec { padding-top: 8px; margin-top: 26px; border-top: 1px solid var(--line); }
+.sec:first-of-type { border-top: 0; }
+.sec[hidden] { display: none; }
+.doc h2 { font-size: 1.3rem; margin: 18px 0 10px; }
+.doc h3 { font-size: 1.05rem; margin: 22px 0 6px; color: var(--accent); }
+.doc p { margin: 8px 0; }
+.doc ul { margin: 8px 0; padding-left: 22px; }
+.doc li { margin: 3px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; background: var(--warn-soft); border-radius: 8px; font-size: .9rem; }
+.hit-count { color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding-inline: 16px; }
+  .toc {
+    position: static; max-height: 200px; padding: 10px; margin-top: 14px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .top-in { padding-inline: 16px; }
+}
+
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <div><b class="brand">PostgreSQL CheatSheet</b><span class="sub">shop 練習資料庫 · 更新於 2026-10-05</span></div>
+    <label class="search"><span class="sr-only">搜尋</span>
+      <input id="q" type="search" placeholder="搜尋，例如 JSONB、視窗、NULL…" autocomplete="off"></label>
+  </div>
+</header>
+<div class="layout">
+  <nav class="toc" id="toc" aria-label="目錄"><a class="toc-2" href="#s0">0. <span class="star" title="面試高頻">★</span> SQL 的「執行順序」</a><a class="toc-2" href="#s1">1. 已經會的（速查）</a><a class="toc-2" href="#s2">2. JOIN 全家</a><a class="toc-2" href="#s3">3. <span class="star" title="面試高頻">★</span> NULL 的處理</a><a class="toc-2" href="#s4">4. 子查詢</a><a class="toc-2" href="#s5">5. CASE WHEN 與條件彙總</a><a class="toc-2" href="#s6">6. 集合運算</a><a class="toc-2" href="#s7">7. CTE（WITH）</a><a class="toc-2" href="#s8">8. <span class="star" title="面試高頻">★</span> 視窗函數（Window Function）</a><a class="toc-2" href="#s9">9. 常用函數（PostgreSQL）</a><a class="toc-2" href="#s10">10. 新增、修改、刪除（DML）</a><a class="toc-2" href="#s11">11. 建表與約束（DDL）</a><a class="toc-2" href="#s12">12. <span class="star" title="面試高頻">★</span> 索引與 EXPLAIN</a><a class="toc-2" href="#s13">13. <span class="star" title="面試高頻">★</span> 交易（Transaction）</a><a class="toc-2" href="#s14">14. <span class="star" title="面試高頻">★</span> 面試經典題速答</a><a class="toc-2" href="#s15">15. <span class="star" title="面試高頻">★</span> PostgreSQL 進階</a><a class="toc-3" href="#s16">JSONB</a><a class="toc-3" href="#s17">Array</a><a class="toc-3" href="#s18">generate_series：產生連續的值</a><a class="toc-3" href="#s19">RETURNING 與 UPSERT</a><a class="toc-3" href="#s20">進階索引</a><a class="toc-2" href="#s21">16. psql 常用指令</a></nav>
+  <main class="doc" id="doc">
+    <p class="hit-count" id="hits" hidden></p>
+    <p>範例都可以直接在 <code>shop</code> 資料庫執行。<span class="star" title="面試高頻">★</span> = 面試高頻考點。</p>
+<blockquote>會修改資料的範例（第 10、11 節）請在 psql 或 DBeaver 裡練習；展示台是唯讀的。練壞了就重建資料庫：<code>docker compose down -v &amp;&amp; docker compose up -d</code></blockquote>
+<section class="sec" id="s0"><h2>0. <span class="star" title="面試高頻">★</span> SQL 的「執行順序」</h2>
+<p>寫的順序跟資料庫執行的順序不一樣，很多題目的答案都跟這個有關：</p>
+<pre class="code" data-lang="text"><code>寫的順序：SELECT → FROM → WHERE → GROUP BY → HAVING → ORDER BY → LIMIT
+執行順序：FROM/JOIN → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT</code></pre>
+<ul><li><strong>WHERE 不能用 SELECT 取的別名</strong>（WHERE 執行時別名還不存在），ORDER BY 可以</li><li><strong>WHERE 不能放聚合函數</strong>（<code>WHERE count(*) &gt; 5</code> ❌），要放 HAVING</li><li>WHERE 先過濾「列」，HAVING 再過濾「分組」</li></ul>
+</section>
+<section class="sec" id="s1"><h2>1. 已經會的（速查）</h2>
+<pre class="code" data-lang="sql"><code>SELECT DISTINCT city FROM customers;
+SELECT count(*), max(price), min(price), round(avg(price), 2) FROM products;
+
+SELECT c.city, count(*) AS orders
+FROM orders o
+JOIN customers c ON c.id = o.customer_id
+WHERE o.status = &#x27;delivered&#x27;
+GROUP BY c.city
+HAVING count(*) &gt; 1000
+ORDER BY orders DESC
+LIMIT 5;</code></pre>
+<p>分頁：<code>LIMIT 20 OFFSET 40</code>（第 3 頁，每頁 20 筆）</p>
+</section>
+<section class="sec" id="s2"><h2>2. JOIN 全家</h2>
+<div class="table-wrap"><table><thead><tr><th>寫法</th><th>結果</th></tr></thead><tbody><tr><td><code>INNER JOIN</code> / <code>JOIN</code></td><td>兩邊都對得上的才留下</td></tr><tr><td><code>LEFT JOIN</code></td><td>左表全留，右表對不上的補 NULL</td></tr><tr><td><code>RIGHT JOIN</code></td><td>右表全留（實務上通常改寫成 LEFT JOIN）</td></tr><tr><td><code>FULL JOIN</code></td><td>兩邊全留，對不上的補 NULL</td></tr><tr><td><code>CROSS JOIN</code></td><td>笛卡兒積：左 N 筆 × 右 M 筆</td></tr><tr><td>SELF JOIN</td><td>同一張表 JOIN 自己，要取不同別名</td></tr></tbody></table></div>
+<pre class="code" data-lang="sql"><code>-- 找「沒有」對應資料：LEFT JOIN + IS NULL
+SELECT c.id, c.name
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.id
+WHERE o.id IS NULL;
+
+-- SELF JOIN：每個分類和它的上層分類
+SELECT c.name AS category, p.name AS parent
+FROM categories c
+LEFT JOIN categories p ON p.id = c.parent_id;</code></pre>
+<p><span class="star" title="面試高頻">★</span> <strong>LEFT JOIN 的陷阱：條件放 ON 還是 WHERE？</strong></p>
+<pre class="code" data-lang="sql"><code>-- 條件放 ON：所有會員都留著，只是「已取消訂單」才會對上
+SELECT c.id, count(o.id)
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.id AND o.status = &#x27;cancelled&#x27;
+GROUP BY c.id;
+
+-- 條件放 WHERE：沒取消過的會員 o.status 是 NULL，被過濾掉 → 變成 INNER JOIN 了
+SELECT c.id, count(o.id)
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.id
+WHERE o.status = &#x27;cancelled&#x27;
+GROUP BY c.id;</code></pre>
+</section>
+<section class="sec" id="s3"><h2>3. <span class="star" title="面試高頻">★</span> NULL 的處理</h2>
+<div class="table-wrap"><table><thead><tr><th>寫法</th><th>說明</th></tr></thead><tbody><tr><td><code>col IS NULL</code> / <code>IS NOT NULL</code></td><td>判斷 NULL。**<code>= NULL</code> 永遠不成立**</td></tr><tr><td><code>COALESCE(a, b, c)</code></td><td>回傳第一個不是 NULL 的值</td></tr><tr><td><code>NULLIF(a, b)</code></td><td>a = b 時回傳 NULL（常用來避免除以 0）</td></tr><tr><td><code>count(*)</code> vs <code>count(col)</code></td><td><code>count(*)</code> 數列數；<code>count(col)</code> 不算 NULL</td></tr><tr><td><code>a IS DISTINCT FROM b</code></td><td>把 NULL 當成一般值來比較的「不等於」</td></tr></tbody></table></div>
+<pre class="code" data-lang="sql"><code>SELECT name, COALESCE(city, &#x27;未填寫&#x27;) AS city FROM customers;
+SELECT count(*) AS all_rows, count(birth_date) AS has_birthday FROM customers;
+SELECT revenue / NULLIF(orders, 0) FROM ...;   -- orders 是 0 時得到 NULL 而不是報錯</code></pre>
+<p><span class="star" title="面試高頻">★</span> **<code>NOT IN</code> 遇到 NULL 會失效**：子查詢只要有一個 NULL，<code>NOT IN</code> 就一筆都查不到。找「不存在」請用 <code>NOT EXISTS</code>。</p>
+<pre class="code" data-lang="sql"><code>-- 找「沒有子分類」的分類。categories.parent_id 有 NULL（最上層分類）→ 這句回傳 0 筆
+SELECT * FROM categories WHERE id NOT IN (SELECT parent_id FROM categories);
+
+-- 正確
+SELECT * FROM categories c
+WHERE NOT EXISTS (SELECT 1 FROM categories ch WHERE ch.parent_id = c.id);</code></pre>
+</section>
+<section class="sec" id="s4"><h2>4. 子查詢</h2>
+<pre class="code" data-lang="sql"><code>-- 純量子查詢：回傳單一值
+SELECT name, price FROM products
+WHERE price &gt; (SELECT avg(price) FROM products);
+
+-- IN：比對一串值
+SELECT * FROM customers
+WHERE id IN (SELECT customer_id FROM orders WHERE status = &#x27;returned&#x27;);
+
+-- EXISTS：只問「有沒有」，找到一筆就停
+SELECT * FROM customers c
+WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id AND o.status = &#x27;cancelled&#x27;);
+
+-- 衍生表：FROM 裡面放子查詢，一定要取別名
+SELECT avg(cnt) FROM (
+  SELECT customer_id, count(*) AS cnt FROM orders GROUP BY customer_id
+) t;
+
+-- 相關子查詢：子查詢引用外層欄位，每一列都會重算一次
+SELECT p.name, p.price
+FROM products p
+WHERE p.price &gt; (SELECT avg(price) FROM products WHERE category_id = p.category_id);</code></pre>
+</section>
+<section class="sec" id="s5"><h2>5. CASE WHEN 與條件彙總</h2>
+<pre class="code" data-lang="sql"><code>SELECT name, price,
+       CASE WHEN price &gt;= 10000 THEN &#x27;高價&#x27;
+            WHEN price &gt;= 1000  THEN &#x27;中價&#x27;
+            ELSE &#x27;平價&#x27; END AS level
+FROM products;
+
+-- 一次算多種條件（列轉欄 / pivot）
+SELECT shipping_city,
+       count(*) FILTER (WHERE status = &#x27;delivered&#x27;)              AS delivered,   -- PostgreSQL 寫法
+       sum(CASE WHEN status = &#x27;cancelled&#x27; THEN 1 ELSE 0 END)   AS cancelled    -- 通用寫法
+FROM orders
+GROUP BY shipping_city;</code></pre>
+</section>
+<section class="sec" id="s6"><h2>6. 集合運算</h2>
+<div class="table-wrap"><table><thead><tr><th>寫法</th><th>說明</th></tr></thead><tbody><tr><td><code>UNION</code></td><td>合併並<strong>去除重複</strong>（要排序去重，比較慢）</td></tr><tr><td><code>UNION ALL</code></td><td>合併，保留重複（<span class="star" title="面試高頻">★</span> 不需要去重時用這個）</td></tr><tr><td><code>INTERSECT</code></td><td>交集</td></tr><tr><td><code>EXCEPT</code></td><td>差集（A 有 B 沒有）</td></tr></tbody></table></div>
+<p>兩邊的欄位數量和型別要對得上。</p>
+<pre class="code" data-lang="sql"><code>SELECT customer_id FROM orders
+EXCEPT
+SELECT customer_id FROM orders WHERE status = &#x27;returned&#x27;;   -- 下過單、但從沒退過貨的會員</code></pre>
+</section>
+<section class="sec" id="s7"><h2>7. CTE（WITH）</h2>
+<p>把查詢拆成有名字的步驟，比巢狀子查詢好讀。</p>
+<pre class="code" data-lang="sql"><code>WITH spend AS (
+  SELECT o.customer_id, sum(oi.quantity * oi.unit_price) AS total
+  FROM orders o JOIN order_items oi ON oi.order_id = o.id
+  GROUP BY o.customer_id
+)
+SELECT c.name, s.total
+FROM spend s JOIN customers c ON c.id = s.customer_id
+ORDER BY s.total DESC
+LIMIT 10;</code></pre>
+<p><strong>遞迴 CTE</strong>：處理樹狀結構（組織圖、分類樹）</p>
+<pre class="code" data-lang="sql"><code>WITH RECURSIVE tree AS (
+  SELECT id, name, 1 AS depth FROM categories WHERE parent_id IS NULL   -- 起點
+  UNION ALL
+  SELECT c.id, c.name, t.depth + 1                                      -- 每次往下一層
+  FROM categories c JOIN tree t ON c.parent_id = t.id
+)
+SELECT * FROM tree;</code></pre>
+</section>
+<section class="sec" id="s8"><h2>8. <span class="star" title="面試高頻">★</span> 視窗函數（Window Function）</h2>
+<p>跟 GROUP BY 最大的差別：<strong>不會把資料列壓成一列</strong>，每一列都保留，同時能看到整組的統計。</p>
+<pre class="code" data-lang="text"><code>函數() OVER (PARTITION BY 分組欄位 ORDER BY 排序欄位 [視窗範圍])</code></pre>
+<div class="table-wrap"><table><thead><tr><th>函數</th><th>用途</th></tr></thead><tbody><tr><td><code>row_number()</code></td><td>1, 2, 3, 4（同值也給不同號）</td></tr><tr><td><code>rank()</code></td><td>1, 2, 2, 4（同值同名次，<strong>會跳號</strong>）</td></tr><tr><td><code>dense_rank()</code></td><td>1, 2, 2, 3（同值同名次，不跳號）</td></tr><tr><td><code>ntile(n)</code></td><td>平均切成 n 組</td></tr><tr><td><code>lag(col, n)</code> / <code>lead(col, n)</code></td><td>往前 / 往後第 n 列的值</td></tr><tr><td><code>first_value()</code> / <code>last_value()</code></td><td>視窗內第一個 / 最後一個值</td></tr><tr><td><code>sum() / avg() / count() OVER</code></td><td>分組統計，但保留每一列</td></tr></tbody></table></div>
+<pre class="code" data-lang="sql"><code>-- ★ 分組取前 N 名：每個分類價格前 3 高的商品
+SELECT * FROM (
+  SELECT name, category_id, price,
+         dense_rank() OVER (PARTITION BY category_id ORDER BY price DESC) AS rk
+  FROM products
+) t
+WHERE rk &lt;= 3;
+
+-- 累計加總
+SELECT order_date, amount,
+       sum(amount) OVER (ORDER BY order_date) AS running_total
+FROM ...;
+
+-- 7 日移動平均
+SELECT day, revenue,
+       avg(revenue) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS ma7
+FROM ...;
+
+-- 跟上一筆比較
+SELECT month, revenue, revenue - lag(revenue) OVER (ORDER BY month) AS diff
+FROM ...;
+
+-- 佔比：每件商品佔該分類營收的百分比
+SELECT name, category_id, price,
+       round(100.0 * price / sum(price) OVER (PARTITION BY category_id), 2) AS pct
+FROM products;</code></pre>
+<p><span class="star" title="面試高頻">★</span> 視窗函數<strong>不能直接寫在 WHERE</strong>（執行順序在 WHERE 之後），要包一層子查詢或 CTE。</p>
+</section>
+<section class="sec" id="s9"><h2>9. 常用函數（PostgreSQL）</h2>
+<p><strong>字串</strong></p>
+<pre class="code" data-lang="sql"><code>&#x27;a&#x27; || &#x27;b&#x27;                     -- 串接（NULL || &#x27;b&#x27; 會得到 NULL）
+concat(&#x27;a&#x27;, NULL, &#x27;b&#x27;)         -- 串接，忽略 NULL
+length(s)   lower(s)   upper(s)   trim(s)
+substring(s, 1, 3)   left(s, 3)   right(s, 3)
+replace(s, &#x27;舊&#x27;, &#x27;新&#x27;)
+split_part(&#x27;a@b.com&#x27;, &#x27;@&#x27;, 2)  -- &#x27;b.com&#x27;
+s LIKE &#x27;王%&#x27;                    -- % 任意長度，_ 一個字
+s ILIKE &#x27;%apple%&#x27;              -- 不分大小寫（PostgreSQL 專屬）
+string_agg(name, &#x27;, &#x27;)         -- 聚合成一個字串</code></pre>
+<p><strong>日期時間</strong></p>
+<pre class="code" data-lang="sql"><code>now()   current_date
+date_trunc(&#x27;month&#x27;, order_date)            -- 截到月初，做月報表必備
+extract(year FROM order_date)              -- 取出年 / month / dow（星期幾）/ hour
+order_date::date                           -- timestamp 轉 date
+current_date - interval &#x27;30 days&#x27;
+age(current_date, birth_date)              -- 算年齡
+to_char(order_date, &#x27;YYYY-MM&#x27;)             -- 格式化
+order_date &gt;= &#x27;2026-01-01&#x27; AND order_date &lt; &#x27;2026-02-01&#x27;   -- ★ 範圍查詢，比 extract 更能用到索引</code></pre>
+<p><strong>數字</strong></p>
+<pre class="code" data-lang="sql"><code>round(x, 2)   ceil(x)   floor(x)   abs(x)   x % 3</code></pre>
+<p><span class="star" title="面試高頻">★</span> <strong>整數除法陷阱</strong>：<code>5 / 2 = 2</code>。要小數請寫 <code>5.0 / 2</code> 或 <code>5::numeric / 2</code>。</p>
+<p><strong>型別轉換</strong>：<code>&#x27;123&#x27;::int</code>、<code>CAST(&#x27;123&#x27; AS int)</code>、<code>price::text</code></p>
+</section>
+<section class="sec" id="s10"><h2>10. 新增、修改、刪除（DML）</h2>
+<pre class="code" data-lang="sql"><code>INSERT INTO customers (name, email, signup_date)
+VALUES (&#x27;測試帳號&#x27;, &#x27;test@example.com&#x27;, current_date)
+RETURNING id;                                   -- RETURNING 拿回新 id
+
+-- ★ UPSERT：存在就更新，不存在就新增（依主鍵或 UNIQUE 欄位判斷）
+INSERT INTO categories (id, name, parent_id)
+VALUES (28, &#x27;寵物用品&#x27;, NULL)
+ON CONFLICT (id)
+DO UPDATE SET name = EXCLUDED.name;             -- EXCLUDED = 這次想插入的那一列
+
+UPDATE products SET price = price * 0.9 WHERE category_id = 19;
+
+-- 用其他表的資料來更新
+UPDATE products p SET is_active = false
+FROM categories c
+WHERE c.id = p.category_id AND c.name = &#x27;生鮮&#x27;;
+
+DELETE FROM orders WHERE status = &#x27;cancelled&#x27; RETURNING id;   -- order_items 有 ON DELETE CASCADE，明細會一起刪</code></pre>
+<p><span class="star" title="面試高頻">★</span> <strong>DELETE vs TRUNCATE vs DROP</strong></p>
+<div class="table-wrap"><table><thead><tr><th></th><th>DELETE</th><th>TRUNCATE</th><th>DROP</th></tr></thead><tbody><tr><td>刪什麼</td><td>符合條件的列</td><td>全部的列</td><td>整張表（含結構）</td></tr><tr><td>可加 WHERE</td><td>✅</td><td>❌</td><td>❌</td></tr><tr><td>速度</td><td>慢（逐列刪除）</td><td>快</td><td>快</td></tr><tr><td>觸發 trigger</td><td>✅</td><td>❌</td><td>❌</td></tr><tr><td>可以 ROLLBACK</td><td>✅</td><td>✅（PostgreSQL 可以）</td><td>✅（PostgreSQL 可以）</td></tr></tbody></table></div>
+</section>
+<section class="sec" id="s11"><h2>11. 建表與約束（DDL）</h2>
+<pre class="code" data-lang="sql"><code>CREATE TABLE coupons (
+  id         serial PRIMARY KEY,                        -- 自動遞增主鍵
+  code       text NOT NULL UNIQUE,
+  discount   numeric(3,2) CHECK (discount BETWEEN 0 AND 1),
+  customer_id int REFERENCES customers(id) ON DELETE CASCADE,  -- 外鍵
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE coupons ADD COLUMN used boolean DEFAULT false;
+ALTER TABLE coupons DROP COLUMN used;
+DROP TABLE coupons;</code></pre>
+<div class="table-wrap"><table><thead><tr><th>約束</th><th>說明</th></tr></thead><tbody><tr><td><code>PRIMARY KEY</code></td><td>唯一 + 不可 NULL，一張表只能有一個</td></tr><tr><td><code>UNIQUE</code></td><td>不可重複（可以有多個 NULL）</td></tr><tr><td><code>NOT NULL</code></td><td>不可空值</td></tr><tr><td><code>CHECK</code></td><td>自訂條件</td></tr><tr><td><code>FOREIGN KEY</code> / <code>REFERENCES</code></td><td>必須對應到另一張表存在的值</td></tr></tbody></table></div>
+<p><strong>View</strong></p>
+<pre class="code" data-lang="sql"><code>CREATE VIEW v_order_total AS
+SELECT order_id, sum(quantity * unit_price * (1 - discount)) AS total
+FROM order_items GROUP BY order_id;            -- 只存查詢，每次查都重算
+
+CREATE MATERIALIZED VIEW mv_order_total AS ...;  -- 把結果存起來，查詢快
+REFRESH MATERIALIZED VIEW mv_order_total;        -- 資料要手動更新</code></pre>
+</section>
+<section class="sec" id="s12"><h2>12. <span class="star" title="面試高頻">★</span> 索引與 EXPLAIN</h2>
+<pre class="code" data-lang="sql"><code>CREATE INDEX idx_orders_customer ON orders (customer_id);
+CREATE INDEX idx_orders_cust_date ON orders (customer_id, order_date);  -- 複合索引
+CREATE UNIQUE INDEX ... ;
+DROP INDEX idx_orders_customer;
+
+EXPLAIN SELECT ...;          -- 預估的執行計畫
+EXPLAIN ANALYZE SELECT ...;  -- 真的執行，顯示實際耗時</code></pre>
+<div class="table-wrap"><table><thead><tr><th>計畫中的字</th><th>意思</th></tr></thead><tbody><tr><td><code>Seq Scan</code></td><td>整張表從頭掃到尾</td></tr><tr><td><code>Index Scan</code></td><td>透過索引找到位置，再回表取資料</td></tr><tr><td><code>Index Only Scan</code></td><td>索引就有全部需要的欄位，不用回表</td></tr><tr><td><code>Bitmap Heap Scan</code></td><td>先用索引收集位置，再批次讀表</td></tr><tr><td><code>Nested Loop</code> / <code>Hash Join</code> / <code>Merge Join</code></td><td>三種 JOIN 演算法</td></tr></tbody></table></div>
+<p><strong>索引用不到的常見情況</strong></p>
+<ul><li>對欄位做運算或函數：<code>WHERE extract(year FROM order_date) = 2026</code> ❌</li><li>開頭是萬用字元：<code>LIKE &#x27;%abc&#x27;</code> ❌（<code>LIKE &#x27;abc%&#x27;</code> 可以）</li><li>複合索引 <code>(a, b)</code> 只查 <code>b</code>（最左前綴原則）</li><li>回傳的資料佔全表很大比例，資料庫判斷直接全掃比較快</li></ul>
+<p><strong>索引的代價</strong>：佔空間，而且 INSERT / UPDATE / DELETE 都要同步更新索引，會變慢。</p>
+</section>
+<section class="sec" id="s13"><h2>13. <span class="star" title="面試高頻">★</span> 交易（Transaction）</h2>
+<pre class="code" data-lang="sql"><code>BEGIN;
+UPDATE products SET stock = stock - 1 WHERE id = 10;
+INSERT INTO orders (...) VALUES (...);
+COMMIT;      -- 確認；出錯就 ROLLBACK 全部取消</code></pre>
+<p><strong>ACID</strong></p>
+<div class="table-wrap"><table><thead><tr><th></th><th>意思</th></tr></thead><tbody><tr><td>Atomicity 原子性</td><td>全部成功或全部失敗</td></tr><tr><td>Consistency 一致性</td><td>交易前後都符合約束</td></tr><tr><td>Isolation 隔離性</td><td>同時執行的交易互不干擾</td></tr><tr><td>Durability 持久性</td><td>COMMIT 之後就算當機也不會遺失</td></tr></tbody></table></div>
+<p><strong>隔離等級與會發生的問題</strong>（PostgreSQL 預設 Read Committed）</p>
+<div class="table-wrap"><table><thead><tr><th>等級</th><th>髒讀</th><th>不可重複讀</th><th>幻讀</th></tr></thead><tbody><tr><td>Read Uncommitted</td><td>PG 不會發生</td><td>會</td><td>會</td></tr><tr><td>Read Committed</td><td>❌</td><td>會</td><td>會</td></tr><tr><td>Repeatable Read</td><td>❌</td><td>❌</td><td>PG 不會發生</td></tr><tr><td>Serializable</td><td>❌</td><td>❌</td><td>❌</td></tr></tbody></table></div>
+<p>鎖住要修改的列：<code>SELECT ... FOR UPDATE</code>（例如扣庫存前先鎖，避免超賣）</p>
+</section>
+<section class="sec" id="s14"><h2>14. <span class="star" title="面試高頻">★</span> 面試經典題速答</h2>
+<div class="table-wrap"><table><thead><tr><th>題目</th><th>重點</th></tr></thead><tbody><tr><td>WHERE vs HAVING</td><td>WHERE 過濾分組前的列；HAVING 過濾分組後的結果，可用聚合函數</td></tr><tr><td>UNION vs UNION ALL</td><td>UNION 會去重（較慢）；UNION ALL 不去重</td></tr><tr><td>第 N 高的價格（薪水）</td><td><code>SELECT DISTINCT price FROM products ORDER BY price DESC LIMIT 1 OFFSET N-1</code>，或用 <code>dense_rank()</code></td></tr><tr><td>找重複資料</td><td><code>GROUP BY 欄位 HAVING count(*) &gt; 1</code></td></tr><tr><td>刪除重複只留一筆</td><td>用 <code>row_number() OVER (PARTITION BY 重複欄位)</code>，刪掉 rn &gt; 1 的</td></tr><tr><td>分組取前 N 名</td><td><code>row_number()</code> / <code>dense_rank()</code> + 外層 <code>WHERE rk &lt;= N</code></td></tr><tr><td>連續登入 N 天</td><td>日期減去 <code>row_number()</code> 天數，相同的就是同一段連續</td></tr><tr><td>IN vs EXISTS</td><td>子查詢結果大用 EXISTS；<code>NOT IN</code> 遇 NULL 會失效</td></tr><tr><td>正規化</td><td>1NF 欄位不可再分、2NF 消除部分相依、3NF 消除遞移相依</td></tr><tr><td>為什麼不全部建索引</td><td>佔空間、拖慢寫入、資料庫不一定會用</td></tr><tr><td>char vs varchar vs text</td><td>PostgreSQL 中三者效能幾乎一樣，通常直接用 text</td></tr><tr><td>serial vs identity</td><td><code>GENERATED ALWAYS AS IDENTITY</code> 是 SQL 標準，新專案建議用</td></tr></tbody></table></div>
+</section>
+<section class="sec" id="s15"><h2>15. <span class="star" title="面試高頻">★</span> PostgreSQL 進階</h2>
+<h3 id="s16">JSONB</h3>
+<p><code>products.specs</code> 是 JSONB，例如 <code>{&quot;color&quot;: &quot;黑&quot;, &quot;storage_gb&quot;: 256, &quot;warranty&quot;: {&quot;years&quot;: 2}}</code></p>
+<div class="table-wrap"><table><thead><tr><th>寫法</th><th>回傳</th><th>說明</th></tr></thead><tbody><tr><td><code>specs-&gt;&#x27;warranty&#x27;</code></td><td>jsonb</td><td>取出 JSON（還能繼續往下取）</td></tr><tr><td><code>specs-&gt;&gt;&#x27;color&#x27;</code></td><td>text</td><td>取出文字（最後一層用這個）</td></tr><tr><td><code>specs#&gt;&gt;&#x27;{warranty,years}&#x27;</code></td><td>text</td><td>依路徑取值</td></tr><tr><td><code>specs @&gt; &#x27;{&quot;storage_gb&quot;: 256}&#x27;</code></td><td>bool</td><td><span class="star" title="面試高頻">★</span> 包含，可以用 GIN 索引</td></tr><tr><td><code>specs ? &#x27;battery_hours&#x27;</code></td><td>bool</td><td>有沒有這個鍵（`?</td><td><code> 任一、</code>?&amp;` 全部）</td></tr><tr><td><code>specs || &#x27;{&quot;on_sale&quot;: true}&#x27;</code></td><td>jsonb</td><td>合併，相同的鍵會被覆蓋</td></tr><tr><td><code>specs - &#x27;on_sale&#x27;</code></td><td>jsonb</td><td>刪除一個鍵</td></tr><tr><td><code>jsonb_set(specs, &#x27;{warranty,years}&#x27;, &#x27;3&#x27;)</code></td><td>jsonb</td><td>修改指定路徑的值</td></tr><tr><td><code>jsonb_array_elements_text(specs-&gt;&#x27;sizes&#x27;)</code></td><td>多列</td><td>把 JSON 陣列展開</td></tr><tr><td><code>jsonb_build_object(&#x27;a&#x27;, 1)</code>、<code>jsonb_agg(…)</code></td><td>jsonb</td><td>組出 JSON</td></tr></tbody></table></div>
+<p><span class="star" title="面試高頻">★</span> 陷阱：</p>
+<ul><li><code>-&gt;&gt;</code> 取出的是 <strong>text</strong>，比大小前要轉型：<code>(specs-&gt;&gt;&#x27;storage_gb&#x27;)::int &gt; 64</code>。直接寫 <code>&gt; &#x27;64&#x27;</code> 會變成逐字比較，<code>&#x27;128&#x27; &gt; &#x27;64&#x27;</code> 是 false</li><li><code>NULL || &#x27;{…}&#x27;</code> 的結果是 NULL，要寫 <code>COALESCE(specs, &#x27;{}&#x27;) || &#x27;{…}&#x27;</code></li><li>JDBC 的 <code>?</code> 是參數佔位符，寫 <code>specs ? &#x27;key&#x27;</code> 要改成 <code>??</code> 或 <code>jsonb_exists(specs, &#x27;key&#x27;)</code></li><li>json 與 jsonb：jsonb 存成二進位、會去掉重複的鍵和空白、支援索引，<strong>幾乎都用 jsonb</strong></li></ul>
+<h3 id="s17">Array</h3>
+<p><code>products.tags</code> 是 <code>text[]</code>，例如 <code>{熱銷,特價}</code></p>
+<div class="table-wrap"><table><thead><tr><th>寫法</th><th>說明</th></tr></thead><tbody><tr><td><code>&#x27;特價&#x27; = ANY(tags)</code></td><td>其中任何一個等於</td></tr><tr><td><code>tags @&gt; ARRAY[&#x27;熱銷&#x27;,&#x27;限量&#x27;]</code></td><td>全部都要有（可以用 GIN）</td></tr><tr><td><code>tags &amp;&amp; ARRAY[&#x27;環保&#x27;,&#x27;獨家&#x27;]</code></td><td>有任何一個相同（可以用 GIN）</td></tr><tr><td><code>unnest(tags)</code></td><td>展開成多列</td></tr><tr><td><code>array_agg(name)</code></td><td>多列聚合成陣列</td></tr><tr><td><code>cardinality(tags)</code></td><td>元素個數（空陣列是 0）</td></tr><tr><td><code>array_append(tags, &#x27;新品&#x27;)</code>、<code>array_remove(tags, &#x27;特價&#x27;)</code></td><td>加入 / 移除</td></tr></tbody></table></div>
+<p><span class="star" title="面試高頻">★</span> <code>array_length(tags, 1)</code> 遇到空陣列會回傳 <strong>NULL</strong>，不是 0。</p>
+<p>Java：<code>WHERE id = ANY(?)</code> 搭配 <code>ps.setArray(1, conn.createArrayOf(&quot;int&quot;, ids))</code>，取代自己組 <code>IN (…)</code> 字串。</p>
+<h3 id="s18">generate_series：產生連續的值</h3>
+<pre class="code" data-lang="sql"><code>SELECT generate_series(1, 5);                                        -- 1~5
+SELECT generate_series(&#x27;2026-09-01&#x27;::date, &#x27;2026-09-30&#x27;, &#x27;1 day&#x27;);   -- 每天
+
+-- ★ 報表補零：先產生完整時間軸，再 LEFT JOIN（條件放 ON）
+SELECT d::date, count(o.id)
+FROM generate_series(&#x27;2026-09-01&#x27;::date, &#x27;2026-09-30&#x27;, &#x27;1 day&#x27;) d
+LEFT JOIN orders o ON o.order_date &gt;= d AND o.order_date &lt; d + interval &#x27;1 day&#x27;
+GROUP BY d ORDER BY d;</code></pre>
+<p>也常用來產生大量測試資料（這個練習庫就是這樣做的）。</p>
+<h3 id="s19">RETURNING 與 UPSERT</h3>
+<pre class="code" data-lang="sql"><code>INSERT INTO customers (name, email, signup_date)
+VALUES (&#x27;王小明&#x27;, &#x27;a@b.com&#x27;, current_date)
+RETURNING id;                                         -- 直接拿回新的 id
+
+UPDATE products SET price = price * 1.1 WHERE id = 1 RETURNING id, price;   -- 更新後的值
+DELETE FROM orders WHERE status = &#x27;pending&#x27; RETURNING id;
+
+-- ★ UPSERT：原子操作，沒有「先查再寫」的競態問題
+INSERT INTO categories (id, name) VALUES (2, &#x27;智慧型手機&#x27;)
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;  -- EXCLUDED = 想插入的那一列
+
+INSERT … ON CONFLICT (email) DO NOTHING;              -- 重複就跳過（冪等）
+
+-- 搬資料：刪除與歸檔在同一句、同一個交易
+WITH moved AS (DELETE FROM orders WHERE … RETURNING *)
+INSERT INTO orders_archive SELECT * FROM moved;</code></pre>
+<p><span class="star" title="面試高頻">★</span> 序列不受交易控制：ROLLBACK 之後用掉的 id 不會還回去，所以 id 會跳號。</p>
+<h3 id="s20">進階索引</h3>
+<div class="table-wrap"><table><thead><tr><th>索引</th><th>寫法</th><th>適用情境</th></tr></thead><tbody><tr><td>B-tree（預設）</td><td><code>CREATE INDEX … (col)</code></td><td>=、&lt;、&gt;、BETWEEN、ORDER BY、前綴 LIKE &#x27;abc%&#x27;</td></tr><tr><td>複合索引</td><td><code>(customer_id, order_date)</code></td><td>等值條件放前面、排序欄位放後面（最左前綴）</td></tr><tr><td><span class="star" title="面試高頻">★</span> Partial Index</td><td><code>(order_date) WHERE status = &#x27;pending&#x27;</code></td><td>只查一小部分資料；索引小很多</td></tr><tr><td><span class="star" title="面試高頻">★</span> Expression Index</td><td><code>(lower(email))</code></td><td>查詢條件對欄位做了運算；函數必須 IMMUTABLE</td></tr><tr><td>覆蓋索引</td><td><code>(a, b) INCLUDE (c)</code></td><td>讓查詢變成 Index Only Scan</td></tr><tr><td>GIN</td><td><code>USING gin (specs)</code></td><td>JSONB 的 @&gt;、?；陣列的 @&gt;、&amp;&amp;；全文檢索</td></tr><tr><td>BRIN</td><td><code>USING brin (event_time)</code></td><td>依時間附加寫入的超大表（log、IoT）；只有幾十 KB</td></tr><tr><td>Hash</td><td><code>USING hash (col)</code></td><td>只有 = 查詢，實務上很少用</td></tr></tbody></table></div>
+<p>BRIN 的前提：資料在磁碟上的順序要和欄位值一致（相關性高）。隨機寫入的欄位建 BRIN 完全沒用。</p>
+</section>
+<section class="sec" id="s21"><h2>16. psql 常用指令</h2>
+<div class="table-wrap"><table><thead><tr><th>指令</th><th>作用</th></tr></thead><tbody><tr><td><code>\l</code></td><td>列出資料庫</td></tr><tr><td><code>\dt</code></td><td>列出資料表</td></tr><tr><td><code>\d 表名</code></td><td>看表結構、索引、外鍵</td></tr><tr><td><code>\di</code></td><td>列出索引</td></tr><tr><td><code>\x</code></td><td>切換直式顯示（欄位很多時好用）</td></tr><tr><td><code>\timing</code></td><td>顯示每句 SQL 耗時</td></tr><tr><td><code>\e</code></td><td>用編輯器寫長 SQL</td></tr><tr><td><code>\q</code></td><td>離開</td></tr></tbody></table></div>
+</section>
+  </main>
+</div>
+<script>
+// 兩份靜態頁共用：SQL 上色、複製按鈕、HTML 跳脫
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const SQL_KEYWORDS = new Set(`
+  select from where group by having order limit offset join left right full inner outer cross on using as and or not
+  in is null exists distinct union all intersect except case when then else end with recursive insert into values
+  update set delete returning conflict do nothing create index unique table drop alter add column primary key
+  references foreign check default constraint cascade begin commit rollback over partition window rows range
+  between preceding following current row asc desc nulls first last filter lateral explain analyze true false
+  interval date timestamp timestamptz int integer bigint numeric text boolean jsonb serial unbound include brin
+  gin btree hash concurrently if only like ilike any array for share zone at time cast varchar char smallint
+  identity generated always schema role grant usage to owner vacuum`.trim().split(/\s+/));
+
+const SQL_TOKEN = /(--[^\n]*)|(\/\*[\s\S]*?\*\/)|('(?:[^']|'')*')|("(?:[^"]|"")*")|(->>|->|#>>|#>|@>|<@|&&|\|\||::|\?\||\?&)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
+
+function highlightSQL(text) {
+  let out = "", last = 0, m;
+  SQL_TOKEN.lastIndex = 0;
+  while ((m = SQL_TOKEN.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    const [tok, cmt1, cmt2, str, ident, op, num, word] = m;
+    if (cmt1 || cmt2) out += `<span class="hl-cmt">${esc(tok)}</span>`;
+    else if (str) out += `<span class="hl-str">${esc(tok)}</span>`;
+    else if (ident) out += esc(tok);
+    else if (op) out += `<span class="hl-op">${esc(tok)}</span>`;
+    else if (num) out += `<span class="hl-num">${esc(tok)}</span>`;
+    else if (word) {
+      const isCall = /^\s*\(/.test(text.slice(m.index + tok.length));
+      if (SQL_KEYWORDS.has(word.toLowerCase()) && !(isCall && !/^(in|exists|any|values|over|filter|on|using|as|array|interval)$/i.test(word))) {
+        out += `<span class="hl-kw">${esc(tok)}</span>`;
+      } else if (isCall) out += `<span class="hl-fn">${esc(tok)}</span>`;
+      else out += esc(tok);
+    }
+    last = m.index + tok.length;
+  }
+  return out + esc(text.slice(last));
+}
+
+/** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
+function enhanceCode(root) {
+  root.querySelectorAll("pre.code").forEach((pre) => {
+    if (pre.dataset.ready) return;
+    pre.dataset.ready = "1";
+    const code = pre.querySelector("code") ?? pre;
+    const raw = code.textContent;
+    if (pre.dataset.lang !== "text") code.innerHTML = highlightSQL(raw);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "copy";
+    btn.textContent = "複製";
+    btn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(raw);
+        btn.textContent = "已複製";
+      } catch {
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(code);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        btn.textContent = "已選取，按 Ctrl+C";
+      }
+      setTimeout(() => (btn.textContent = "複製"), 1600);
+    });
+    pre.appendChild(btn);
+  });
+}
+
+const store = {
+  get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 無法儲存就算了 */ } },
+};
+
+// CheatSheet：程式碼上色、目錄標示目前章節、搜尋（隱藏不相關的章節並標出關鍵字）
+(() => {
+  const doc = document.getElementById("doc");
+  const toc = document.getElementById("toc");
+  const sections = [...doc.querySelectorAll(".sec")];
+  enhanceCode(doc);
+
+  // 目錄：標示目前讀到的章節
+  const links = new Map([...toc.querySelectorAll("a")].map((a) => [a.getAttribute("href").slice(1), a]));
+  const headings = [...doc.querySelectorAll("h2, h3")].map((h) => (h.tagName === "H2" ? h.parentElement : h));
+  const observer = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      toc.querySelectorAll("a.active").forEach((a) => a.classList.remove("active"));
+      links.get(e.target.id)?.classList.add("active");
+    }
+  }, { rootMargin: "-80px 0px -70% 0px" });
+  headings.forEach((h) => observer.observe(h));
+
+  // 搜尋
+  const original = new Map(sections.map((s) => [s, s.innerHTML]));
+  const input = document.getElementById("q");
+  const hits = document.getElementById("hits");
+  let timer = null;
+
+  function markText(root, q) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) {
+      if (walker.currentNode.parentElement.closest(".copy")) continue;
+      if (walker.currentNode.nodeValue.toLowerCase().includes(q)) nodes.push(walker.currentNode);
+    }
+    for (const node of nodes) {
+      const text = node.nodeValue, lower = text.toLowerCase();
+      const frag = document.createDocumentFragment();
+      let i = 0, j;
+      while ((j = lower.indexOf(q, i)) !== -1) {
+        frag.append(text.slice(i, j));
+        const m = document.createElement("mark");
+        m.textContent = text.slice(j, j + q.length);
+        frag.append(m);
+        i = j + q.length;
+      }
+      frag.append(text.slice(i));
+      node.replaceWith(frag);
+    }
+  }
+
+  function search() {
+    const q = input.value.trim().toLowerCase();
+    let shown = 0;
+    for (const s of sections) {
+      s.innerHTML = original.get(s);
+      const match = !q || s.textContent.toLowerCase().includes(q);
+      s.hidden = !match;
+      if (match) {
+        shown++;
+        if (q) markText(s, q);
+      }
+      const ids = [s.id, ...[...s.querySelectorAll("h3")].map((h) => h.id)];
+      ids.forEach((id) => { const a = links.get(id); if (a) a.hidden = !match; });
+    }
+    enhanceCodeKeepColors();
+    hits.hidden = !q;
+    hits.textContent = shown ? `找到 ${shown} 個章節包含「${input.value.trim()}」` : `沒有章節包含「${input.value.trim()}」`;
+    headings.forEach((h) => observer.observe(h));
+  }
+
+  // 還原 innerHTML 後程式碼已經是上色過的 HTML，只需要補回複製按鈕
+  function enhanceCodeKeepColors() {
+    doc.querySelectorAll("pre.code").forEach((pre) => {
+      if (pre.querySelector(".copy")) return;
+      const raw = pre.querySelector("code").textContent;
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "copy"; btn.textContent = "複製";
+      btn.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(raw); btn.textContent = "已複製"; }
+        catch { btn.textContent = "請手動選取複製"; }
+        setTimeout(() => (btn.textContent = "複製"), 1600);
+      });
+      pre.appendChild(btn);
+    });
+  }
+
+  // 第一次上色後才記下原始內容（含上色結果、不含按鈕）
+  sections.forEach((s) => {
+    const clone = s.cloneNode(true);
+    clone.querySelectorAll(".copy").forEach((b) => b.remove());
+    original.set(s, clone.innerHTML);
+  });
+
+  input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(search, 150); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "/" && document.activeElement !== input) { e.preventDefault(); input.focus(); }
+  });
+})();
+
+</script>
+</body>
+</html>
