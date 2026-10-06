@@ -1,0 +1,423 @@
+# MongoDB 練習題（mongosh 寫法）
+# fixture：寫入題才需要，批改前複製到隔離 scratch 資料庫的文件（collection: 篩選條件）
+# check  ：寫入題執行完後檢查資料狀態的指令
+# ordered: false → 回傳的文件順序不拘
+
+# ------------------------------------------------------------------ 查詢基礎
+- id: find-pending
+  chapter: 查詢基礎
+  title: '待處理的訂單'
+  prompt: |
+    找出狀態（status）是 pending 的訂單，只顯示 _id、customerId、total。
+    依 _id 由小到大，取前 5 筆。
+  hints:
+    - "db.orders.find(篩選, 投影)：投影寫 { customerId: 1, total: 1 }，_id 預設就會顯示。"
+    - "再串 .sort({ _id: 1 }).limit(5)"
+  answer: |
+    db.orders.find({ status: "pending" }, { customerId: 1, total: 1 }).sort({ _id: 1 }).limit(5)
+  explanation: |
+    find 的第二個參數是「投影」（projection），決定要回傳哪些欄位，相當於 SQL 的 SELECT 欄位。
+    1 是要、0 是不要；_id 預設會回傳，不要的話寫 _id: 0。除了 _id，同一個投影裡不能混用 1 和 0。
+
+- id: count-gold
+  chapter: 查詢基礎
+  title: '金卡會員有幾位'
+  prompt: |
+    vipLevel 是 gold 的會員有幾位？
+  hints:
+    - "db.customers.countDocuments(篩選條件)"
+  answer: |
+    db.customers.countDocuments({ vipLevel: "gold" })
+  explanation: |
+    countDocuments 會真的依條件計數；estimatedDocumentCount() 不能加條件，但直接讀集合的統計資料，非常快。
+    舊版的 count() 已經不建議使用。
+
+- id: distinct-city
+  chapter: 查詢基礎
+  title: '有哪些出貨城市'
+  prompt: |
+    列出所有訂單出現過的出貨城市（shipping.city），不重複。
+  ordered: false
+  hints:
+    - "db.orders.distinct(\"欄位\")；內嵌欄位用點號：\"shipping.city\""
+  answer: |
+    db.orders.distinct("shipping.city")
+  explanation: |
+    存取內嵌文件的欄位用「點號」：shipping.city。在 find 的條件、投影、排序裡都一樣，記得要加引號。
+
+- id: find-nested-projection
+  chapter: 查詢基礎
+  title: '商品的分類路徑'
+  prompt: |
+    查商品 540 的名稱（name）和分類路徑（category.path），不要顯示 _id。
+  hints:
+    - "findOne({ _id: 540 }, { _id: 0, name: 1, \"category.path\": 1 })"
+  answer: |
+    db.products.findOne({ _id: 540 }, { _id: 0, name: 1, "category.path": 1 })
+  explanation: |
+    商品文件裡直接存了分類名稱與完整路徑（反正規化），所以不需要再去查 categories。
+    代價是：分類改名時，所有商品都要跟著更新（updateMany）。讀多寫少的資料很適合這樣做。
+
+# ------------------------------------------------------------------ 查詢運算子
+- id: price-range
+  chapter: 查詢運算子
+  title: '價格 1000 ~ 2000 的商品數'
+  prompt: |
+    價格（price）介於 1000 到 2000 之間（包含 1000 和 2000）的商品有幾件？
+  hints:
+    - "{ price: { $gte: 1000, $lte: 2000 } }"
+  answer: |
+    db.products.countDocuments({ price: { $gte: 1000, $lte: 2000 } })
+  explanation: |
+    比較運算子：$eq、$ne、$gt、$gte、$lt、$lte、$in、$nin。同一個欄位的多個條件寫在同一個物件裡就是 AND。
+
+- id: status-in
+  chapter: 查詢運算子
+  title: '取消或退貨的訂單數'
+  prompt: |
+    狀態是 cancelled 或 returned 的訂單有幾筆？
+  hints:
+    - "{ status: { $in: [\"cancelled\", \"returned\"] } }"
+  answer: |
+    db.orders.countDocuments({ status: { $in: ["cancelled", "returned"] } })
+  explanation: |
+    同一個欄位比對多個值，用 $in 比 $or 簡潔，也更容易用到索引。
+
+- id: or-condition
+  chapter: 查詢運算子
+  title: '東部的金卡會員'
+  prompt: |
+    住在花蓮縣或台東縣、而且是 gold 等級的會員。
+    只顯示 name、city（含 _id），依 _id 排序。
+  hints:
+    - "可以用 city: { $in: [...] }，也可以用 $or: [ {…}, {…} ]。"
+  answer: |
+    db.customers.find({ vipLevel: "gold", city: { $in: ["花蓮縣", "台東縣"] } }, { name: 1, city: 1 }).sort({ _id: 1 })
+  explanation: |
+    $or 用在「不同欄位」的或：{ $or: [ { city: "花蓮縣" }, { vipLevel: "gold" } ] }。
+    同一個欄位的或，用 $in 就好。
+
+- id: exists
+  chapter: 查詢運算子
+  title: '沒有填生日的會員'
+  prompt: |
+    沒有 birthDate 欄位的會員有幾位？
+  hints:
+    - "{ birthDate: { $exists: false } }"
+  answer: |
+    db.customers.countDocuments({ birthDate: { $exists: false } })
+  explanation: |
+    文件式資料庫的欄位可以「不存在」，跟「值是 null」不一樣。
+    ★ 但 { birthDate: null } 會同時找到「值是 null」和「沒有這個欄位」的文件（陷阱題有示範）。
+
+- id: regex
+  chapter: 查詢運算子
+  title: 'Apple 的商品'
+  prompt: |
+    名稱（name）以「Apple」開頭的商品有幾件？
+  hints:
+    - "可以直接寫正規表示式：{ name: /^Apple/ }"
+  answer: |
+    db.products.countDocuments({ name: /^Apple/ })
+  explanation: |
+    以 ^ 開頭、大小寫有分的正規表示式可以用索引（類似 SQL 的 LIKE 'Apple%'）；
+    /apple/i 或 /Pro/ 這種不固定開頭的寫法只能全部掃過。需要全文搜尋時用 text 索引或 Atlas Search。
+
+# ------------------------------------------------------------------ 陣列與內嵌文件
+- id: array-contains
+  chapter: 陣列與內嵌文件
+  title: '限量商品有幾件'
+  prompt: |
+    tags 陣列裡有「限量」的商品有幾件？
+  hints:
+    - "直接寫 { tags: \"限量\" } 就會比對陣列裡的每一個元素。"
+  answer: |
+    db.products.countDocuments({ tags: "限量" })
+  explanation: |
+    ★ 對陣列欄位下等號條件，只要「任何一個元素」相等就成立，不用特別寫 $in。
+    但 { tags: ["限量"] } 是「整個陣列完全等於 ["限量"]」，意思完全不同（陷阱題有示範）。
+
+- id: array-all
+  chapter: 陣列與內嵌文件
+  title: '熱銷又限量（$all）'
+  prompt: |
+    同時有「熱銷」和「限量」兩個標籤的商品，只顯示 _id，依 _id 排序。
+  hints:
+    - "{ tags: { $all: [\"熱銷\", \"限量\"] } }"
+  answer: |
+    db.products.find({ tags: { $all: ["熱銷", "限量"] } }, { _id: 1 }).sort({ _id: 1 })
+  explanation: |
+    $all：陣列要包含全部指定的元素，順序不拘。{ tags: ["熱銷", "限量"] } 則要求陣列「剛好就是」這兩個、而且順序一樣。
+
+- id: array-size
+  chapter: 陣列與內嵌文件
+  title: '剛好 3 個標籤的商品'
+  prompt: |
+    tags 剛好有 3 個元素的商品有幾件？
+  hints:
+    - "{ tags: { $size: 3 } }"
+  answer: |
+    db.products.countDocuments({ tags: { $size: 3 } })
+  explanation: |
+    $size 只能比對「剛好等於」，不能寫 { $size: { $gt: 2 } }。
+    要比大小可以用 { "tags.2": { $exists: true } }（第 3 個元素存在 = 至少 3 個），或用 $expr 搭配 { $size: "$tags" }。
+
+- id: array-dot
+  chapter: 陣列與內嵌文件
+  title: '買過商品 540 的訂單'
+  prompt: |
+    明細（items）裡有商品 540 的訂單有幾筆？
+  hints:
+    - "{ \"items.productId\": 540 }"
+  answer: |
+    db.orders.countDocuments({ "items.productId": 540 })
+  explanation: |
+    點號也能穿過陣列：items.productId 會比對 items 陣列裡每一項的 productId。
+    這個欄位建索引時會變成「多鍵索引」（multikey），每一項明細各產生一個索引項目。
+
+- id: elem-match
+  chapter: 陣列與內嵌文件
+  title: '同一項明細同時符合兩個條件（$elemMatch）'
+  prompt: |
+    有任何「一項」明細同時符合「qty 大於等於 3」而且「unitPrice 大於等於 10000」的訂單有幾筆？
+    兩個條件要成立在「同一項」明細上。
+  hints:
+    - "{ items: { $elemMatch: { qty: { $gte: 3 }, unitPrice: { $gte: 10000 } } } }"
+  answer: |
+    db.orders.countDocuments({ items: { $elemMatch: { qty: { $gte: 3 }, unitPrice: { $gte: 10000 } } } })
+  explanation: |
+    ★ 面試常考：寫成 { "items.qty": { $gte: 3 }, "items.unitPrice": { $gte: 10000 } } 的話，
+    兩個條件可以由「不同的明細」分別滿足（一項買了 3 個便宜貨、另一項買了 1 個貴的），結果會比較多。
+    要求同一個元素同時符合多個條件，一定要用 $elemMatch。
+
+- id: nested-specs
+  chapter: 陣列與內嵌文件
+  title: '512GB 的手機'
+  prompt: |
+    規格 specs.storage_gb 是 512 的商品，只顯示 name（含 _id），依 _id 排序。
+  hints:
+    - "{ \"specs.storage_gb\": 512 }"
+  answer: |
+    db.products.find({ "specs.storage_gb": 512 }, { name: 1 }).sort({ _id: 1 })
+  explanation: |
+    每個分類的 specs 欄位都不一樣，這就是文件式資料庫「彈性 schema」的好處：不用為每種規格開欄位。
+    對照 PostgreSQL 的 JSONB：specs->>'storage_gb'，MongoDB 直接用點號就好。
+
+# ------------------------------------------------------------------ 聚合管線
+- id: agg-status
+  chapter: 聚合管線
+  title: '各狀態的訂單數'
+  prompt: |
+    用 aggregate 統計各狀態的訂單數，依數量由多到少。
+    輸出：_id 是狀態、count 是數量。
+  hints:
+    - "[ { $group: { _id: \"$status\", count: { $sum: 1 } } }, { $sort: { count: -1 } } ]"
+  answer: |
+    db.orders.aggregate([
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ])
+  explanation: |
+    $group 相當於 SQL 的 GROUP BY：_id 是分組依據，"$欄位" 代表取欄位的值，$sum: 1 就是 count(*)。
+    聚合管線的資料由上往下流過每一個 stage，每個 stage 的輸出是下一個 stage 的輸入。
+
+- id: agg-city-revenue
+  chapter: 聚合管線
+  title: '各城市的營收前 5 名'
+  prompt: |
+    只看已送達（delivered）的訂單，統計各出貨城市的營收（total 加總），取前 5 名。
+    輸出：_id 是城市、revenue 是營收，依營收由高到低。
+  hints:
+    - "$match 篩選 → $group 加總 → $sort → $limit"
+    - "城市在內嵌欄位：\"$shipping.city\""
+  answer: |
+    db.orders.aggregate([
+      { $match: { status: "delivered" } },
+      { $group: { _id: "$shipping.city", revenue: { $sum: "$total" } } },
+      { $sort: { revenue: -1 } },
+      { $limit: 5 }
+    ])
+  explanation: |
+    ★ $match 要盡量放在最前面：先把資料量減少，後面的 stage 才會快，而且開頭的 $match 可以用索引。
+    （其實優化器會自動把能往前搬的 $match 往前搬，但自己寫好比較保險。）
+
+- id: agg-unwind
+  chapter: 聚合管線
+  title: '銷量最高的 5 件商品（$unwind）'
+  prompt: |
+    統計每件商品賣出的總件數（items 裡的 qty 加總，所有狀態都算），取前 5 名。
+    輸出：_id 是商品 id、name 是商品名稱、qty 是件數，依件數由高到低；件數相同依 _id 由小到大。
+  hints:
+    - $unwind 會把 items 陣列拆開：一張有 3 項明細的訂單變成 3 份文件。
+    - "$group 用 \"$items.productId\" 分組，名稱用 { $first: \"$items.name\" }。"
+  answer: |
+    db.orders.aggregate([
+      { $unwind: "$items" },
+      { $group: { _id: "$items.productId", name: { $first: "$items.name" }, qty: { $sum: "$items.qty" } } },
+      { $sort: { qty: -1, _id: 1 } },
+      { $limit: 5 }
+    ])
+  explanation: |
+    $unwind 是處理內嵌陣列的關鍵：把陣列攤平成多份文件，才能對每一項明細做統計。
+    相當於 PostgreSQL 的 unnest()，或是把 orders JOIN order_items。
+
+- id: agg-monthly
+  chapter: 聚合管線
+  title: '2026 年每月訂單數（時區）'
+  prompt: |
+    統計 2026 年（以台灣時間計算）每個月的訂單數。
+    輸出：_id 是 "2026-01" 這樣的月份字串、count 是數量，依月份排序。
+  hints:
+    - "篩選：orderDate 在 ISODate(\"2026-01-01T00:00:00+08:00\") 與 ISODate(\"2027-01-01T00:00:00+08:00\") 之間。"
+    - "分組：{ $dateToString: { format: \"%Y-%m\", date: \"$orderDate\", timezone: \"Asia/Taipei\" } }"
+  answer: |
+    db.orders.aggregate([
+      { $match: { orderDate: { $gte: ISODate("2026-01-01T00:00:00+08:00"), $lt: ISODate("2027-01-01T00:00:00+08:00") } } },
+      { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$orderDate", timezone: "Asia/Taipei" } }, count: { $sum: 1 } } },
+      { $sort: { _id: 1 } }
+    ])
+  explanation: |
+    ★ MongoDB 的日期一律以 UTC 儲存。台灣時間 9/1 凌晨 2 點的訂單，在 UTC 是 8/31 下午 6 點。
+    篩選時要寫出時區（+08:00），分組時也要給 timezone，不然每個月的邊界會差 8 小時（陷阱題有示範）。
+
+- id: agg-lookup
+  chapter: 聚合管線
+  title: '訂單加上會員姓名（$lookup）'
+  prompt: |
+    會員 1 最新的 3 筆訂單，加上會員姓名。
+    輸出：_id、total、customerName，依下單時間由新到舊。
+  hints:
+    - "$match → $sort → $limit → $lookup 到 customers → $project"
+    - "$lookup 的結果是陣列，用 { $first: \"$customer.name\" } 取出名字。"
+  answer: |
+    db.orders.aggregate([
+      { $match: { customerId: 1 } },
+      { $sort: { orderDate: -1 } },
+      { $limit: 3 },
+      { $lookup: { from: "customers", localField: "customerId", foreignField: "_id", as: "customer" } },
+      { $project: { total: 1, customerName: { $first: "$customer.name" } } }
+    ])
+  explanation: |
+    $lookup 相當於 LEFT OUTER JOIN，結果放進一個陣列欄位。
+    ★ 先 $limit 再 $lookup：只對 3 筆做 JOIN，而不是對全部訂單 JOIN 完再取 3 筆。
+    $lookup 的 foreignField 要有索引，不然每一筆都要掃整個集合（實驗室有示範差多少）。
+
+# ------------------------------------------------------------------ 寫入
+- id: update-set
+  chapter: 寫入
+  title: '更新庫存（$set）'
+  prompt: |
+    把商品 540 的庫存（stock）改成 20，其他欄位不變。
+  fixture:
+    products: "{ _id: 540 }"
+  hints:
+    - "db.products.updateOne({ _id: 540 }, { $set: { stock: 20 } })"
+  answer: |
+    db.products.updateOne({ _id: 540 }, { $set: { stock: 20 } })
+  check: |
+    db.products.findOne({ _id: 540 })
+  explanation: |
+    ★ 更新一定要用更新運算子（$set、$inc、$push…）。用 replaceOne 的話整份文件會被換掉，其他欄位全部消失（陷阱題有示範）。
+
+- id: update-inc
+  chapter: 寫入
+  title: '飲料全部漲 5 元（$inc）'
+  prompt: |
+    分類名稱（category.name）是「飲料」的商品，價格全部加 5 元。
+  fixture:
+    products: "{ \"category.name\": \"飲料\" }"
+  hints:
+    - "updateMany 加上 { $inc: { price: 5 } }"
+  answer: |
+    db.products.updateMany({ "category.name": "飲料" }, { $inc: { price: 5 } })
+  check: |
+    db.products.find({}, { price: 1 }).sort({ _id: 1 })
+  explanation: |
+    $inc 是原子操作，適合計數器、庫存、按讚數。updateOne 只更新第一份符合的文件，updateMany 才會全部更新。
+
+- id: update-push
+  chapter: 寫入
+  title: '訂單加一項明細（$push）'
+  prompt: |
+    在訂單 77621 的 items 陣列最後面加一項明細：
+    { productId: 1, name: "測試商品", qty: 1, unitPrice: 100, discount: 0 }
+  fixture:
+    orders: "{ _id: 77621 }"
+  hints:
+    - "{ $push: { items: { … } } }"
+  answer: |
+    db.orders.updateOne({ _id: 77621 }, { $push: { items: { productId: 1, name: "測試商品", qty: 1, unitPrice: 100, discount: 0 } } })
+  check: |
+    db.orders.findOne({ _id: 77621 }, { items: 1 })
+  explanation: |
+    陣列的更新運算子：$push 加到最後、$addToSet 不重複才加、$pull 依條件移除、$pop 移除頭或尾。
+    要一次加多項用 $push: { items: { $each: [ … ] } }，還能搭配 $slice 只保留最新 N 項。
+    注意：items 加了明細，total 不會自動更新，要自己用 $inc 一起改（文件式資料庫沒有觸發器幫你算）。
+
+- id: update-addtoset
+  chapter: 寫入
+  title: '加標籤但不重複（$addToSet）'
+  prompt: |
+    幫商品 540 加上「熱銷」標籤；如果已經有了就不要重複加。
+  fixture:
+    products: "{ _id: 540 }"
+  hints:
+    - "{ $addToSet: { tags: \"熱銷\" } }"
+  answer: |
+    db.products.updateOne({ _id: 540 }, { $addToSet: { tags: "熱銷" } })
+  check: |
+    db.products.findOne({ _id: 540 }, { tags: 1 })
+  explanation: |
+    $addToSet 把陣列當成集合使用。跑兩次結果也一樣，這種「重複執行不會出錯」的特性叫冪等（idempotent）。
+
+- id: upsert
+  chapter: 寫入
+  title: '有就更新、沒有就新增（upsert）'
+  prompt: |
+    以 email "new@example.com" 為條件更新會員：把 name 設成「新會員」、vipLevel 設成 "normal"。
+    如果這個 email 不存在，就新增一份。
+  fixture:
+    customers: "{ email: \"new@example.com\" }"
+  hints:
+    - "updateOne(條件, { $set: { … } }, { upsert: true })"
+  answer: |
+    db.customers.updateOne({ email: "new@example.com" }, { $set: { name: "新會員", vipLevel: "normal" } }, { upsert: true })
+  check: |
+    db.customers.find({ email: "new@example.com" }, { _id: 0, email: 1, name: 1, vipLevel: 1 })
+  explanation: |
+    upsert 新增時，會把「查詢條件裡的等值欄位」（email）和 $set 的欄位合併成新文件。
+    只想在「新增時」才設定的欄位用 $setOnInsert（例如建立時間）。
+    ★ 高並發下同時 upsert 同一個 email 可能新增出兩份，所以條件欄位要有唯一索引（customers.email 有）。
+
+- id: delete-many
+  chapter: 寫入
+  title: '刪除舊的取消訂單'
+  prompt: |
+    刪除所有「狀態是 cancelled、而且下單時間早於台灣時間 2023-01-01」的訂單。
+  fixture:
+    orders: "{ status: \"cancelled\" }"
+  hints:
+    - "deleteMany({ status: \"cancelled\", orderDate: { $lt: ISODate(\"2023-01-01T00:00:00+08:00\") } })"
+  answer: |
+    db.orders.deleteMany({ status: "cancelled", orderDate: { $lt: ISODate("2023-01-01T00:00:00+08:00") } })
+  check: |
+    db.orders.countDocuments({})
+    db.orders.countDocuments({ orderDate: { $lt: ISODate("2023-01-01T00:00:00+08:00") } })
+  explanation: |
+    deleteMany({}) 會刪除全部文件但保留集合與索引；drop() 連集合和索引一起刪掉。
+    要自動刪除過期資料，可以建 TTL 索引：createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 })。
+
+- id: find-one-and-update
+  chapter: 寫入
+  title: '更新並拿回新的值（findOneAndUpdate）'
+  prompt: |
+    把商品 540 的庫存減 1，並在同一個操作裡拿回「更新後」的文件（只要 name 和 stock）。
+  fixture:
+    products: "{ _id: 540 }"
+  hints:
+    - "findOneAndUpdate(條件, { $inc: { stock: -1 } }, { returnDocument: \"after\", projection: { name: 1, stock: 1 } })"
+  answer: |
+    db.products.findOneAndUpdate({ _id: 540 }, { $inc: { stock: -1 } }, { returnDocument: "after", projection: { name: 1, stock: 1 } })
+  explanation: |
+    findOneAndUpdate 是原子的「更新並讀取」，預設回傳更新「前」的文件，要加 returnDocument: "after"。
+    搭配條件 { _id: 540, stock: { $gt: 0 } } 就是不會超賣的扣庫存寫法（對照 Redis 實驗室的 Lua 腳本）。

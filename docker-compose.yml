@@ -26,5 +26,19 @@ services:
     volumes:
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
 
+  mongo:
+    image: mongo:8.0
+    container_name: mongo-lab
+    # --noscripting：關閉伺服器端 JavaScript（$where、$function、$accumulator 都不能用）
+    command: ["mongod", "--noscripting"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin-lab
+      TZ: Asia/Taipei
+    ports:
+      - "27018:27017"                # 27017 留給本機可能另外安裝的 MongoDB
+    volumes:
+      - ./mongo/init-users.js:/docker-entrypoint-initdb.d/init-users.js:ro
+
 volumes:
   pgdata:

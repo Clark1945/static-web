@@ -1,0 +1,103 @@
+# MongoDB 索引實驗：對 shop.orders（8 萬份訂單）建索引，看 explain("executionStats") 的變化
+# queries：可以執行的查詢（會自動加上 .explain("executionStats")）；indexes：建議建立的索引
+
+- id: collscan
+  title: 沒有索引：COLLSCAN
+  goal: |
+    orders 只有 _id 的索引。查會員 4242 的訂單，依下單時間由新到舊。
+  queries:
+    - label: 會員 4242 的訂單
+      command: 'db.orders.find({ customerId: 4242 }).sort({ orderDate: -1 })'
+  indexes: []
+  question: '回傳幾份文件？為了找到它們，MongoDB 看了幾份文件（docsExamined）？'
+  takeaway: |
+    COLLSCAN = 整個集合從頭掃到尾，相當於 PostgreSQL 的 Seq Scan。
+    看 explain 最重要的三個數字：nReturned（回傳幾份）、totalKeysExamined（看了幾個索引項目）、totalDocsExamined（讀了幾份文件）。
+    理想狀況是三個數字差不多；docsExamined 遠大於 nReturned，就代表缺索引。
+    另外計畫裡還有一個 SORT：沒有索引可以提供順序，只好在記憶體裡排序（超過 100 MB 會失敗，除非允許使用磁碟）。
+
+- id: single-field
+  title: 單欄索引：IXSCAN，但還要排序
+  goal: |
+    在 customerId 建一個索引，再跑一次同樣的查詢。
+  queries:
+    - label: 會員 4242 的訂單
+      command: 'db.orders.find({ customerId: 4242 }).sort({ orderDate: -1 })'
+  indexes:
+    - 'db.orders.createIndex({ customerId: 1 })'
+  question: '計畫變成什麼？docsExamined 剩多少？還有沒有 SORT？'
+  takeaway: |
+    變成 IXSCAN → FETCH：先在索引找到符合的位置，再去讀文件。docsExamined 從 8 萬變成跟 nReturned 一樣。
+    但還是有 SORT：這個索引只依 customerId 排，同一位會員的訂單沒有依時間排好。
+
+- id: compound
+  title: 複合索引把排序也省掉
+  goal: |
+    建 { customerId: 1, orderDate: -1 } 的複合索引（可以先刪掉上一步的 customerId_1，看得比較清楚）。
+  queries:
+    - label: 會員 4242 的訂單
+      command: 'db.orders.find({ customerId: 4242 }).sort({ orderDate: -1 })'
+  indexes:
+    - 'db.orders.dropIndex("customerId_1")'
+    - 'db.orders.createIndex({ customerId: 1, orderDate: -1 })'
+  question: 'SORT 還在嗎？'
+  takeaway: |
+    複合索引先依 customerId、再依 orderDate 排序，找到 4242 之後資料本來就是照時間排好的，SORT 消失了。
+    排序方向：單欄索引正反都能用；複合索引要「全部同向」或「全部反向」才能用，{ customerId: 1, orderDate: -1 } 可以支援
+    sort({ customerId: 1, orderDate: -1 }) 和 sort({ customerId: -1, orderDate: 1 })，但不支援 sort({ customerId: 1, orderDate: 1 })。
+
+- id: esr
+  title: ★ ESR 規則：等值、排序、範圍
+  goal: |
+    查已送達、金額 5 萬以上的訂單，依時間由新到舊取最新 10 筆（典型的分頁查詢）。這個查詢有三種條件：
+    等值（Equality）status、範圍（Range）total、排序（Sort）orderDate。
+    建兩個欄位順序不同的索引，用 hint 指定索引，比較兩者。
+  queries:
+    - label: A：索引順序 E-R-S
+      command: 'db.orders.find({ status: "delivered", total: { $gte: 50000 } }).sort({ orderDate: -1 }).limit(10).hint("idx_ERS")'
+    - label: B：索引順序 E-S-R
+      command: 'db.orders.find({ status: "delivered", total: { $gte: 50000 } }).sort({ orderDate: -1 }).limit(10).hint("idx_ESR")'
+    - label: C：不指定索引，讓優化器自己選
+      command: 'db.orders.find({ status: "delivered", total: { $gte: 50000 } }).sort({ orderDate: -1 }).limit(10)'
+  indexes:
+    - 'db.orders.createIndex({ status: 1, total: 1, orderDate: -1 }, { name: "idx_ERS" })'
+    - 'db.orders.createIndex({ status: 1, orderDate: -1, total: 1 }, { name: "idx_ESR" })'
+  question: 'A 和 B 哪一個有 SORT？各看了幾個索引項目（keysExamined）？優化器選了哪一個？'
+  takeaway: |
+    ★ ESR 規則（MongoDB 官方建議的複合索引欄位順序）：Equality → Sort → Range。
+    A（E-R-S）：範圍之後的 orderDate 不再有順序，必須把符合範圍的「全部」找出來（約 5 千筆）再排序，才知道最新 10 筆是哪些。
+    B（E-S-R）：等值之後的資料已經依時間排好，從最新的開始往下看，一邊用 total 過濾，湊滿 10 筆就停，只看了一百多個索引項目，也沒有 SORT。
+    範圍條件越寬鬆，差距越大（試著把 50000 改成 1000）。
+    但如果不加 limit、而且範圍條件非常嚴格，A 有可能比較快，因為它直接跳到範圍裡、看的項目最少。
+    所以 ESR 是「預設的好選擇」，特別適合分頁和排序查詢；不確定時就用 explain 比較。PostgreSQL 的複合索引也是一樣的道理。
+
+- id: multikey
+  title: 陣列欄位的索引：多鍵索引
+  goal: |
+    查買過商品 540 的訂單。items 是陣列，對 items.productId 建索引。
+  queries:
+    - label: 買過商品 540 的訂單
+      command: 'db.orders.find({ "items.productId": 540 })'
+  indexes:
+    - 'db.orders.createIndex({ "items.productId": 1 })'
+  question: '建索引前後 docsExamined 差多少？explain 裡的 isMultiKey 是什麼？'
+  takeaway: |
+    對陣列欄位建的索引叫多鍵索引（multikey index）：每一個陣列元素各產生一個索引項目，一張有 4 項明細的訂單就有 4 個項目。
+    限制：一個複合索引裡最多只能有一個陣列欄位；陣列很大時索引也會很大。
+
+- id: covered
+  title: 覆蓋查詢：連文件都不用讀
+  goal: |
+    確認有 { customerId: 1, orderDate: -1 } 的索引（第 3 步）。比較「只要索引裡有的欄位」和「多要一個欄位」。
+  queries:
+    - label: A：只要 customerId、orderDate（排除 _id）
+      command: 'db.orders.find({ customerId: 4242 }, { _id: 0, customerId: 1, orderDate: 1 })'
+    - label: B：多要 total
+      command: 'db.orders.find({ customerId: 4242 }, { _id: 0, customerId: 1, orderDate: 1, total: 1 })'
+  indexes:
+    - 'db.orders.createIndex({ customerId: 1, orderDate: -1 })'
+  question: 'A 的 docsExamined 是多少？計畫裡有沒有 FETCH？'
+  takeaway: |
+    A 需要的欄位全在索引裡，直接從索引回傳，叫覆蓋查詢（covered query）：docsExamined = 0、沒有 FETCH。
+    ★ 一定要寫 _id: 0，因為 _id 不在這個索引裡，預設又會回傳。
+    B 多要了 total，只好回去讀文件。對照 PostgreSQL 的 Index Only Scan。

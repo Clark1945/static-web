@@ -1,0 +1,42 @@
+/* MongoDB 頁面：集合卡片、mongosh 風格輸出、explain 的計畫流程、聚合管線的 stage 卡片
+   分頁、題目、陷阱題、redis-cli 輸出框等共用樣式沿用 postgres.css 與 redis.css */
+
+/* ---------- 集合總覽 ---------- */
+.coll-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
+.coll-card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.coll-card header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.coll-card header b { font-size: 1rem; color: var(--accent); }
+.coll-card header span { font-size: .8rem; color: var(--muted); }
+.coll-card p { margin: 0; font-size: .88rem; }
+.coll-meta { font-size: .78rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.coll-card details summary { cursor: pointer; color: var(--accent); font-size: .85rem; }
+.coll-card details pre { margin-top: 6px; max-height: 320px; }
+.coll-card .try { justify-self: start; }
+
+/* ---------- mongosh 輸出 ---------- */
+pre.cli.mongo { white-space: pre; }
+.m-key { color: var(--ink); }
+.m-str { color: var(--fk); }
+.m-num { color: var(--pk); }
+.m-bool { color: var(--accent); font-weight: 600; }
+.m-null, .m-meta { color: var(--muted); }
+.m-fn { color: var(--accent); }
+.m-err { color: var(--danger); font-weight: 600; white-space: pre-wrap; }
+
+/* ---------- explain：計畫流程 ---------- */
+.stage-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.stage-box { font-family: var(--font-mono); font-size: .8rem; font-weight: 600; padding: 6px 12px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--surface); }
+.stage-box.good { border-color: var(--fk); color: var(--fk); background: var(--fk-soft); }
+.stage-box.bad { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
+.stage-box.warn { border-color: var(--pk); color: var(--pk); background: var(--pk-soft); }
+.stage-flow .arrow { color: var(--muted); }
+.stat.stat-bad { border-color: var(--danger); background: var(--danger-soft); }
+.stat.stat-bad b { color: var(--danger); }
+
+/* ---------- 聚合管線的 stage ---------- */
+.stage-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; margin-bottom: 10px; background: var(--surface); min-width: 0; }
+.stage-head { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+.stage-no { font-size: .75rem; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.stage-head code { font-family: var(--font-mono); font-size: .78rem; overflow-wrap: anywhere; color: var(--muted); }
+.stage-card details summary { cursor: pointer; color: var(--accent); font-size: .82rem; }
+.stage-card pre { margin-top: 6px; max-height: 300px; }

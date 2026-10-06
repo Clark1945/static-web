@@ -891,3 +891,295 @@ LRU 是近似演算法：每次隨機抽幾個 key（`maxmemory-samples`）挑�
 | `MONITOR` | 即時看所有指令（很耗效能，只在開發環境用） |
 | `INFO`、`INFO memory`、`INFO stats` | 伺服器狀態 |
 | `CLIENT LIST` | 目前的連線 |
+
+---
+
+# MongoDB
+
+> 範例都來自練習環境（`mongo-lab` 容器，port 27018，`shop` 資料庫），可以直接貼到展示台的「指令主控台」執行。資料是從 PostgreSQL 轉進來的，練壞了按「重置資料」。
+
+## 1. ★ 基本觀念與 SQL 對照
+
+| SQL | MongoDB |
+|---|---|
+| database | database |
+| table | collection（集合） |
+| row | document（文件，BSON 格式） |
+| column | field（欄位，每份文件可以不一樣） |
+| primary key | `_id`（每份文件都有，預設是 ObjectId） |
+| JOIN | 內嵌文件，或 `$lookup` |
+| GROUP BY | 聚合管線的 `$group` |
+| index | index（概念幾乎一樣） |
+
+- **BSON**：二進位的 JSON，多了 Date、ObjectId、Decimal128、Int32 / Int64 等型別
+- **ObjectId**：12 bytes，前 4 bytes 是建立時間，所以大致依時間遞增，可以用 `ObjectId(…).getTimestamp()` 取出
+- **單一文件上限 16 MB**
+- **彈性 schema**：同一個集合裡的文件欄位可以不同；需要時可以用 JSON Schema 驗證（`$jsonSchema`）
+- 錢不要用 double：用 `Decimal128`（`NumberDecimal("19.99")`）或存成「分」的整數
+
+## 2. 查詢：find
+
+```mongo
+db.orders.find({ status: "paid" })                          // 條件
+db.orders.find({ status: "paid" }, { total: 1, _id: 0 })    // 投影：1 要、0 不要
+db.orders.find({}).sort({ orderDate: -1 }).skip(20).limit(10)   // 排序、分頁
+db.orders.findOne({ _id: 77621 })
+db.orders.countDocuments({ status: "paid" })                // 依條件計數
+db.orders.estimatedDocumentCount()                          // 讀統計值，很快、不能加條件
+db.orders.distinct("shipping.city")                         // 不重複值
+```
+
+- ★ find 的 `sort`、`skip`、`limit` 不管怎麼串，都固定依「sort → skip → limit」執行
+- 投影裡除了 `_id`，不能混用 1 和 0
+- 大量分頁別用很大的 `skip`（要先掃過前面所有資料），改用「上一頁最後一筆的值」當條件：`{ orderDate: { $lt: 上一頁最後的時間 } }`
+
+## 3. 查詢運算子
+
+| 類別 | 運算子 |
+|---|---|
+| 比較 | `$eq` `$ne` `$gt` `$gte` `$lt` `$lte` `$in` `$nin` |
+| 邏輯 | `$and` `$or` `$nor` `$not`（同一個物件裡的多個條件本來就是 AND） |
+| 欄位 | `$exists`（欄位存不存在）、`$type`（型別） |
+| 陣列 | `$all` `$elemMatch` `$size` |
+| 其他 | `$regex`（或直接寫 `/^Apple/`）、`$expr`（在條件裡用聚合運算式，例如比較兩個欄位） |
+
+```mongo
+db.products.find({ price: { $gte: 1000, $lte: 2000 } })
+db.orders.find({ status: { $in: ["cancelled", "returned"] } })
+db.customers.find({ $or: [{ city: "花蓮縣" }, { vipLevel: "gold" }] })
+db.customers.find({ birthDate: { $exists: false } })
+db.products.find({ $expr: { $gt: ["$price", { $multiply: ["$cost", 2] }] } })   // 售價超過成本兩倍
+```
+
+★ 型別要一樣：`{ _id: "540" }`（字串）查不到 `_id: 540`（數字），不會自動轉型，也不會報錯。
+
+★ `{ city: null }` 會同時找到「值是 null」和「沒有這個欄位」的文件。只要沒有欄位的用 `{ $exists: false }`。
+
+## 4. 陣列與內嵌文件
+
+```mongo
+db.orders.find({ "shipping.city": "台北市" })                // 內嵌欄位用點號（要加引號）
+db.orders.find({ "items.productId": 540 })                  // 點號也能穿過陣列
+db.products.find({ tags: "特價" })                           // ★ 陣列裡「任一元素」等於
+db.products.find({ tags: ["特價"] })                         // 整個陣列「完全等於」["特價"]
+db.products.find({ tags: { $all: ["熱銷", "限量"] } })        // 包含全部，順序不拘
+db.products.find({ tags: { $size: 3 } })                     // 剛好 3 個元素
+db.orders.find({ items: { $elemMatch: { qty: { $gte: 3 }, unitPrice: { $gte: 10000 } } } })
+```
+
+★ `$elemMatch` 是面試常考題：`{ "items.qty": { $gte: 3 }, "items.unitPrice": { $gte: 10000 } }` 的兩個條件可以由「不同的元素」分別滿足；要求同一個元素同時符合，一定要用 `$elemMatch`。
+
+## 5. ★ 聚合管線
+
+文件依序流過每一個 stage，前一個的輸出是下一個的輸入。
+
+| Stage | 作用 | 對照 SQL |
+|---|---|---|
+| `$match` | 篩選（放越前面越好，開頭的可以用索引） | WHERE |
+| `$project` / `$addFields` / `$set` / `$unset` | 選欄位、新增或計算欄位 | SELECT |
+| `$group` | 分組彙總：`$sum` `$avg` `$min` `$max` `$first` `$push` `$addToSet` | GROUP BY |
+| `$sort` / `$limit` / `$skip` | 排序、筆數 | ORDER BY / LIMIT |
+| `$unwind` | 把陣列攤平成多份文件 | unnest / JOIN 明細表 |
+| `$lookup` | 關聯另一個集合，結果是陣列 | LEFT JOIN |
+| `$bucket` / `$bucketAuto` | 分級統計 | CASE WHEN + GROUP BY |
+| `$facet` | 同一份輸入跑多組管線（例如一次算總數與分頁） | 多個查詢 |
+| `$count` | 計數 | count(*) |
+| `$out` / `$merge` | 結果寫進集合 | INSERT INTO … SELECT |
+
+```mongo
+db.orders.aggregate([
+  { $match: { status: "delivered" } },
+  { $unwind: "$items" },
+  { $group: { _id: "$items.productId", name: { $first: "$items.name" }, qty: { $sum: "$items.qty" } } },
+  { $sort: { qty: -1 } },
+  { $limit: 5 }
+])
+
+// 會員最新 3 筆訂單 + 會員姓名：先 $limit 再 $lookup
+db.orders.aggregate([
+  { $match: { customerId: 1 } },
+  { $sort: { orderDate: -1 } },
+  { $limit: 3 },
+  { $lookup: { from: "customers", localField: "customerId", foreignField: "_id", as: "customer" } },
+  { $project: { total: 1, customerName: { $first: "$customer.name" } } }
+])
+```
+
+- ★ 管線是照 stage 的順序執行的：`[{ $limit: 3 }, { $sort: … }]` 真的是先取 3 筆再排序
+- `$lookup` 的 `foreignField` 要有索引，不然每一筆都要掃整個集合
+- 每個 stage 記憶體上限 100 MB，超過要 `allowDiskUse`（6.0 起預設允許）
+- ★ 日期一律以 UTC 儲存：篩選寫 `ISODate("2026-09-01T00:00:00+08:00")`，`$dateToString`、`$dateTrunc` 要給 `timezone: "Asia/Taipei"`
+
+## 6. 寫入
+
+```mongo
+db.customers.insertOne({ name: "王小明", email: "a@b.com" })
+db.customers.insertMany([{ … }, { … }])
+db.products.updateOne({ _id: 540 }, { $set: { stock: 20 } })
+db.products.updateMany({ "category.name": "飲料" }, { $inc: { price: 5 } })
+db.customers.updateOne({ email: "a@b.com" }, { $set: { name: "新會員" } }, { upsert: true })
+db.products.findOneAndUpdate({ _id: 540, stock: { $gt: 0 } }, { $inc: { stock: -1 } }, { returnDocument: "after" })
+db.orders.deleteMany({ status: "cancelled" })
+```
+
+| 運算子 | 作用 |
+|---|---|
+| `$set` / `$unset` | 設定 / 移除欄位 |
+| `$inc` / `$mul` | 加 / 乘（原子操作） |
+| `$min` / `$max` | 比原本小 / 大才更新 |
+| `$rename` | 改欄位名稱 |
+| `$setOnInsert` | 只在 upsert「新增」時才設定 |
+| `$push` / `$addToSet` | 加入陣列 / 不重複才加入（`$each` 一次多個、`$slice` 限制長度） |
+| `$pull` / `$pop` | 依條件移除 / 移除頭或尾 |
+| `$[]` / `$[elem]` | 更新陣列的全部元素 / 符合 arrayFilters 的元素 |
+
+- ★ `replaceOne` 會用新文件「整份取代」舊文件，只想改部分欄位一定要用 `$set`
+- `updateOne` / `deleteOne` 只處理第一份符合的文件，全部處理用 `updateMany` / `deleteMany`
+- upsert 要搭配條件欄位的唯一索引，不然高並發下可能新增出重複的文件
+
+## 7. ★ Schema 設計：內嵌還是參照
+
+**核心原則：一起讀取的資料就一起存放。**
+
+| 內嵌（Embedding） | 參照（Referencing） |
+|---|---|
+| 一次讀取就拿到全部，不用 JOIN | 資料不重複，可以單獨查詢與更新 |
+| 單一文件的更新是原子的，不需要交易 | 讀取時要 `$lookup`，或在程式裡查兩次 |
+| 適合一對少量、總是一起讀（訂單明細、地址、規格） | 適合一對很多、數量會無限增長、多對多、常被單獨更新的資料 |
+
+常見設計模式：
+
+| 模式 | 說明 |
+|---|---|
+| Extended Reference | 參照之外，再複製幾個常用欄位（例如訂單裡存商品名稱），省掉 `$lookup` |
+| Subset | 只內嵌最常用的一部分（例如商品文件只放最新 10 則評論，其他評論放另一個集合） |
+| Computed | 事先算好放進文件（例如訂單的 `total`），讀的時候不用再算 |
+| Bucket | 時間序列資料依時間分桶，一份文件存一小時的資料（MongoDB 5.0 起有原生的 Time Series 集合） |
+| Tree | 樹狀結構存 `parentId`、`ancestors` 陣列或路徑字串（練習環境的 categories） |
+
+★ 反模式：陣列無限增長（例如把一位會員的所有訂單都塞進會員文件）會碰到 16 MB 上限，更新也會越來越慢。
+
+## 8. ★ 索引
+
+```mongo
+db.orders.createIndex({ customerId: 1, orderDate: -1 })
+db.customers.createIndex({ email: 1 }, { unique: true })
+db.orders.createIndex({ orderDate: 1 }, { partialFilterExpression: { status: "pending" } })
+db.sessions.createIndex({ createdAt: 1 }, { expireAfterSeconds: 3600 })   // TTL：自動刪除過期文件
+db.orders.getIndexes()
+db.orders.dropIndex("customerId_1")
+db.orders.find({ customerId: 4242 }).explain("executionStats")
+```
+
+| 類型 | 說明 |
+|---|---|
+| 單欄 / 複合 | 最常用；複合索引的欄位順序很重要 |
+| 多鍵（multikey） | 對陣列欄位建索引，每個元素一個項目；一個複合索引最多一個陣列欄位 |
+| unique / partial / sparse | 唯一、只收錄部分文件、只收錄有該欄位的文件 |
+| TTL | 時間到自動刪除文件（Session、驗證碼、日誌） |
+| text / Atlas Search | 全文檢索 |
+| 2dsphere | 地理位置查詢 |
+| hashed | 雜湊值，主要用在分片鍵 |
+| wildcard | 欄位不固定時，對 `specs.$**` 這類動態欄位建索引 |
+
+★ **ESR 規則**（複合索引的欄位順序）：**E**quality（等值）→ **S**ort（排序）→ **R**ange（範圍）。
+例如 `find({ status: "delivered", total: { $gte: 50000 } }).sort({ orderDate: -1 })` 建 `{ status: 1, orderDate: -1, total: 1 }`，可以省掉記憶體排序，分頁查詢特別有效。
+
+**explain 怎麼看**
+
+| 欄位 / Stage | 意思 |
+|---|---|
+| `COLLSCAN` | 全集合掃描（缺索引） |
+| `IXSCAN` → `FETCH` | 用索引找到位置，再讀文件 |
+| `SORT` | 在記憶體裡排序（沒有索引提供順序） |
+| `PROJECTION_COVERED` | 覆蓋查詢：只讀索引、不讀文件（記得 `_id: 0`） |
+| `nReturned` / `totalKeysExamined` / `totalDocsExamined` | 回傳幾份 / 看了幾個索引項目 / 讀了幾份文件；三者越接近越好 |
+
+## 9. ★ 交易與一致性
+
+- **單一文件的操作一律是原子的**，所以好的內嵌設計常常不需要交易
+- 多文件交易（4.0 起）需要**副本集**或分片叢集，單機模式不能用；有效能代價，預設 60 秒逾時
+- **Write Concern**：寫入要幾個節點確認才算成功。`w: 1`（主節點）、`w: "majority"`（多數節點，5.0 起的預設）
+- **Read Concern**：讀到什麼程度的資料。`local`、`majority`（不會讀到之後可能被回滾的資料）、`linearizable`
+- **Read Preference**：讀哪個節點。`primary`（預設）、`secondaryPreferred`（分散讀取，但可能讀到稍舊的資料）
+
+```java
+// Spring：@Transactional 搭配 MongoTransactionManager（需要副本集）
+try (ClientSession session = client.startSession()) {
+    session.withTransaction(() -> {
+        orders.insertOne(session, order);
+        products.updateOne(session, eq("_id", 540), inc("stock", -1));
+        return null;
+    });
+}
+```
+
+## 10. ★ 副本集與分片
+
+| 架構 | 說明 |
+|---|---|
+| 副本集（Replica Set） | 一個 Primary 負責寫入，多個 Secondary 透過 oplog 複製；Primary 掛掉會自動選出新的（通常數秒內），至少要 3 個節點（或 2 + 仲裁者） |
+| 分片（Sharding） | 資料依「分片鍵」分散到多個分片；應用程式連 `mongos` 路由，設定存在 config servers |
+
+★ 分片鍵怎麼選：
+- 基數要高（值很多種）、分布要平均、查詢條件常常帶到它
+- 單調遞增的鍵（時間、ObjectId）會讓寫入全部集中在最後一個分片 → 用 hashed 分片，或複合分片鍵
+- 查詢沒帶分片鍵就要問遍所有分片（scatter-gather），比較慢
+
+## 11. 常見陷阱
+
+| 陷阱 | 說明 |
+|---|---|
+| `{ field: null }` | 也會找到沒有這個欄位的文件 |
+| 型別不同 | `"540"` 和 `540` 不相等，不會自動轉型 |
+| 陣列等號 | `{ tags: "a" }` 是包含；`{ tags: ["a"] }` 是完全相等 |
+| 陣列多條件 | 要同一個元素同時符合，用 `$elemMatch` |
+| 時區 | 日期以 UTC 儲存，查詢與分組都要明確給時區 |
+| `replaceOne` / `save()` | 整份取代，沒帶到的欄位會消失 |
+| `updateOne` | 只更新一份 |
+| 大 skip 分頁 | 越後面越慢，改用範圍條件分頁 |
+| JDBC 式的思維 | 硬把每張表變成一個集合、到處 `$lookup`，就失去文件資料庫的優勢 |
+
+## 12. Java / Spring Data MongoDB
+
+| 工具 | 說明 |
+|---|---|
+| MongoDB Java Driver | 官方驅動程式（展示台用的就是 sync 版） |
+| `MongoTemplate` | Spring 的操作入口：`find(Query, Class)`、`updateFirst`、`aggregate` |
+| `MongoRepository` | 依方法名稱產生查詢：`findByStatusOrderByOrderDateDesc(…)` |
+| `@Document` / `@Id` / `@Field` / `@Indexed` | 對應集合、主鍵、欄位名稱、索引 |
+| `Criteria` / `Query` / `Update` | 組條件：`Query.query(Criteria.where("status").is("paid"))` |
+
+★ 常見坑：
+- `repository.save(entity)` 是整份取代：只載入部分欄位的物件存回去，其他欄位就消失了。部分更新用 `MongoTemplate.updateFirst` + `Update.update(…)`
+- Spring Data 預設會在文件裡多存一個 `_class` 欄位（記錄 Java 類別），可以用 `MappingMongoConverter` 關掉
+- `@Indexed` 預設**不會**自動建立索引（Spring Boot 3 起要設定 `spring.data.mongodb.auto-index-creation=true`，正式環境建議用遷移工具建）
+- `LocalDateTime` 沒有時區，存進 MongoDB 會被當成 UTC，讀回來可能差 8 小時
+
+## 13. ★ 面試題速答
+
+| 題目 | 重點 |
+|---|---|
+| MongoDB 和關聯式資料庫差在哪 | 文件模型、彈性 schema、內嵌取代 JOIN、水平擴展（分片）較容易 |
+| 什麼時候該用 MongoDB | 資料結構多變、讀寫以「整份文件」為單位、需要水平擴展；強關聯、複雜交易多的系統用關聯式較好 |
+| 內嵌還是參照 | 一起讀就一起存；一對少量內嵌、一對很多或無限增長用參照 |
+| `$elemMatch` 什麼時候用 | 陣列裡「同一個元素」要同時符合多個條件時 |
+| 複合索引欄位順序 | ESR：等值 → 排序 → 範圍 |
+| 怎麼判斷查詢有沒有用索引 | explain("executionStats")：IXSCAN vs COLLSCAN、docsExamined vs nReturned |
+| MongoDB 支援交易嗎 | 單文件一律原子；多文件交易 4.0 起支援，需要副本集 |
+| 副本集怎麼容錯 | oplog 複製、Primary 掛掉自動選舉；write concern majority 避免資料回滾 |
+| 分片鍵怎麼選 | 高基數、分布平均、常被查詢；避免單調遞增 |
+| `_id` 一定要是 ObjectId 嗎 | 不用，任何不重複的值都可以（練習環境用的是 PostgreSQL 的整數 id） |
+| 16 MB 限制怎麼辦 | 改設計（參照、Subset、Bucket）；大檔案用 GridFS |
+
+## 14. mongosh 常用指令
+
+| 指令 | 作用 |
+|---|---|
+| `mongosh "mongodb://learner:learner-lab@localhost:27018/shop?authSource=admin"` | 連到練習環境 |
+| `docker exec -it mongo-lab mongosh -u admin -p admin-lab` | 從容器裡用管理員身分連線 |
+| `show dbs`、`use shop`、`show collections` | 列出資料庫、切換、列出集合 |
+| `db.orders.stats()`、`db.stats()` | 集合 / 資料庫的大小與統計 |
+| `db.currentOp()`、`db.killOp(id)` | 查看 / 中止執行中的操作 |
+| `db.setProfilingLevel(1, { slowms: 100 })` | 記錄超過 100 ms 的慢查詢到 `system.profile` |
+| `it` | 顯示下一批結果（find 一次只顯示 20 筆） |

@@ -252,6 +252,20 @@ function highlightRedis(text) {
   }).join("\n");
 }
 
+/** mongosh：字串、數字、$運算子、// 註解、db.集合.方法。 */
+function highlightMongo(text) {
+  const TOKEN = /(\/\/[^\n]*)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|(\$[A-Za-z]+)|(\b(?:db|ISODate|ObjectId|NumberDecimal|true|false|null)\b)|(\b\d+(?:\.\d+)?\b)|(\.[a-zA-Z]+(?=\())/g;
+  let out = "", last = 0, m;
+  while ((m = TOKEN.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    const [tok, cmt, str, op, word, num, method] = m;
+    const cls = cmt ? "hl-cmt" : str ? "hl-str" : op ? "hl-op" : word ? "hl-kw" : num ? "hl-num" : method ? "hl-fn" : "";
+    out += `<span class="${cls}">${esc(tok)}</span>`;
+    last = m.index + tok.length;
+  }
+  return out + esc(text.slice(last));
+}
+
 /** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
 function enhanceCode(root) {
   root.querySelectorAll("pre.code").forEach((pre) => {
@@ -260,7 +274,8 @@ function enhanceCode(root) {
     const code = pre.querySelector("code") ?? pre;
     const raw = code.textContent;
     if (pre.dataset.lang === "redis") code.innerHTML = highlightRedis(raw);
-    else if (pre.dataset.lang !== "text") code.innerHTML = highlightSQL(raw);
+    else if (pre.dataset.lang === "mongo") code.innerHTML = highlightMongo(raw);
+    else if (pre.dataset.lang === "sql" || pre.dataset.lang === undefined && !pre.closest(".doc")) code.innerHTML = highlightSQL(raw);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "copy";

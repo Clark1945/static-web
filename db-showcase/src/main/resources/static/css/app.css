@@ -33,9 +33,11 @@
 /* 各資料庫的主色 */
 [data-db="postgres"] { --accent: #336791; --accent-soft: #E3ECF4; }
 [data-db="redis"] { --accent: #C42A1E; --accent-soft: #FBE7E4; }
+[data-db="mongodb"] { --accent: #0F7A3C; --accent-soft: #E1F3E8; }
 @media (prefers-color-scheme: dark) {
   [data-db="postgres"] { --accent: #6FA3D3; --accent-soft: #1B2C3D; }
   [data-db="redis"] { --accent: #FF7B6E; --accent-soft: #3A1A17; }
+  [data-db="mongodb"] { --accent: #4FD18A; --accent-soft: #123222; }
 }
 
 * { box-sizing: border-box; }

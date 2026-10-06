@@ -1,0 +1,166 @@
+# MongoDB 陷阱題：先猜答案，再執行兩段指令對照
+# 沒有 fixture → 用 reader 直接查 shop（唯讀）；有 fixture → 每段各自在一份乾淨的 scratch 副本執行
+# answer 是 options 的索引（從 0 開始）
+
+- id: array-equality
+  title: '陣列的等號'
+  question: 'A 和 B 算出來的商品數一樣嗎？'
+  scripts:
+    - label: 'A：{ tags: "特價" }'
+      commands: |
+        db.products.countDocuments({ tags: "特價" })
+    - label: 'B：{ tags: ["特價"] }'
+      commands: |
+        db.products.countDocuments({ tags: ["特價"] })
+  options:
+    - 一樣
+    - A 比較多
+    - B 比較多
+  answer: 1
+  explanation: |
+    A：條件是單一值，MongoDB 會拿它跟陣列裡的「每一個元素」比，有任何一個相等就成立。
+    B：條件本身是陣列，變成「整個陣列完全相等」，只有標籤剛好就是 ["特價"]、沒有其他標籤的商品才符合。
+    要「包含這幾個」用 $all，要「包含其中任一個」用 $in。
+
+- id: elem-match
+  title: '陣列裡的多個條件'
+  question: 'A 是「同一項明細」同時符合 qty ≥ 3 和 unitPrice ≥ 10000 嗎？'
+  scripts:
+    - label: 'A：兩個點號條件'
+      commands: |
+        db.orders.countDocuments({ "items.qty": { $gte: 3 }, "items.unitPrice": { $gte: 10000 } })
+    - label: 'B：$elemMatch'
+      commands: |
+        db.orders.countDocuments({ items: { $elemMatch: { qty: { $gte: 3 }, unitPrice: { $gte: 10000 } } } })
+  options:
+    - 是，跟 B 一樣
+    - 不是，A 比較多
+    - 不是，A 比較少
+  answer: 1
+  explanation: |
+    A 的兩個條件是各自獨立比對整個 items 陣列：只要「有某一項」qty ≥ 3、而且「有某一項」unitPrice ≥ 10000 就成立，兩項可以是不同的明細。
+    B 的 $elemMatch 要求「同一項」明細同時符合。所以 A 會多算進「一項買很多便宜貨、另一項買一個貴的」的訂單。
+
+- id: null-matches-missing
+  title: 'null 也會找到沒有欄位的文件'
+  question: '有些會員沒有 city 欄位（不是 null，是整個欄位不存在）。A 的 { city: null } 會找到他們嗎？'
+  scripts:
+    - label: 'A：{ city: null }'
+      commands: |
+        db.customers.countDocuments({ city: null })
+    - label: 'B：{ city: { $exists: false } }'
+      commands: |
+        db.customers.countDocuments({ city: { $exists: false } })
+  options:
+    - 會，跟 B 一樣
+    - 不會，只找值是 null 的，結果是 0
+    - 執行錯誤
+  answer: 0
+  explanation: |
+    { 欄位: null } 會同時找到「值是 null」和「沒有這個欄位」的文件。
+    只想要其中一種：沒有欄位用 { $exists: false }；值剛好是 null 用 { $type: "null" }。
+    對照 SQL：PostgreSQL 的 city = NULL 永遠不成立，要寫 IS NULL；MongoDB 的行為剛好相反，很容易搞混。
+
+- id: type-mismatch
+  title: '型別不同就找不到'
+  question: '商品的 _id 是數字 540。A 用字串 "540" 查得到嗎？'
+  scripts:
+    - label: 'A：字串 "540"'
+      commands: |
+        db.products.countDocuments({ _id: "540" })
+    - label: 'B：數字 540'
+      commands: |
+        db.products.countDocuments({ _id: 540 })
+  options:
+    - 查得到，MongoDB 會自動轉型
+    - 查不到，結果是 0
+    - 執行錯誤
+  answer: 1
+  explanation: |
+    MongoDB 比對時型別也要一樣，字串 "540" 和數字 540 是不同的值，不會自動轉型，也不會報錯。
+    Java 最常踩到：前端傳來的 id 是 String，直接拿去查數字型別的欄位，永遠查不到。
+    同理，ObjectId("…") 和字串 "…" 也不相等。
+
+- id: replace-drops-fields
+  title: 'replaceOne 會換掉整份文件'
+  question: 'A 用 replaceOne 把商品 540 的庫存改成 20。執行後這份文件還剩哪些欄位？'
+  fixture:
+    products: "{ _id: 540 }"
+  scripts:
+    - label: 'A：replaceOne'
+      commands: |
+        db.products.replaceOne({ _id: 540 }, { stock: 20 })
+        db.products.findOne({ _id: 540 })
+    - label: 'B：updateOne + $set'
+      commands: |
+        db.products.updateOne({ _id: 540 }, { $set: { stock: 20 } })
+        db.products.findOne({ _id: 540 })
+  options:
+    - 所有欄位都在，只有 stock 變成 20
+    - 只剩 _id 和 stock
+    - 執行錯誤
+  answer: 1
+  explanation: |
+    replaceOne 會用新文件「整份取代」舊文件（_id 保留），名稱、價格、分類全部消失。
+    只想改部分欄位一定要用 updateOne / updateMany 搭配 $set。
+    Spring Data MongoDB 的 repository.save(entity) 也是整份取代：如果 entity 是只載入部分欄位的物件，存回去就會把其他欄位清掉。
+
+- id: sort-limit-order
+  title: '先 limit 再 sort？'
+  question: 'A 把 .limit(3) 寫在 .sort() 前面。A 會先隨便取 3 筆再排序嗎？'
+  scripts:
+    - label: 'A：.limit(3).sort(…)'
+      commands: |
+        db.orders.find({ status: "paid" }, { total: 1 }).limit(3).sort({ total: -1 })
+    - label: 'B：.sort(…).limit(3)'
+      commands: |
+        db.orders.find({ status: "paid" }, { total: 1 }).sort({ total: -1 }).limit(3)
+  options:
+    - 會，結果跟 B 不同
+    - 不會，結果跟 B 一樣
+    - 執行錯誤
+  answer: 1
+  explanation: |
+    find 的 sort、skip、limit 不管怎麼串，MongoDB 都固定依「sort → skip → limit」的順序執行，所以 A 和 B 一樣。
+    但聚合管線不一樣：[ { $limit: 3 }, { $sort: … } ] 真的會先取 3 筆再排序，因為管線是照 stage 的順序執行的。
+
+- id: timezone
+  title: '日期與時區'
+  question: '想查「台灣時間 2026 年 9 月」的訂單。A 和 B 的筆數一樣嗎？'
+  scripts:
+    - label: 'A：沒寫時區（UTC）'
+      commands: |
+        db.orders.countDocuments({ orderDate: { $gte: ISODate("2026-09-01"), $lt: ISODate("2026-10-01") } })
+    - label: 'B：寫出 +08:00'
+      commands: |
+        db.orders.countDocuments({ orderDate: { $gte: ISODate("2026-09-01T00:00:00+08:00"), $lt: ISODate("2026-10-01T00:00:00+08:00") } })
+  options:
+    - 一樣
+    - 不一樣
+  answer: 1
+  explanation: |
+    MongoDB 的日期一律以 UTC 儲存。ISODate("2026-09-01") 是 UTC 的午夜，等於台灣時間 9/1 早上 8 點。
+    A 少了 9/1 凌晨 0 ~ 8 點的訂單，又多了 10/1 凌晨 0 ~ 8 點的訂單。
+    Java 端的 LocalDate、LocalDateTime 沒有時區，轉成 Date 時一定要明確指定 ZoneId.of("Asia/Taipei")。
+
+- id: update-one-only
+  title: 'updateOne 只更新一份'
+  question: '有 300 多筆 pending 訂單。A 的 updateOne 會更新幾份？'
+  fixture:
+    orders: "{ status: \"pending\" }"
+  scripts:
+    - label: 'A：updateOne'
+      commands: |
+        db.orders.updateOne({ status: "pending" }, { $set: { status: "paid" } })
+        db.orders.countDocuments({ status: "pending" })
+    - label: 'B：updateMany'
+      commands: |
+        db.orders.updateMany({ status: "pending" }, { $set: { status: "paid" } })
+        db.orders.countDocuments({ status: "pending" })
+  options:
+    - 1 份
+    - 全部 pending 的訂單
+  answer: 0
+  explanation: |
+    updateOne、deleteOne、replaceOne 只處理「第一份」符合條件的文件；哪一份是第一份並不保證。
+    要全部處理用 updateMany、deleteMany。看回傳值的 matchedCount 和 modifiedCount 就能確認影響了幾份。

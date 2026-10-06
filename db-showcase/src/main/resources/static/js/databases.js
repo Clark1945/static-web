@@ -13,7 +13,7 @@ export const DATABASES = [
   {
     id: "mongodb", name: "MongoDB", kind: "文件", mono: "Mg", color: "#13AA52", ink: "#FFFFFF",
     tagline: "以類 JSON 文件儲存資料，欄位結構可以彈性變動。",
-    status: "planned",
+    status: "ready", page: () => import("./pages/mongodb/index.js"),
   },
   {
     id: "cassandra", name: "Apache Cassandra", kind: "寬欄", mono: "Ca", color: "#1287B1", ink: "#FFFFFF",

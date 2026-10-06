@@ -22,4 +22,10 @@ showcase:
     admin-password: admin-lab     # default 使用者：載入資料、重置、實驗室
     learner-user: learner         # 執行使用者輸入的指令（ACL 最小權限）
     learner-password: learner-lab
-  # 之後串接其他資料庫時，各自的設定加在這裡（mongodb、cassandra…）
+  mongo:                          # mongo-lab 容器
+    host: localhost
+    port: 27018
+    admin-password: admin-lab     # root：載入資料、重置、實驗室
+    reader-password: reader-lab   # 只能讀 shop：批改查詢題
+    learner-password: learner-lab # 可讀寫 shop、scratch：主控台與寫入題
+  # 之後串接其他資料庫時，各自的設定加在這裡（cassandra、neo4j…）

@@ -1,15 +1,15 @@
 # 資料庫面試練習庫（shop）
 
-以一間台灣電商「shop」的模擬資料（約 30 萬筆，彼此有關聯）練習各種資料庫。目前有 PostgreSQL 與 Redis。
+以一間台灣電商「shop」的模擬資料（約 30 萬筆，彼此有關聯）練習各種資料庫。目前有 PostgreSQL、Redis、MongoDB。
 
 ## 連線資訊
 
-| | PostgreSQL | Redis |
-|---|---|---|
-| 容器 | `pg-lab` | `redis-lab` |
-| Host / Port | localhost:5434 | localhost:6380 |
-| 資料庫 | shop | db 0（練習資料）、db 1（批改用的隔離區） |
-| 帳號 | lab / lab | `default` / admin-lab（管理）、`learner` / learner-lab（受限） |
+| | PostgreSQL | Redis | MongoDB |
+|---|---|---|---|
+| 容器 | `pg-lab` | `redis-lab` | `mongo-lab` |
+| Host / Port | localhost:5434 | localhost:6380 | localhost:27018 |
+| 資料庫 | shop | db 0（練習資料）、db 1（批改用的隔離區） | shop（練習資料）、scratch（批改用的隔離區）、lab（實驗室） |
+| 帳號 | lab / lab | `default` / admin-lab（管理）、`learner` / learner-lab（受限） | `admin` / admin-lab（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫） |
 
 ```bash
 docker exec -it pg-lab psql -U lab -d shop
@@ -19,17 +19,21 @@ docker exec -it pg-lab psql -U lab -d shop
 docker exec -it redis-lab redis-cli --user learner --pass learner-lab
 ```
 
-圖形介面：PostgreSQL 用 DBeaver 或 pgAdmin；Redis 用 RedisInsight。
+```bash
+docker exec -it mongo-lab mongosh "mongodb://learner:learner-lab@localhost/shop?authSource=admin"
+```
+
+圖形介面：PostgreSQL 用 DBeaver 或 pgAdmin；Redis 用 RedisInsight；MongoDB 用 Compass。
 
 ## 常用指令
 
 ```bash
-docker compose up -d          # 啟動 PostgreSQL 與 Redis
+docker compose up -d          # 啟動 PostgreSQL、Redis、MongoDB
 docker compose stop           # 停止（資料保留）
 docker compose down -v        # 刪掉資料庫，下次 up 會重新產生一模一樣的資料
 ```
 
-Redis 的資料不持久化：展示台每次啟動都會從 PostgreSQL 重新轉入（約 1 秒、4 萬個 key），也可以在頁面上按「重置資料」。
+Redis 與 MongoDB 的練習資料都是從 PostgreSQL 轉進去的：Redis 每次啟動都重新轉入（約 1 秒、4 萬個 key）；MongoDB 在 shop 是空的時候才轉入（約 3 秒、10 萬份文件）。兩者都可以在頁面上按「重置資料」。
 
 ## 資料表關聯
 
@@ -76,7 +80,7 @@ erDiagram
 
 ## 展示台 APP
 
-[db-showcase/](db-showcase/) 是 Spring Boot 寫的多資料庫展示台（http://localhost:8081），目前已串接 PostgreSQL 與 Redis。
+[db-showcase/](db-showcase/) 是 Spring Boot 寫的多資料庫展示台（http://localhost:8081），目前已串接 PostgreSQL、Redis、MongoDB。
 
 **PostgreSQL**
 
@@ -97,7 +101,16 @@ erDiagram
 | 實戰實驗室 | Cache-Aside（含快取穿透）、限流、分散式鎖（含錯誤的釋放方式）、庫存超賣、排行榜、Pipeline |
 | 指令主控台 | 以 ACL 受限的 learner 帳號執行任何指令 |
 
-題目內容放在 `db-showcase/src/main/resources/postgres/`、`redis/` 的 YAML 檔，加題目不用改程式。
+**MongoDB**（orders 內嵌明細、products 反正規化分類、customers 省略空欄位、categories 存祖先陣列；指令用 mongosh 寫法）
+
+| 分頁 | 內容 |
+|---|---|
+| 練習題 | 27 題：查詢、運算子、陣列與內嵌、聚合管線、寫入；查詢題用唯讀帳號批改，寫入題在 scratch 副本比對資料狀態 |
+| 陷阱題 | 8 題：陣列等號、$elemMatch、null 會找到沒有欄位的文件、型別不轉換、replaceOne 整份取代、時區… |
+| 實驗室 | 內嵌 vs 參照（$lookup 有無索引）、索引與 explain（6 步，含 ESR 規則）、聚合管線逐步看 |
+| 指令主控台 | mongosh 寫法：find、aggregate、update…、explain |
+
+題目內容放在 `db-showcase/src/main/resources/` 的 `postgres/`、`redis/`、`mongo/` YAML 檔，加題目不用改程式。
 
 ```bash
 cd db-showcase

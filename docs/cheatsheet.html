@@ -181,14 +181,14 @@ html { scroll-padding-top: 150px; }
 <header class="top">
   <div class="top-in">
     <div class="title-block"><h1 class="page-title">CheatSheet</h1>
-      <span class="sub">資料庫面試速查表 · 2 種資料庫 · 更新於 2026-10-06</span></div>
+      <span class="sub">資料庫面試速查表 · 3 種資料庫 · 更新於 2026-10-06</span></div>
     <label class="search"><span class="sr-only">搜尋</span>
       <input id="q" type="search" placeholder="搜尋所有資料庫，例如 JSONB、Lua、NULL…" autocomplete="off"></label>
   </div>
-  <nav class="db-tabs" id="dbtabs" aria-label="資料庫"><a href="#postgresql" data-tab="postgresql">PostgreSQL<span class="n" data-count="postgresql"></span></a><a href="#redis" data-tab="redis">Redis<span class="n" data-count="redis"></span></a></nav>
+  <nav class="db-tabs" id="dbtabs" aria-label="資料庫"><a href="#postgresql" data-tab="postgresql">PostgreSQL<span class="n" data-count="postgresql"></span></a><a href="#redis" data-tab="redis">Redis<span class="n" data-count="redis"></span></a><a href="#mongodb" data-tab="mongodb">MongoDB<span class="n" data-count="mongodb"></span></a></nav>
 </header>
 <div class="layout">
-  <nav class="toc" id="toc" aria-label="目錄"><a class="toc-2" href="#s1" data-part="postgresql">0. <span class="star" title="面試高頻">★</span> SQL 的「執行順序」</a><a class="toc-2" href="#s2" data-part="postgresql">1. 已經會的（速查）</a><a class="toc-2" href="#s3" data-part="postgresql">2. JOIN 全家</a><a class="toc-2" href="#s4" data-part="postgresql">3. <span class="star" title="面試高頻">★</span> NULL 的處理</a><a class="toc-2" href="#s5" data-part="postgresql">4. 子查詢</a><a class="toc-2" href="#s6" data-part="postgresql">5. CASE WHEN 與條件彙總</a><a class="toc-2" href="#s7" data-part="postgresql">6. 集合運算</a><a class="toc-2" href="#s8" data-part="postgresql">7. CTE（WITH）</a><a class="toc-2" href="#s9" data-part="postgresql">8. <span class="star" title="面試高頻">★</span> 視窗函數（Window Function）</a><a class="toc-2" href="#s10" data-part="postgresql">9. 常用函數（PostgreSQL）</a><a class="toc-2" href="#s11" data-part="postgresql">10. 新增、修改、刪除（DML）</a><a class="toc-2" href="#s12" data-part="postgresql">11. 建表與約束（DDL）</a><a class="toc-2" href="#s13" data-part="postgresql">12. <span class="star" title="面試高頻">★</span> 索引與 EXPLAIN</a><a class="toc-2" href="#s14" data-part="postgresql">13. <span class="star" title="面試高頻">★</span> 交易（Transaction）</a><a class="toc-2" href="#s15" data-part="postgresql">14. <span class="star" title="面試高頻">★</span> 面試經典題速答</a><a class="toc-2" href="#s16" data-part="postgresql">15. <span class="star" title="面試高頻">★</span> 進階語法：JSONB、Array、UPSERT、進階索引</a><a class="toc-3" href="#s17" data-part="postgresql">JSONB</a><a class="toc-3" href="#s18" data-part="postgresql">Array</a><a class="toc-3" href="#s19" data-part="postgresql">generate_series：產生連續的值</a><a class="toc-3" href="#s20" data-part="postgresql">RETURNING 與 UPSERT</a><a class="toc-3" href="#s21" data-part="postgresql">進階索引</a><a class="toc-2" href="#s22" data-part="postgresql">16. psql 常用指令</a><a class="toc-2" href="#s24" data-part="redis">1. <span class="star" title="面試高頻">★</span> 基本觀念：Redis 為什麼這麼快</a><a class="toc-2" href="#s25" data-part="redis">2. 通用指令（所有型別都能用）</a><a class="toc-2" href="#s26" data-part="redis">3. String</a><a class="toc-2" href="#s27" data-part="redis">4. Hash</a><a class="toc-2" href="#s28" data-part="redis">5. List</a><a class="toc-2" href="#s29" data-part="redis">6. Set</a><a class="toc-2" href="#s30" data-part="redis">7. <span class="star" title="面試高頻">★</span> Sorted Set（排行榜）</a><a class="toc-2" href="#s31" data-part="redis">8. 特殊型別：Stream、HyperLogLog、Bitmap、Geo</a><a class="toc-2" href="#s32" data-part="redis">9. <span class="star" title="面試高頻">★</span> 交易與 Lua 腳本</a><a class="toc-2" href="#s33" data-part="redis">10. Pipeline</a><a class="toc-2" href="#s34" data-part="redis">11. <span class="star" title="面試高頻">★</span> 實戰模式</a><a class="toc-2" href="#s35" data-part="redis">12. <span class="star" title="面試高頻">★</span> 持久化</a><a class="toc-2" href="#s36" data-part="redis">13. <span class="star" title="面試高頻">★</span> 過期刪除與記憶體淘汰</a><a class="toc-2" href="#s37" data-part="redis">14. <span class="star" title="面試高頻">★</span> 高可用：主從、哨兵、叢集</a><a class="toc-2" href="#s38" data-part="redis">15. 底層編碼（面試加分題）</a><a class="toc-2" href="#s39" data-part="redis">16. Java / Spring Boot</a><a class="toc-2" href="#s40" data-part="redis">17. <span class="star" title="面試高頻">★</span> 面試題速答</a><a class="toc-2" href="#s41" data-part="redis">18. redis-cli 常用指令</a></nav>
+  <nav class="toc" id="toc" aria-label="目錄"><a class="toc-2" href="#s1" data-part="postgresql">0. <span class="star" title="面試高頻">★</span> SQL 的「執行順序」</a><a class="toc-2" href="#s2" data-part="postgresql">1. 已經會的（速查）</a><a class="toc-2" href="#s3" data-part="postgresql">2. JOIN 全家</a><a class="toc-2" href="#s4" data-part="postgresql">3. <span class="star" title="面試高頻">★</span> NULL 的處理</a><a class="toc-2" href="#s5" data-part="postgresql">4. 子查詢</a><a class="toc-2" href="#s6" data-part="postgresql">5. CASE WHEN 與條件彙總</a><a class="toc-2" href="#s7" data-part="postgresql">6. 集合運算</a><a class="toc-2" href="#s8" data-part="postgresql">7. CTE（WITH）</a><a class="toc-2" href="#s9" data-part="postgresql">8. <span class="star" title="面試高頻">★</span> 視窗函數（Window Function）</a><a class="toc-2" href="#s10" data-part="postgresql">9. 常用函數（PostgreSQL）</a><a class="toc-2" href="#s11" data-part="postgresql">10. 新增、修改、刪除（DML）</a><a class="toc-2" href="#s12" data-part="postgresql">11. 建表與約束（DDL）</a><a class="toc-2" href="#s13" data-part="postgresql">12. <span class="star" title="面試高頻">★</span> 索引與 EXPLAIN</a><a class="toc-2" href="#s14" data-part="postgresql">13. <span class="star" title="面試高頻">★</span> 交易（Transaction）</a><a class="toc-2" href="#s15" data-part="postgresql">14. <span class="star" title="面試高頻">★</span> 面試經典題速答</a><a class="toc-2" href="#s16" data-part="postgresql">15. <span class="star" title="面試高頻">★</span> 進階語法：JSONB、Array、UPSERT、進階索引</a><a class="toc-3" href="#s17" data-part="postgresql">JSONB</a><a class="toc-3" href="#s18" data-part="postgresql">Array</a><a class="toc-3" href="#s19" data-part="postgresql">generate_series：產生連續的值</a><a class="toc-3" href="#s20" data-part="postgresql">RETURNING 與 UPSERT</a><a class="toc-3" href="#s21" data-part="postgresql">進階索引</a><a class="toc-2" href="#s22" data-part="postgresql">16. psql 常用指令</a><a class="toc-2" href="#s24" data-part="redis">1. <span class="star" title="面試高頻">★</span> 基本觀念：Redis 為什麼這麼快</a><a class="toc-2" href="#s25" data-part="redis">2. 通用指令（所有型別都能用）</a><a class="toc-2" href="#s26" data-part="redis">3. String</a><a class="toc-2" href="#s27" data-part="redis">4. Hash</a><a class="toc-2" href="#s28" data-part="redis">5. List</a><a class="toc-2" href="#s29" data-part="redis">6. Set</a><a class="toc-2" href="#s30" data-part="redis">7. <span class="star" title="面試高頻">★</span> Sorted Set（排行榜）</a><a class="toc-2" href="#s31" data-part="redis">8. 特殊型別：Stream、HyperLogLog、Bitmap、Geo</a><a class="toc-2" href="#s32" data-part="redis">9. <span class="star" title="面試高頻">★</span> 交易與 Lua 腳本</a><a class="toc-2" href="#s33" data-part="redis">10. Pipeline</a><a class="toc-2" href="#s34" data-part="redis">11. <span class="star" title="面試高頻">★</span> 實戰模式</a><a class="toc-2" href="#s35" data-part="redis">12. <span class="star" title="面試高頻">★</span> 持久化</a><a class="toc-2" href="#s36" data-part="redis">13. <span class="star" title="面試高頻">★</span> 過期刪除與記憶體淘汰</a><a class="toc-2" href="#s37" data-part="redis">14. <span class="star" title="面試高頻">★</span> 高可用：主從、哨兵、叢集</a><a class="toc-2" href="#s38" data-part="redis">15. 底層編碼（面試加分題）</a><a class="toc-2" href="#s39" data-part="redis">16. Java / Spring Boot</a><a class="toc-2" href="#s40" data-part="redis">17. <span class="star" title="面試高頻">★</span> 面試題速答</a><a class="toc-2" href="#s41" data-part="redis">18. redis-cli 常用指令</a><a class="toc-2" href="#s43" data-part="mongodb">1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</a><a class="toc-2" href="#s44" data-part="mongodb">2. 查詢：find</a><a class="toc-2" href="#s45" data-part="mongodb">3. 查詢運算子</a><a class="toc-2" href="#s46" data-part="mongodb">4. 陣列與內嵌文件</a><a class="toc-2" href="#s47" data-part="mongodb">5. <span class="star" title="面試高頻">★</span> 聚合管線</a><a class="toc-2" href="#s48" data-part="mongodb">6. 寫入</a><a class="toc-2" href="#s49" data-part="mongodb">7. <span class="star" title="面試高頻">★</span> Schema 設計：內嵌還是參照</a><a class="toc-2" href="#s50" data-part="mongodb">8. <span class="star" title="面試高頻">★</span> 索引</a><a class="toc-2" href="#s51" data-part="mongodb">9. <span class="star" title="面試高頻">★</span> 交易與一致性</a><a class="toc-2" href="#s52" data-part="mongodb">10. <span class="star" title="面試高頻">★</span> 副本集與分片</a><a class="toc-2" href="#s53" data-part="mongodb">11. 常見陷阱</a><a class="toc-2" href="#s54" data-part="mongodb">12. Java / Spring Data MongoDB</a><a class="toc-2" href="#s55" data-part="mongodb">13. <span class="star" title="面試高頻">★</span> 面試題速答</a><a class="toc-2" href="#s56" data-part="mongodb">14. mongosh 常用指令</a></nav>
   <main class="doc" id="doc">
     <p class="hit-count" id="hits" hidden></p>
     <p>面試導向的資料庫速查表，範例都可以直接在練習環境（<code>shop</code> 電商資料）執行。<span class="star" title="面試高頻">★</span> = 面試高頻考點。 上方分頁切換資料庫，左側目錄跳到章節；搜尋會找遍所有資料庫，分頁上會顯示各自找到幾節。</p>
@@ -646,6 +646,125 @@ WATCH stock                  -- 樂觀鎖：EXEC 前 stock 被別人改過，整
 <section class="sec" id="s41" data-part="redis"><h2>18. redis-cli 常用指令</h2>
 <div class="table-wrap"><table><thead><tr><th>指令</th><th>作用</th></tr></thead><tbody><tr><td><code>redis-cli -p 6380 --user learner --pass learner-lab</code></td><td>連到練習環境</td></tr><tr><td><code>docker exec -it redis-lab redis-cli --user default --pass admin-lab</code></td><td>從容器裡用管理員身分連線</td></tr><tr><td><code>--scan --pattern &#x27;product:*&#x27;</code></td><td>安全地列出 key</td></tr><tr><td><code>--bigkeys</code>、<code>--memkeys</code></td><td>找出最大的 key</td></tr><tr><td><code>--latency</code></td><td>量測延遲</td></tr><tr><td><code>MONITOR</code></td><td>即時看所有指令（很耗效能，只在開發環境用）</td></tr><tr><td><code>INFO</code>、<code>INFO memory</code>、<code>INFO stats</code></td><td>伺服器狀態</td></tr><tr><td><code>CLIENT LIST</code></td><td>目前的連線</td></tr></tbody></table></div>
 </section>
+<section class="part-head" id="mongodb" data-part="mongodb"><h1>MongoDB</h1>
+<blockquote>範例都來自練習環境（<code>mongo-lab</code> 容器，port 27018，<code>shop</code> 資料庫），可以直接貼到展示台的「指令主控台」執行。資料是從 PostgreSQL 轉進來的，練壞了按「重置資料」。</blockquote>
+</section>
+<section class="sec" id="s43" data-part="mongodb"><h2>1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</h2>
+<div class="table-wrap"><table><thead><tr><th>SQL</th><th>MongoDB</th></tr></thead><tbody><tr><td>database</td><td>database</td></tr><tr><td>table</td><td>collection（集合）</td></tr><tr><td>row</td><td>document（文件，BSON 格式）</td></tr><tr><td>column</td><td>field（欄位，每份文件可以不一樣）</td></tr><tr><td>primary key</td><td><code>_id</code>（每份文件都有，預設是 ObjectId）</td></tr><tr><td>JOIN</td><td>內嵌文件，或 <code>$lookup</code></td></tr><tr><td>GROUP BY</td><td>聚合管線的 <code>$group</code></td></tr><tr><td>index</td><td>index（概念幾乎一樣）</td></tr></tbody></table></div>
+<ul><li><strong>BSON</strong>：二進位的 JSON，多了 Date、ObjectId、Decimal128、Int32 / Int64 等型別</li><li><strong>ObjectId</strong>：12 bytes，前 4 bytes 是建立時間，所以大致依時間遞增，可以用 <code>ObjectId(…).getTimestamp()</code> 取出</li><li><strong>單一文件上限 16 MB</strong></li><li><strong>彈性 schema</strong>：同一個集合裡的文件欄位可以不同；需要時可以用 JSON Schema 驗證（<code>$jsonSchema</code>）</li><li>錢不要用 double：用 <code>Decimal128</code>（<code>NumberDecimal(&quot;19.99&quot;)</code>）或存成「分」的整數</li></ul>
+</section>
+<section class="sec" id="s44" data-part="mongodb"><h2>2. 查詢：find</h2>
+<pre class="code" data-lang="mongo"><code>db.orders.find({ status: &quot;paid&quot; })                          // 條件
+db.orders.find({ status: &quot;paid&quot; }, { total: 1, _id: 0 })    // 投影：1 要、0 不要
+db.orders.find({}).sort({ orderDate: -1 }).skip(20).limit(10)   // 排序、分頁
+db.orders.findOne({ _id: 77621 })
+db.orders.countDocuments({ status: &quot;paid&quot; })                // 依條件計數
+db.orders.estimatedDocumentCount()                          // 讀統計值，很快、不能加條件
+db.orders.distinct(&quot;shipping.city&quot;)                         // 不重複值</code></pre>
+<ul><li><span class="star" title="面試高頻">★</span> find 的 <code>sort</code>、<code>skip</code>、<code>limit</code> 不管怎麼串，都固定依「sort → skip → limit」執行</li><li>投影裡除了 <code>_id</code>，不能混用 1 和 0</li><li>大量分頁別用很大的 <code>skip</code>（要先掃過前面所有資料），改用「上一頁最後一筆的值」當條件：<code>{ orderDate: { $lt: 上一頁最後的時間 } }</code></li></ul>
+</section>
+<section class="sec" id="s45" data-part="mongodb"><h2>3. 查詢運算子</h2>
+<div class="table-wrap"><table><thead><tr><th>類別</th><th>運算子</th></tr></thead><tbody><tr><td>比較</td><td><code>$eq</code> <code>$ne</code> <code>$gt</code> <code>$gte</code> <code>$lt</code> <code>$lte</code> <code>$in</code> <code>$nin</code></td></tr><tr><td>邏輯</td><td><code>$and</code> <code>$or</code> <code>$nor</code> <code>$not</code>（同一個物件裡的多個條件本來就是 AND）</td></tr><tr><td>欄位</td><td><code>$exists</code>（欄位存不存在）、<code>$type</code>（型別）</td></tr><tr><td>陣列</td><td><code>$all</code> <code>$elemMatch</code> <code>$size</code></td></tr><tr><td>其他</td><td><code>$regex</code>（或直接寫 <code>/^Apple/</code>）、<code>$expr</code>（在條件裡用聚合運算式，例如比較兩個欄位）</td></tr></tbody></table></div>
+<pre class="code" data-lang="mongo"><code>db.products.find({ price: { $gte: 1000, $lte: 2000 } })
+db.orders.find({ status: { $in: [&quot;cancelled&quot;, &quot;returned&quot;] } })
+db.customers.find({ $or: [{ city: &quot;花蓮縣&quot; }, { vipLevel: &quot;gold&quot; }] })
+db.customers.find({ birthDate: { $exists: false } })
+db.products.find({ $expr: { $gt: [&quot;$price&quot;, { $multiply: [&quot;$cost&quot;, 2] }] } })   // 售價超過成本兩倍</code></pre>
+<p><span class="star" title="面試高頻">★</span> 型別要一樣：<code>{ _id: &quot;540&quot; }</code>（字串）查不到 <code>_id: 540</code>（數字），不會自動轉型，也不會報錯。</p>
+<p><span class="star" title="面試高頻">★</span> <code>{ city: null }</code> 會同時找到「值是 null」和「沒有這個欄位」的文件。只要沒有欄位的用 <code>{ $exists: false }</code>。</p>
+</section>
+<section class="sec" id="s46" data-part="mongodb"><h2>4. 陣列與內嵌文件</h2>
+<pre class="code" data-lang="mongo"><code>db.orders.find({ &quot;shipping.city&quot;: &quot;台北市&quot; })                // 內嵌欄位用點號（要加引號）
+db.orders.find({ &quot;items.productId&quot;: 540 })                  // 點號也能穿過陣列
+db.products.find({ tags: &quot;特價&quot; })                           // ★ 陣列裡「任一元素」等於
+db.products.find({ tags: [&quot;特價&quot;] })                         // 整個陣列「完全等於」[&quot;特價&quot;]
+db.products.find({ tags: { $all: [&quot;熱銷&quot;, &quot;限量&quot;] } })        // 包含全部，順序不拘
+db.products.find({ tags: { $size: 3 } })                     // 剛好 3 個元素
+db.orders.find({ items: { $elemMatch: { qty: { $gte: 3 }, unitPrice: { $gte: 10000 } } } })</code></pre>
+<p><span class="star" title="面試高頻">★</span> <code>$elemMatch</code> 是面試常考題：<code>{ &quot;items.qty&quot;: { $gte: 3 }, &quot;items.unitPrice&quot;: { $gte: 10000 } }</code> 的兩個條件可以由「不同的元素」分別滿足；要求同一個元素同時符合，一定要用 <code>$elemMatch</code>。</p>
+</section>
+<section class="sec" id="s47" data-part="mongodb"><h2>5. <span class="star" title="面試高頻">★</span> 聚合管線</h2>
+<p>文件依序流過每一個 stage，前一個的輸出是下一個的輸入。</p>
+<div class="table-wrap"><table><thead><tr><th>Stage</th><th>作用</th><th>對照 SQL</th></tr></thead><tbody><tr><td><code>$match</code></td><td>篩選（放越前面越好，開頭的可以用索引）</td><td>WHERE</td></tr><tr><td><code>$project</code> / <code>$addFields</code> / <code>$set</code> / <code>$unset</code></td><td>選欄位、新增或計算欄位</td><td>SELECT</td></tr><tr><td><code>$group</code></td><td>分組彙總：<code>$sum</code> <code>$avg</code> <code>$min</code> <code>$max</code> <code>$first</code> <code>$push</code> <code>$addToSet</code></td><td>GROUP BY</td></tr><tr><td><code>$sort</code> / <code>$limit</code> / <code>$skip</code></td><td>排序、筆數</td><td>ORDER BY / LIMIT</td></tr><tr><td><code>$unwind</code></td><td>把陣列攤平成多份文件</td><td>unnest / JOIN 明細表</td></tr><tr><td><code>$lookup</code></td><td>關聯另一個集合，結果是陣列</td><td>LEFT JOIN</td></tr><tr><td><code>$bucket</code> / <code>$bucketAuto</code></td><td>分級統計</td><td>CASE WHEN + GROUP BY</td></tr><tr><td><code>$facet</code></td><td>同一份輸入跑多組管線（例如一次算總數與分頁）</td><td>多個查詢</td></tr><tr><td><code>$count</code></td><td>計數</td><td>count(*)</td></tr><tr><td><code>$out</code> / <code>$merge</code></td><td>結果寫進集合</td><td>INSERT INTO … SELECT</td></tr></tbody></table></div>
+<pre class="code" data-lang="mongo"><code>db.orders.aggregate([
+  { $match: { status: &quot;delivered&quot; } },
+  { $unwind: &quot;$items&quot; },
+  { $group: { _id: &quot;$items.productId&quot;, name: { $first: &quot;$items.name&quot; }, qty: { $sum: &quot;$items.qty&quot; } } },
+  { $sort: { qty: -1 } },
+  { $limit: 5 }
+])
+
+// 會員最新 3 筆訂單 + 會員姓名：先 $limit 再 $lookup
+db.orders.aggregate([
+  { $match: { customerId: 1 } },
+  { $sort: { orderDate: -1 } },
+  { $limit: 3 },
+  { $lookup: { from: &quot;customers&quot;, localField: &quot;customerId&quot;, foreignField: &quot;_id&quot;, as: &quot;customer&quot; } },
+  { $project: { total: 1, customerName: { $first: &quot;$customer.name&quot; } } }
+])</code></pre>
+<ul><li><span class="star" title="面試高頻">★</span> 管線是照 stage 的順序執行的：<code>[{ $limit: 3 }, { $sort: … }]</code> 真的是先取 3 筆再排序</li><li><code>$lookup</code> 的 <code>foreignField</code> 要有索引，不然每一筆都要掃整個集合</li><li>每個 stage 記憶體上限 100 MB，超過要 <code>allowDiskUse</code>（6.0 起預設允許）</li><li><span class="star" title="面試高頻">★</span> 日期一律以 UTC 儲存：篩選寫 <code>ISODate(&quot;2026-09-01T00:00:00+08:00&quot;)</code>，<code>$dateToString</code>、<code>$dateTrunc</code> 要給 <code>timezone: &quot;Asia/Taipei&quot;</code></li></ul>
+</section>
+<section class="sec" id="s48" data-part="mongodb"><h2>6. 寫入</h2>
+<pre class="code" data-lang="mongo"><code>db.customers.insertOne({ name: &quot;王小明&quot;, email: &quot;a@b.com&quot; })
+db.customers.insertMany([{ … }, { … }])
+db.products.updateOne({ _id: 540 }, { $set: { stock: 20 } })
+db.products.updateMany({ &quot;category.name&quot;: &quot;飲料&quot; }, { $inc: { price: 5 } })
+db.customers.updateOne({ email: &quot;a@b.com&quot; }, { $set: { name: &quot;新會員&quot; } }, { upsert: true })
+db.products.findOneAndUpdate({ _id: 540, stock: { $gt: 0 } }, { $inc: { stock: -1 } }, { returnDocument: &quot;after&quot; })
+db.orders.deleteMany({ status: &quot;cancelled&quot; })</code></pre>
+<div class="table-wrap"><table><thead><tr><th>運算子</th><th>作用</th></tr></thead><tbody><tr><td><code>$set</code> / <code>$unset</code></td><td>設定 / 移除欄位</td></tr><tr><td><code>$inc</code> / <code>$mul</code></td><td>加 / 乘（原子操作）</td></tr><tr><td><code>$min</code> / <code>$max</code></td><td>比原本小 / 大才更新</td></tr><tr><td><code>$rename</code></td><td>改欄位名稱</td></tr><tr><td><code>$setOnInsert</code></td><td>只在 upsert「新增」時才設定</td></tr><tr><td><code>$push</code> / <code>$addToSet</code></td><td>加入陣列 / 不重複才加入（<code>$each</code> 一次多個、<code>$slice</code> 限制長度）</td></tr><tr><td><code>$pull</code> / <code>$pop</code></td><td>依條件移除 / 移除頭或尾</td></tr><tr><td><code>$[]</code> / <code>$[elem]</code></td><td>更新陣列的全部元素 / 符合 arrayFilters 的元素</td></tr></tbody></table></div>
+<ul><li><span class="star" title="面試高頻">★</span> <code>replaceOne</code> 會用新文件「整份取代」舊文件，只想改部分欄位一定要用 <code>$set</code></li><li><code>updateOne</code> / <code>deleteOne</code> 只處理第一份符合的文件，全部處理用 <code>updateMany</code> / <code>deleteMany</code></li><li>upsert 要搭配條件欄位的唯一索引，不然高並發下可能新增出重複的文件</li></ul>
+</section>
+<section class="sec" id="s49" data-part="mongodb"><h2>7. <span class="star" title="面試高頻">★</span> Schema 設計：內嵌還是參照</h2>
+<p><strong>核心原則：一起讀取的資料就一起存放。</strong></p>
+<div class="table-wrap"><table><thead><tr><th>內嵌（Embedding）</th><th>參照（Referencing）</th></tr></thead><tbody><tr><td>一次讀取就拿到全部，不用 JOIN</td><td>資料不重複，可以單獨查詢與更新</td></tr><tr><td>單一文件的更新是原子的，不需要交易</td><td>讀取時要 <code>$lookup</code>，或在程式裡查兩次</td></tr><tr><td>適合一對少量、總是一起讀（訂單明細、地址、規格）</td><td>適合一對很多、數量會無限增長、多對多、常被單獨更新的資料</td></tr></tbody></table></div>
+<p>常見設計模式：</p>
+<div class="table-wrap"><table><thead><tr><th>模式</th><th>說明</th></tr></thead><tbody><tr><td>Extended Reference</td><td>參照之外，再複製幾個常用欄位（例如訂單裡存商品名稱），省掉 <code>$lookup</code></td></tr><tr><td>Subset</td><td>只內嵌最常用的一部分（例如商品文件只放最新 10 則評論，其他評論放另一個集合）</td></tr><tr><td>Computed</td><td>事先算好放進文件（例如訂單的 <code>total</code>），讀的時候不用再算</td></tr><tr><td>Bucket</td><td>時間序列資料依時間分桶，一份文件存一小時的資料（MongoDB 5.0 起有原生的 Time Series 集合）</td></tr><tr><td>Tree</td><td>樹狀結構存 <code>parentId</code>、<code>ancestors</code> 陣列或路徑字串（練習環境的 categories）</td></tr></tbody></table></div>
+<p><span class="star" title="面試高頻">★</span> 反模式：陣列無限增長（例如把一位會員的所有訂單都塞進會員文件）會碰到 16 MB 上限，更新也會越來越慢。</p>
+</section>
+<section class="sec" id="s50" data-part="mongodb"><h2>8. <span class="star" title="面試高頻">★</span> 索引</h2>
+<pre class="code" data-lang="mongo"><code>db.orders.createIndex({ customerId: 1, orderDate: -1 })
+db.customers.createIndex({ email: 1 }, { unique: true })
+db.orders.createIndex({ orderDate: 1 }, { partialFilterExpression: { status: &quot;pending&quot; } })
+db.sessions.createIndex({ createdAt: 1 }, { expireAfterSeconds: 3600 })   // TTL：自動刪除過期文件
+db.orders.getIndexes()
+db.orders.dropIndex(&quot;customerId_1&quot;)
+db.orders.find({ customerId: 4242 }).explain(&quot;executionStats&quot;)</code></pre>
+<div class="table-wrap"><table><thead><tr><th>類型</th><th>說明</th></tr></thead><tbody><tr><td>單欄 / 複合</td><td>最常用；複合索引的欄位順序很重要</td></tr><tr><td>多鍵（multikey）</td><td>對陣列欄位建索引，每個元素一個項目；一個複合索引最多一個陣列欄位</td></tr><tr><td>unique / partial / sparse</td><td>唯一、只收錄部分文件、只收錄有該欄位的文件</td></tr><tr><td>TTL</td><td>時間到自動刪除文件（Session、驗證碼、日誌）</td></tr><tr><td>text / Atlas Search</td><td>全文檢索</td></tr><tr><td>2dsphere</td><td>地理位置查詢</td></tr><tr><td>hashed</td><td>雜湊值，主要用在分片鍵</td></tr><tr><td>wildcard</td><td>欄位不固定時，對 <code>specs.$**</code> 這類動態欄位建索引</td></tr></tbody></table></div>
+<p><span class="star" title="面試高頻">★</span> <strong>ESR 規則</strong>（複合索引的欄位順序）：<strong>E</strong>quality（等值）→ <strong>S</strong>ort（排序）→ <strong>R</strong>ange（範圍）。 例如 <code>find({ status: &quot;delivered&quot;, total: { $gte: 50000 } }).sort({ orderDate: -1 })</code> 建 <code>{ status: 1, orderDate: -1, total: 1 }</code>，可以省掉記憶體排序，分頁查詢特別有效。</p>
+<p><strong>explain 怎麼看</strong></p>
+<div class="table-wrap"><table><thead><tr><th>欄位 / Stage</th><th>意思</th></tr></thead><tbody><tr><td><code>COLLSCAN</code></td><td>全集合掃描（缺索引）</td></tr><tr><td><code>IXSCAN</code> → <code>FETCH</code></td><td>用索引找到位置，再讀文件</td></tr><tr><td><code>SORT</code></td><td>在記憶體裡排序（沒有索引提供順序）</td></tr><tr><td><code>PROJECTION_COVERED</code></td><td>覆蓋查詢：只讀索引、不讀文件（記得 <code>_id: 0</code>）</td></tr><tr><td><code>nReturned</code> / <code>totalKeysExamined</code> / <code>totalDocsExamined</code></td><td>回傳幾份 / 看了幾個索引項目 / 讀了幾份文件；三者越接近越好</td></tr></tbody></table></div>
+</section>
+<section class="sec" id="s51" data-part="mongodb"><h2>9. <span class="star" title="面試高頻">★</span> 交易與一致性</h2>
+<ul><li><strong>單一文件的操作一律是原子的</strong>，所以好的內嵌設計常常不需要交易</li><li>多文件交易（4.0 起）需要<strong>副本集</strong>或分片叢集，單機模式不能用；有效能代價，預設 60 秒逾時</li><li><strong>Write Concern</strong>：寫入要幾個節點確認才算成功。<code>w: 1</code>（主節點）、<code>w: &quot;majority&quot;</code>（多數節點，5.0 起的預設）</li><li><strong>Read Concern</strong>：讀到什麼程度的資料。<code>local</code>、<code>majority</code>（不會讀到之後可能被回滾的資料）、<code>linearizable</code></li><li><strong>Read Preference</strong>：讀哪個節點。<code>primary</code>（預設）、<code>secondaryPreferred</code>（分散讀取，但可能讀到稍舊的資料）</li></ul>
+<pre class="code" data-lang="java"><code>// Spring：@Transactional 搭配 MongoTransactionManager（需要副本集）
+try (ClientSession session = client.startSession()) {
+    session.withTransaction(() -&gt; {
+        orders.insertOne(session, order);
+        products.updateOne(session, eq(&quot;_id&quot;, 540), inc(&quot;stock&quot;, -1));
+        return null;
+    });
+}</code></pre>
+</section>
+<section class="sec" id="s52" data-part="mongodb"><h2>10. <span class="star" title="面試高頻">★</span> 副本集與分片</h2>
+<div class="table-wrap"><table><thead><tr><th>架構</th><th>說明</th></tr></thead><tbody><tr><td>副本集（Replica Set）</td><td>一個 Primary 負責寫入，多個 Secondary 透過 oplog 複製；Primary 掛掉會自動選出新的（通常數秒內），至少要 3 個節點（或 2 + 仲裁者）</td></tr><tr><td>分片（Sharding）</td><td>資料依「分片鍵」分散到多個分片；應用程式連 <code>mongos</code> 路由，設定存在 config servers</td></tr></tbody></table></div>
+<p><span class="star" title="面試高頻">★</span> 分片鍵怎麼選：</p>
+<ul><li>基數要高（值很多種）、分布要平均、查詢條件常常帶到它</li><li>單調遞增的鍵（時間、ObjectId）會讓寫入全部集中在最後一個分片 → 用 hashed 分片，或複合分片鍵</li><li>查詢沒帶分片鍵就要問遍所有分片（scatter-gather），比較慢</li></ul>
+</section>
+<section class="sec" id="s53" data-part="mongodb"><h2>11. 常見陷阱</h2>
+<div class="table-wrap"><table><thead><tr><th>陷阱</th><th>說明</th></tr></thead><tbody><tr><td><code>{ field: null }</code></td><td>也會找到沒有這個欄位的文件</td></tr><tr><td>型別不同</td><td><code>&quot;540&quot;</code> 和 <code>540</code> 不相等，不會自動轉型</td></tr><tr><td>陣列等號</td><td><code>{ tags: &quot;a&quot; }</code> 是包含；<code>{ tags: [&quot;a&quot;] }</code> 是完全相等</td></tr><tr><td>陣列多條件</td><td>要同一個元素同時符合，用 <code>$elemMatch</code></td></tr><tr><td>時區</td><td>日期以 UTC 儲存，查詢與分組都要明確給時區</td></tr><tr><td><code>replaceOne</code> / <code>save()</code></td><td>整份取代，沒帶到的欄位會消失</td></tr><tr><td><code>updateOne</code></td><td>只更新一份</td></tr><tr><td>大 skip 分頁</td><td>越後面越慢，改用範圍條件分頁</td></tr><tr><td>JDBC 式的思維</td><td>硬把每張表變成一個集合、到處 <code>$lookup</code>，就失去文件資料庫的優勢</td></tr></tbody></table></div>
+</section>
+<section class="sec" id="s54" data-part="mongodb"><h2>12. Java / Spring Data MongoDB</h2>
+<div class="table-wrap"><table><thead><tr><th>工具</th><th>說明</th></tr></thead><tbody><tr><td>MongoDB Java Driver</td><td>官方驅動程式（展示台用的就是 sync 版）</td></tr><tr><td><code>MongoTemplate</code></td><td>Spring 的操作入口：<code>find(Query, Class)</code>、<code>updateFirst</code>、<code>aggregate</code></td></tr><tr><td><code>MongoRepository</code></td><td>依方法名稱產生查詢：<code>findByStatusOrderByOrderDateDesc(…)</code></td></tr><tr><td><code>@Document</code> / <code>@Id</code> / <code>@Field</code> / <code>@Indexed</code></td><td>對應集合、主鍵、欄位名稱、索引</td></tr><tr><td><code>Criteria</code> / <code>Query</code> / <code>Update</code></td><td>組條件：<code>Query.query(Criteria.where(&quot;status&quot;).is(&quot;paid&quot;))</code></td></tr></tbody></table></div>
+<p><span class="star" title="面試高頻">★</span> 常見坑：</p>
+<ul><li><code>repository.save(entity)</code> 是整份取代：只載入部分欄位的物件存回去，其他欄位就消失了。部分更新用 <code>MongoTemplate.updateFirst</code> + <code>Update.update(…)</code></li><li>Spring Data 預設會在文件裡多存一個 <code>_class</code> 欄位（記錄 Java 類別），可以用 <code>MappingMongoConverter</code> 關掉</li><li><code>@Indexed</code> 預設<strong>不會</strong>自動建立索引（Spring Boot 3 起要設定 <code>spring.data.mongodb.auto-index-creation=true</code>，正式環境建議用遷移工具建）</li><li><code>LocalDateTime</code> 沒有時區，存進 MongoDB 會被當成 UTC，讀回來可能差 8 小時</li></ul>
+</section>
+<section class="sec" id="s55" data-part="mongodb"><h2>13. <span class="star" title="面試高頻">★</span> 面試題速答</h2>
+<div class="table-wrap"><table><thead><tr><th>題目</th><th>重點</th></tr></thead><tbody><tr><td>MongoDB 和關聯式資料庫差在哪</td><td>文件模型、彈性 schema、內嵌取代 JOIN、水平擴展（分片）較容易</td></tr><tr><td>什麼時候該用 MongoDB</td><td>資料結構多變、讀寫以「整份文件」為單位、需要水平擴展；強關聯、複雜交易多的系統用關聯式較好</td></tr><tr><td>內嵌還是參照</td><td>一起讀就一起存；一對少量內嵌、一對很多或無限增長用參照</td></tr><tr><td><code>$elemMatch</code> 什麼時候用</td><td>陣列裡「同一個元素」要同時符合多個條件時</td></tr><tr><td>複合索引欄位順序</td><td>ESR：等值 → 排序 → 範圍</td></tr><tr><td>怎麼判斷查詢有沒有用索引</td><td>explain(&quot;executionStats&quot;)：IXSCAN vs COLLSCAN、docsExamined vs nReturned</td></tr><tr><td>MongoDB 支援交易嗎</td><td>單文件一律原子；多文件交易 4.0 起支援，需要副本集</td></tr><tr><td>副本集怎麼容錯</td><td>oplog 複製、Primary 掛掉自動選舉；write concern majority 避免資料回滾</td></tr><tr><td>分片鍵怎麼選</td><td>高基數、分布平均、常被查詢；避免單調遞增</td></tr><tr><td><code>_id</code> 一定要是 ObjectId 嗎</td><td>不用，任何不重複的值都可以（練習環境用的是 PostgreSQL 的整數 id）</td></tr><tr><td>16 MB 限制怎麼辦</td><td>改設計（參照、Subset、Bucket）；大檔案用 GridFS</td></tr></tbody></table></div>
+</section>
+<section class="sec" id="s56" data-part="mongodb"><h2>14. mongosh 常用指令</h2>
+<div class="table-wrap"><table><thead><tr><th>指令</th><th>作用</th></tr></thead><tbody><tr><td><code>mongosh &quot;mongodb://learner:learner-lab@localhost:27018/shop?authSource=admin&quot;</code></td><td>連到練習環境</td></tr><tr><td><code>docker exec -it mongo-lab mongosh -u admin -p admin-lab</code></td><td>從容器裡用管理員身分連線</td></tr><tr><td><code>show dbs</code>、<code>use shop</code>、<code>show collections</code></td><td>列出資料庫、切換、列出集合</td></tr><tr><td><code>db.orders.stats()</code>、<code>db.stats()</code></td><td>集合 / 資料庫的大小與統計</td></tr><tr><td><code>db.currentOp()</code>、<code>db.killOp(id)</code></td><td>查看 / 中止執行中的操作</td></tr><tr><td><code>db.setProfilingLevel(1, { slowms: 100 })</code></td><td>記錄超過 100 ms 的慢查詢到 <code>system.profile</code></td></tr><tr><td><code>it</code></td><td>顯示下一批結果（find 一次只顯示 20 筆）</td></tr></tbody></table></div>
+</section>
   </main>
 </div>
 <script>
@@ -701,6 +820,20 @@ function highlightRedis(text) {
   }).join("\n");
 }
 
+/** mongosh：字串、數字、$運算子、// 註解、db.集合.方法。 */
+function highlightMongo(text) {
+  const TOKEN = /(\/\/[^\n]*)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|(\$[A-Za-z]+)|(\b(?:db|ISODate|ObjectId|NumberDecimal|true|false|null)\b)|(\b\d+(?:\.\d+)?\b)|(\.[a-zA-Z]+(?=\())/g;
+  let out = "", last = 0, m;
+  while ((m = TOKEN.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    const [tok, cmt, str, op, word, num, method] = m;
+    const cls = cmt ? "hl-cmt" : str ? "hl-str" : op ? "hl-op" : word ? "hl-kw" : num ? "hl-num" : method ? "hl-fn" : "";
+    out += `<span class="${cls}">${esc(tok)}</span>`;
+    last = m.index + tok.length;
+  }
+  return out + esc(text.slice(last));
+}
+
 /** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
 function enhanceCode(root) {
   root.querySelectorAll("pre.code").forEach((pre) => {
@@ -709,7 +842,8 @@ function enhanceCode(root) {
     const code = pre.querySelector("code") ?? pre;
     const raw = code.textContent;
     if (pre.dataset.lang === "redis") code.innerHTML = highlightRedis(raw);
-    else if (pre.dataset.lang !== "text") code.innerHTML = highlightSQL(raw);
+    else if (pre.dataset.lang === "mongo") code.innerHTML = highlightMongo(raw);
+    else if (pre.dataset.lang === "sql" || pre.dataset.lang === undefined && !pre.closest(".doc")) code.innerHTML = highlightSQL(raw);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "copy";
