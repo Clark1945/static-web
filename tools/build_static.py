@@ -73,7 +73,7 @@ def markdown_to_html(md: str) -> tuple[str, list[dict]]:
             flush_para()
             title = line[4:].strip()
             sid = f"s{len(toc)}"
-            toc.append({"level": 3, "id": sid, "title": title})
+            toc.append({"level": 3, "id": sid, "title": title, "part": part})
             out.append(f'<h3 id="{sid}">{inline(title)}</h3>')
         elif line.startswith("## "):
             flush_para()
@@ -81,7 +81,7 @@ def markdown_to_html(md: str) -> tuple[str, list[dict]]:
                 out.append("</section>")
             title = line[3:].strip()
             sid = f"s{len(toc)}"
-            toc.append({"level": 2, "id": sid, "title": title})
+            toc.append({"level": 2, "id": sid, "title": title, "part": part})
             out.append(f'<section class="sec" id="{sid}" data-part="{part}"><h2>{inline(title)}</h2>')
             in_section = True
         elif line.startswith("# "):
@@ -92,8 +92,8 @@ def markdown_to_html(md: str) -> tuple[str, list[dict]]:
                 if in_section:
                     out.append("</section>")
                 title = line[2:].strip()
-                part = f"s{len(toc)}"
-                toc.append({"level": 1, "id": part, "title": title})
+                part = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or f"s{len(toc)}"   # 例如 #redis
+                toc.append({"level": 1, "id": part, "title": title, "part": part})
                 out.append(f'<section class="part-head" id="{part}" data-part="{part}"><h1>{inline(title)}</h1>')
                 in_section = True
         elif line.strip() == "---":
@@ -207,14 +207,21 @@ def build_cheatsheet():
     md = (ROOT / "CHEATSHEET.md").read_text(encoding="utf-8")
     content, toc = markdown_to_html(md)
     toc_html = "".join(
-        f'<a class="toc-{t["level"]}" href="#{t["id"]}">{inline(t["title"])}</a>' for t in toc)
+        f'<a class="toc-{t["level"]}" href="#{t["id"]}" data-part="{t["part"]}">{inline(t["title"])}</a>'
+        for t in toc if t["level"] > 1)
+    parts = [t for t in toc if t["level"] == 1]
+    tabs_html = "".join(
+        f'<a href="#{t["id"]}" data-tab="{t["id"]}">{html.escape(t["title"])}<span class="n" data-count="{t["id"]}"></span></a>'
+        for t in parts)
     body = f"""
 <header class="top">
   <div class="top-in">
-    <div><b class="brand">資料庫 CheatSheet</b><span class="sub">{" · ".join(t["title"] for t in toc if t["level"] == 1)} · 更新於 {date.today():%Y-%m-%d}</span></div>
+    <div class="title-block"><h1 class="page-title">CheatSheet</h1>
+      <span class="sub">資料庫面試速查表 · {len(parts)} 種資料庫 · 更新於 {date.today():%Y-%m-%d}</span></div>
     <label class="search"><span class="sr-only">搜尋</span>
-      <input id="q" type="search" placeholder="搜尋，例如 JSONB、視窗、NULL…" autocomplete="off"></label>
+      <input id="q" type="search" placeholder="搜尋所有資料庫，例如 JSONB、Lua、NULL…" autocomplete="off"></label>
   </div>
+  <nav class="db-tabs" id="dbtabs" aria-label="資料庫">{tabs_html}</nav>
 </header>
 <div class="layout">
   <nav class="toc" id="toc" aria-label="目錄">{toc_html}</nav>
@@ -225,7 +232,7 @@ def build_cheatsheet():
 </div>"""
     css = (Path(__file__).parent / "cheatsheet.css").read_text(encoding="utf-8")
     js = (Path(__file__).parent / "cheatsheet.js").read_text(encoding="utf-8")
-    (OUT / "cheatsheet.html").write_text(page("資料庫 CheatSheet", body, css, js), encoding="utf-8")
+    (OUT / "cheatsheet.html").write_text(page("CheatSheet", body, css, js), encoding="utf-8")
 
 
 def build_question_bank():

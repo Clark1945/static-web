@@ -1,14 +1,12 @@
 /* CheatSheet：左側目錄（跟著捲動標示目前章節）＋ 右側內文，內文寬度控制在好讀的範圍 */
 .layout { max-width: 1240px; margin: 0 auto; padding-inline: 20px; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 36px; }
 .toc {
-  position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 80px); overflow-y: auto;
+  position: sticky; top: 132px; align-self: start; max-height: calc(100vh - 148px); overflow-y: auto;
   padding-block: 24px; display: grid; gap: 1px; font-size: .86rem;
 }
 .toc a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-radius: 6px; border-left: 2px solid transparent; }
 .toc a:hover { color: var(--ink); background: var(--surface); }
 .toc a.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); font-weight: 500; }
-.toc a.toc-1 { color: var(--ink); font-weight: 700; font-size: .92rem; margin-top: 14px; padding-top: 6px; border-top: 1px solid var(--line); border-radius: 0; }
-.toc a.toc-1:first-child { margin-top: 0; border-top: 0; }
 .toc a.toc-3 { padding-left: 24px; font-size: .8rem; }
 .toc a[hidden] { display: none; }
 .toc a:focus-visible { outline: 2px solid var(--accent); }
@@ -35,9 +33,41 @@ blockquote { margin: 12px 0; padding: 10px 14px; background: var(--warn-soft); b
   .top-in { padding-inline: 16px; }
 }
 
-/* 大章節（每個資料庫一章） */
-.part-head { margin-top: 48px; padding: 18px 20px 6px; border-radius: 12px; background: var(--accent-soft); }
-.part-head:first-of-type { margin-top: 12px; }
+/* ---------- 大標題與資料庫分頁 ---------- */
+html { scroll-padding-top: 150px; }
+.title-block { display: grid; gap: 2px; }
+.page-title { margin: 0; font-size: 1.9rem; letter-spacing: .01em; line-height: 1.15; }
+.db-tabs { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; gap: 6px; overflow-x: auto; }
+.db-tabs a {
+  --db: var(--accent);
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px 10px; white-space: nowrap;
+  color: var(--muted); text-decoration: none; font-weight: 500; border-bottom: 3px solid transparent;
+}
+.db-tabs a::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--db); opacity: .45; }
+.db-tabs a[data-tab="postgresql"] { --db: #336791; }
+.db-tabs a[data-tab="redis"] { --db: #D82C20; }
+.db-tabs a[data-tab="mongodb"] { --db: #13AA52; }
+.db-tabs a:hover { color: var(--ink); }
+.db-tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--db); }
+.db-tabs a[aria-current="page"]::before { opacity: 1; }
+.db-tabs a.no-hit { opacity: .45; }
+.db-tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.db-tabs .n:not(:empty) { font-size: .72rem; font-weight: 600; padding: 0 7px; border-radius: 999px; background: var(--mark); color: var(--ink); }
+@media (prefers-color-scheme: dark) {
+  .db-tabs a[data-tab="postgresql"] { --db: #6FA3D3; }
+  .db-tabs a[data-tab="redis"] { --db: #FF7B6E; }
+  .db-tabs a[data-tab="mongodb"] { --db: #4FD18A; }
+}
+
+/* 每個資料庫分頁的開頭 */
+.part-head { margin-top: 8px; padding: 16px 20px 6px; border-radius: 12px; background: var(--accent-soft); }
 .part-head[hidden] { display: none; }
-.part-head h1 { margin: 0 0 6px; font-size: 1.6rem; color: var(--accent); }
+.part-head h1 { margin: 0 0 6px; font-size: 1.5rem; color: var(--accent); }
 .part-head blockquote { background: var(--surface); }
+.sec:first-of-type, .part-head + .sec { border-top: 0; }
+
+@media (max-width: 900px) {
+  .page-title { font-size: 1.5rem; }
+  .db-tabs { padding-inline: 16px; }
+  html { scroll-padding-top: 170px; }
+}

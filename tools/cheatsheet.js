@@ -1,34 +1,85 @@
-// CheatSheet：程式碼上色、目錄標示目前章節、搜尋（隱藏不相關的章節並標出關鍵字）
+// CheatSheet：上方切換資料庫分頁、左側目錄只列目前資料庫的章節、搜尋涵蓋所有資料庫
 (() => {
   const doc = document.getElementById("doc");
   const toc = document.getElementById("toc");
+  const tabsNav = document.getElementById("dbtabs");
+  const input = document.getElementById("q");
+  const hits = document.getElementById("hits");
   const sections = [...doc.querySelectorAll(".sec")];
   const partHeads = [...doc.querySelectorAll(".part-head")];
+  const parts = partHeads.map((p) => p.id);
+  const tocLinks = [...toc.querySelectorAll("a")];
+  const links = new Map(tocLinks.map((a) => [a.getAttribute("href").slice(1), a]));
+  const TAB_KEY = "cheatsheet-tab";
   enhanceCode(doc);
 
-  // 目錄：標示目前讀到的章節
-  const links = new Map([...toc.querySelectorAll("a")].map((a) => [a.getAttribute("href").slice(1), a]));
-  const headings = [...doc.querySelectorAll("h1, h2, h3")].map((h) => (h.tagName === "H3" ? h : h.parentElement));
+  // 每一節原本的內容（已上色、不含複製按鈕），搜尋時從這裡還原再標出關鍵字
+  const original = new Map(sections.map((s) => {
+    const clone = s.cloneNode(true);
+    clone.querySelectorAll(".copy").forEach((b) => b.remove());
+    return [s, clone.innerHTML];
+  }));
+
+  let active = parts[0];
+  let query = "";
+  const matched = new Set(sections);
+
+  // ---------- 分頁 ----------
+  function partOf(id) {
+    if (parts.includes(id)) return id;
+    const el = document.getElementById(id);
+    return el?.closest("[data-part]")?.dataset.part ?? null;
+  }
+
+  function render() {
+    for (const p of partHeads) p.hidden = p.id !== active;
+    for (const s of sections) s.hidden = s.dataset.part !== active || !matched.has(s);
+    for (const a of tocLinks) {
+      const sec = document.getElementById(a.getAttribute("href").slice(1))?.closest(".sec");
+      a.hidden = a.dataset.part !== active || (sec && !matched.has(sec));
+    }
+    tabsNav.querySelectorAll("[data-tab]").forEach((t) => {
+      const on = t.dataset.tab === active;
+      t.setAttribute("aria-current", on ? "page" : "false");
+      const n = sections.filter((s) => s.dataset.part === t.dataset.tab && matched.has(s)).length;
+      t.querySelector("[data-count]").textContent = query ? n : "";
+      t.classList.toggle("no-hit", Boolean(query) && n === 0);
+    });
+    document.title = `${partHeads.find((p) => p.id === active)?.querySelector("h1").textContent ?? ""} · CheatSheet`;
+  }
+
+  function openPart(id, scrollTo) {
+    active = parts.includes(id) ? id : parts[0];
+    try { localStorage.setItem(TAB_KEY, active); } catch { /* 無法儲存就算了 */ }
+    render();
+    if (scrollTo) document.getElementById(scrollTo)?.scrollIntoView();
+    else window.scrollTo(0, 0);
+  }
+
+  tabsNav.addEventListener("click", (e) => {
+    const a = e.target.closest("[data-tab]");
+    if (!a) return;
+    e.preventDefault();
+    try { history.replaceState(null, "", "#" + a.dataset.tab); } catch { /* 有些環境不允許改網址 */ }
+    openPart(a.dataset.tab);
+  });
+
+  // ---------- 目錄：標示目前讀到的章節 ----------
   const observer = new IntersectionObserver((entries) => {
     for (const e of entries) {
       if (!e.isIntersecting) continue;
-      toc.querySelectorAll("a.active").forEach((a) => a.classList.remove("active"));
+      tocLinks.forEach((a) => a.classList.remove("active"));
       links.get(e.target.id)?.classList.add("active");
     }
-  }, { rootMargin: "-80px 0px -70% 0px" });
-  headings.forEach((h) => observer.observe(h));
+  }, { rootMargin: "-140px 0px -65% 0px" });
+  const observeAll = () => doc.querySelectorAll(".sec, h3[id]").forEach((h) => observer.observe(h));
+  observeAll();
 
-  // 搜尋
-  const original = new Map(sections.map((s) => [s, s.innerHTML]));
-  const input = document.getElementById("q");
-  const hits = document.getElementById("hits");
-  let timer = null;
-
+  // ---------- 搜尋（所有資料庫） ----------
   function markText(root, q) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const nodes = [];
     while (walker.nextNode()) {
-      if (walker.currentNode.parentElement.closest(".copy")) continue;
       if (walker.currentNode.nodeValue.toLowerCase().includes(q)) nodes.push(walker.currentNode);
     }
     for (const node of nodes) {
@@ -47,34 +98,7 @@
     }
   }
 
-  function search() {
-    const q = input.value.trim().toLowerCase();
-    let shown = 0;
-    for (const s of sections) {
-      s.innerHTML = original.get(s);
-      const match = !q || s.textContent.toLowerCase().includes(q);
-      s.hidden = !match;
-      if (match) {
-        shown++;
-        if (q) markText(s, q);
-      }
-      const ids = [s.id, ...[...s.querySelectorAll("h3")].map((h) => h.id)];
-      ids.forEach((id) => { const a = links.get(id); if (a) a.hidden = !match; });
-    }
-    // 大章節：底下有任何一節符合才顯示
-    for (const p of partHeads) {
-      const any = sections.some((s) => s.dataset.part === p.id && !s.hidden);
-      p.hidden = !any;
-      const a = links.get(p.id); if (a) a.hidden = !any;
-    }
-    enhanceCodeKeepColors();
-    hits.hidden = !q;
-    hits.textContent = shown ? `找到 ${shown} 個章節包含「${input.value.trim()}」` : `沒有章節包含「${input.value.trim()}」`;
-    headings.forEach((h) => observer.observe(h));
-  }
-
-  // 還原 innerHTML 後程式碼已經是上色過的 HTML，只需要補回複製按鈕
-  function enhanceCodeKeepColors() {
+  function addCopyButtons() {
     doc.querySelectorAll("pre.code").forEach((pre) => {
       if (pre.querySelector(".copy")) return;
       const raw = pre.querySelector("code").textContent;
@@ -89,15 +113,47 @@
     });
   }
 
-  // 第一次上色後才記下原始內容（含上色結果、不含按鈕）
-  sections.forEach((s) => {
-    const clone = s.cloneNode(true);
-    clone.querySelectorAll(".copy").forEach((b) => b.remove());
-    original.set(s, clone.innerHTML);
-  });
+  function search() {
+    query = input.value.trim().toLowerCase();
+    matched.clear();
+    for (const s of sections) {
+      s.innerHTML = original.get(s);
+      if (!query || s.textContent.toLowerCase().includes(query)) {
+        matched.add(s);
+        if (query) markText(s, query);
+      }
+    }
+    addCopyButtons();
+    // 目前的資料庫沒有結果、別的資料庫有，就自動切過去
+    const inActive = sections.some((s) => s.dataset.part === active && matched.has(s));
+    if (query && !inActive) {
+      const other = parts.find((p) => sections.some((s) => s.dataset.part === p && matched.has(s)));
+      if (other) active = other;
+    }
+    render();
+    const total = matched.size;
+    hits.hidden = !query;
+    hits.textContent = total
+      ? `「${input.value.trim()}」在所有資料庫共找到 ${total} 節，分頁上的數字是各資料庫的節數。`
+      : `沒有任何章節包含「${input.value.trim()}」。`;
+    observeAll();
+  }
 
+  let timer = null;
   input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(search, 150); });
   document.addEventListener("keydown", (e) => {
     if (e.key === "/" && document.activeElement !== input) { e.preventDefault(); input.focus(); }
+  });
+
+  // ---------- 初始：網址的 #資料庫 或 #章節，否則用上次看的分頁 ----------
+  const hash = location.hash.slice(1);
+  let saved = null;
+  try { saved = localStorage.getItem(TAB_KEY); } catch { /* 無法讀取就用預設 */ }
+  const fromHash = hash ? partOf(hash) : null;
+  openPart(fromHash ?? saved ?? parts[0], fromHash && hash !== fromHash ? hash : null);
+  window.addEventListener("hashchange", () => {
+    const id = location.hash.slice(1);
+    const p = partOf(id);
+    if (p) openPart(p, id !== p ? id : null);
   });
 })();
