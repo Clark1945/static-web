@@ -11,9 +11,15 @@ const SQL_KEYWORDS = new Set(`
   gin btree hash concurrently if only like ilike any array for share zone at time cast varchar char smallint
   identity generated always schema role grant usage to owner vacuum`.trim().split(/\s+/));
 
+// CQL：SQL 的關鍵字再加上 Cassandra 特有的
+const CQL_KEYWORDS = new Set([...SQL_KEYWORDS, ...`
+  keyspace keyspaces allow filtering ttl writetime token clustering frozen counter batch apply logged unlogged
+  static list map type contains key per describe consistency tracing materialized view custom timeuuid uuid
+  double float decimal varint tinyint blob inet replication quorum serial truncate expand copy`.trim().split(/\s+/)]);
+
 const SQL_TOKEN = /(--[^\n]*)|(\/\*[\s\S]*?\*\/)|('(?:[^']|'')*')|("(?:[^"]|"")*")|(->>|->|#>>|#>|@>|<@|&&|\|\||::|\?\||\?&)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
 
-function highlightSQL(text) {
+function highlightSQL(text, keywords = SQL_KEYWORDS) {
   let out = "", last = 0, m;
   SQL_TOKEN.lastIndex = 0;
   while ((m = SQL_TOKEN.exec(text))) {
@@ -26,7 +32,7 @@ function highlightSQL(text) {
     else if (num) out += `<span class="hl-num">${esc(tok)}</span>`;
     else if (word) {
       const isCall = /^\s*\(/.test(text.slice(m.index + tok.length));
-      if (SQL_KEYWORDS.has(word.toLowerCase()) && !(isCall && !/^(in|exists|any|values|over|filter|on|using|as|array|interval)$/i.test(word))) {
+      if (keywords.has(word.toLowerCase()) && !(isCall && !/^(in|exists|any|values|over|filter|on|using|as|array|interval)$/i.test(word))) {
         out += `<span class="hl-kw">${esc(tok)}</span>`;
       } else if (isCall) out += `<span class="hl-fn">${esc(tok)}</span>`;
       else out += esc(tok);
@@ -73,6 +79,7 @@ function enhanceCode(root) {
     const raw = code.textContent;
     if (pre.dataset.lang === "redis") code.innerHTML = highlightRedis(raw);
     else if (pre.dataset.lang === "mongo") code.innerHTML = highlightMongo(raw);
+    else if (pre.dataset.lang === "cql") code.innerHTML = highlightSQL(raw, CQL_KEYWORDS);
     else if (pre.dataset.lang === "sql" || pre.dataset.lang === undefined && !pre.closest(".doc")) code.innerHTML = highlightSQL(raw);
     const btn = document.createElement("button");
     btn.type = "button";

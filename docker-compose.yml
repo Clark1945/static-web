@@ -40,5 +40,35 @@ services:
     volumes:
       - ./mongo/init-users.js:/docker-entrypoint-initdb.d/init-users.js:ro
 
+  cassandra:
+    image: cassandra:5.0
+    container_name: cassandra-lab
+    # 啟動前改設定檔：開啟帳號密碼與權限（預設是誰都能做任何事）、TRUNCATE / DROP 不留快照
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        sed -i -e 's/^authenticator:.*/authenticator: PasswordAuthenticator/' \
+               -e 's/^authorizer:.*/authorizer: CassandraAuthorizer/' \
+               -e 's/^auto_snapshot:.*/auto_snapshot: false/' /etc/cassandra/cassandra.yaml
+        exec docker-entrypoint.sh cassandra -f
+    environment:
+      CASSANDRA_CLUSTER_NAME: lab
+      CASSANDRA_DC: dc1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      MAX_HEAP_SIZE: 1G              # 預設會吃掉主機記憶體的 1/4，練習用不需要那麼多
+      HEAP_NEWSIZE: 200M
+      TZ: Asia/Taipei
+    ports:
+      - "9043:9042"                  # 9042 留給本機可能另外安裝的 Cassandra
+    volumes:
+      - cassandradata:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD", "cqlsh", "-u", "cassandra", "-p", "cassandra", "-e", "SELECT now() FROM system.local"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
 volumes:
+  cassandradata:
   pgdata:

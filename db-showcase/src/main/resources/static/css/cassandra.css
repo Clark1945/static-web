@@ -1,0 +1,58 @@
+/* Cassandra 頁面：資料表卡片（主鍵標記）、CQL 結果、伺服器警告、查詢追蹤、一致性表格
+   分頁、題目、集合卡片（.coll-grid）、explain 的統計卡片等共用樣式沿用 postgres.css、redis.css、mongo.css */
+
+/* ---------- 資料表卡片 ---------- */
+.coll-card { grid-template-columns: minmax(0, 1fr); }
+.coll-card .try { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.coll-card .answers { color: var(--ink); }
+.coll-card .answers b { color: var(--accent); font-weight: 600; }
+.coll-card table.cols { border-collapse: collapse; font-size: .8rem; width: 100%; }
+.coll-card table.cols td { padding: 2px 8px 2px 0; vertical-align: top; overflow-wrap: anywhere; }
+.coll-card table.cols td:first-child { white-space: nowrap; }
+.coll-card details pre.code { white-space: pre; overflow-x: auto; font-size: .74rem; }
+.key-badge { display: inline-block; font-size: .7rem; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.key-badge.pk { background: var(--pk-soft); color: var(--pk); }
+.key-badge.ck { background: var(--fk-soft); color: var(--fk); }
+
+/* ---------- CQL 結果 ---------- */
+.cql-transcript { display: grid; gap: 14px; min-width: 0; }
+.cql-step { display: grid; gap: 6px; min-width: 0; }
+.cql-cmd { font-family: var(--font-mono); font-size: .82rem; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.cql-cmd code { white-space: pre-wrap; overflow-wrap: anywhere; flex: 1 1 20em; min-width: 0; }
+.cql-cmd .r-prompt { color: var(--accent); font-weight: 600; }
+.cql-cmd .r-time { color: var(--muted); font-size: .75rem; margin-left: auto; }
+.cql-result td { font-family: var(--font-mono); font-size: .8rem; white-space: nowrap; }
+.cql-result { max-height: 420px; }
+.cql-meta { font-size: .75rem; color: var(--muted); }
+.cql-info { font-size: .85rem; color: var(--muted); font-family: var(--font-mono); }
+.cql-warn { background: var(--pk-soft); color: var(--pk); border-radius: 8px; padding: 8px 12px; font-size: .82rem; overflow-wrap: anywhere; }
+.cql-applied { border-radius: 8px; padding: 6px 12px; font-size: .85rem; font-weight: 600; }
+.cql-applied.yes { background: var(--fk-soft); color: var(--fk); }
+.cql-applied.no { background: var(--pk-soft); color: var(--pk); }
+.c-str { color: var(--fk); }
+.c-num { color: var(--pk); }
+.c-bool { color: var(--accent); font-weight: 600; }
+.c-null { color: var(--muted); font-style: italic; }
+.c-key { color: var(--muted); }
+
+/* ---------- 查詢追蹤 ---------- */
+.trace { display: grid; gap: 8px; min-width: 0; }
+.trace-stats .stat { min-width: 130px; padding: 8px 14px; }
+.trace-stats .stat b { font-size: 1.15rem; }
+.sql-card .trace-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sql-card .trace-stats .stat { min-width: 0; }
+.sql-card .trace-stats .stat b { font-size: 1rem; }
+.stat.stat-good { border-color: var(--fk); background: var(--fk-soft); }
+.stat.stat-good b { color: var(--fk); }
+.stat.stat-warn { border-color: var(--pk); background: var(--pk-soft); }
+.stat.stat-warn b { color: var(--pk); }
+.trace details summary { cursor: pointer; color: var(--accent); font-size: .85rem; }
+.trace-events { max-height: 360px; margin-top: 6px; }
+.trace-events td { font-family: var(--font-mono); font-size: .76rem; overflow-wrap: anywhere; }
+.trace-note { font-size: .8rem; margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
+
+/* ---------- 一致性表格 ---------- */
+.cl-table td { font-size: .8rem; overflow-wrap: anywhere; white-space: normal; min-width: 4em; }
+td.ok-cell { color: var(--fk); }
+td.bad-cell { color: var(--danger); }
+.sql-card .trace, .sql-card .cql-result, .sql-card .error { margin-top: 8px; }

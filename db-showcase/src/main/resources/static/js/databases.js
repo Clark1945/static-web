@@ -18,7 +18,7 @@ export const DATABASES = [
   {
     id: "cassandra", name: "Apache Cassandra", kind: "寬欄", mono: "Ca", color: "#1287B1", ink: "#FFFFFF",
     tagline: "分散式寬欄資料庫，擅長大量寫入、多機房且不停機。",
-    status: "planned",
+    status: "ready", page: () => import("./pages/cassandra/index.js"),
   },
   {
     id: "neo4j", name: "Neo4j", kind: "圖", mono: "N4", color: "#018BFF", ink: "#FFFFFF",

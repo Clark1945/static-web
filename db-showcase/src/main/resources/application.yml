@@ -6,6 +6,9 @@ spring:
     url: jdbc:postgresql://localhost:5434/shop
     username: lab
     password: lab
+  autoconfigure:
+    # Cassandra 的連線自己管理（CassandraSessions），不要讓 Spring Boot 另外建一個連到 9042 的
+    exclude: org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration
   web:
     resources:
       cache:
@@ -28,4 +31,13 @@ showcase:
     admin-password: admin-lab     # root：載入資料、重置、實驗室
     reader-password: reader-lab   # 只能讀 shop：批改查詢題
     learner-password: learner-lab # 可讀寫 shop、scratch：主控台與寫入題
-  # 之後串接其他資料庫時，各自的設定加在這裡（cassandra、neo4j…）
+  cassandra:                      # cassandra-lab 容器
+    host: localhost
+    port: 9043
+    datacenter: dc1
+    admin-user: cassandra         # 映像檔內建的超級使用者：建表、建角色、載入資料、實驗室
+    admin-password: cassandra
+    reader-password: reader-lab   # 只能讀 shop：批改查詢題
+    learner-password: learner-lab # 可讀寫 shop：指令主控台
+    sandbox-password: sandbox-lab # 只能讀寫 scratch：批改寫入題
+  # 之後串接其他資料庫時，各自的設定加在這裡（neo4j…）

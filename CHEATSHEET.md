@@ -1183,3 +1183,291 @@ try (ClientSession session = client.startSession()) {
 | `db.currentOp()`、`db.killOp(id)` | 查看 / 中止執行中的操作 |
 | `db.setProfilingLevel(1, { slowms: 100 })` | 記錄超過 100 ms 的慢查詢到 `system.profile` |
 | `it` | 顯示下一批結果（find 一次只顯示 20 筆） |
+
+# Cassandra
+
+> 範例都來自練習環境（`cassandra-lab` 容器，port 9043，keyspace `shop`），可以直接貼到展示台的「cqlsh 主控台」執行。資料是從 PostgreSQL 轉進來的，練壞了按「重新載入資料」。
+
+## 1. ★ 基本觀念與 SQL 對照
+
+| SQL | Cassandra |
+|---|---|
+| database / schema | keyspace（同時決定複寫策略與複本數） |
+| table | table（舊稱 column family） |
+| row | row（屬於某個 partition） |
+| primary key | partition key ＋ clustering columns |
+| JOIN | 沒有。查詢需要的資料要事先放進同一張表（反正規化） |
+| GROUP BY / ORDER BY | 只能用主鍵欄位，而且有很多限制 |
+| transaction | 沒有一般交易；只有單一分區的輕量交易（LWT）與 BATCH |
+
+- **無主架構（masterless）**：每個節點地位相同，沒有單點故障；任何節點都能當「協調節點」接收請求
+- **一致性雜湊環**：分區鍵經過雜湊（Murmur3）得到 token，token 決定資料放在哪些節點；每個節點負責很多段 token 範圍（vnodes，預設 `num_tokens: 16`）
+- **寫入路徑**：commitlog（循序寫入，保證持久）→ memtable（記憶體）→ 滿了 flush 成不可修改的 SSTable。寫入不需要先讀，所以非常快
+- **讀取路徑**：memtable ＋ 可能好幾個 SSTable 合併；用 bloom filter 跳過不含這個分區的 SSTable，再用分區索引找到位置
+- **compaction**：背景把多個 SSTable 合併成一個，順便清掉過期資料與墓碑
+- 適合：大量寫入、時間序列、事件紀錄、使用者活動、IoT、需要多機房且不能停機的服務
+- 不適合：需要 JOIN、隨意查詢、交易、強一致的計數（庫存、帳戶餘額）
+
+## 2. ★ 主鍵：分區鍵與叢集鍵
+
+```cql
+CREATE TABLE orders_by_customer (
+  customer_id int,
+  order_time  timestamp,
+  order_id    int,
+  status      text,
+  total       int,
+  PRIMARY KEY ((customer_id), order_time, order_id)
+) WITH CLUSTERING ORDER BY (order_time DESC, order_id ASC);
+```
+
+| 部分 | 寫法 | 作用 |
+|---|---|---|
+| 分區鍵 | `(customer_id)`，複合的寫成 `((a, b), …)` | 決定資料放在**哪個節點**；同一個分區的資料存在一起 |
+| 叢集鍵 | `order_time, order_id` | 決定資料在**分區裡的順序**，可以用範圍查詢 |
+| 主鍵 | 分區鍵 ＋ 叢集鍵 | 唯一識別一列；寫入同樣的主鍵就是覆蓋 |
+
+- `PRIMARY KEY (a, b, c)`：a 是分區鍵，b、c 是叢集鍵；`PRIMARY KEY ((a, b), c)`：a、b 一起當分區鍵
+- ★ 叢集鍵要能讓主鍵唯一：只用 `order_time` 時，同一毫秒的兩筆訂單會互相覆蓋，所以加上 `order_id`
+- ★ 分區大小建議：100 MB 以內、10 萬列以內。會無限長大的分區（例如「所有訂單」「某個感測器的所有資料」）要分桶
+- static 欄位：`col text STATIC`，同一個分區的所有列共用一個值（例如分區層級的屬性）
+
+## 3. ★ 查詢先行的資料模型
+
+關聯式是「先設計資料，再寫查詢」；Cassandra 是「**先列出要怎麼查，再為每一種查詢設計一張表**」。
+
+| 查詢 | 表 | 主鍵 |
+|---|---|---|
+| 用訂單編號查訂單 | `orders` | `(order_id)` |
+| 某會員的訂單，新的在前 | `orders_by_customer` | `((customer_id), order_time DESC, order_id)` |
+| 某一天的訂單 | `orders_by_day` | `((order_day), order_time, order_id)` |
+| 某分類的商品，價格由高到低 | `products_by_category` | `((category), price DESC, product_id)` |
+| 用 email 登入 | `customers_by_email` | `(email)` |
+
+- 同一份資料寫進好幾張表是常態（寫入便宜、讀取跨分區才貴）；用 logged BATCH 讓多張表最終一致
+- **時間分桶**：`((sensor_id, day), ts)`、`((order_day), order_time)`，讓分區大小固定
+- **熱點**：分區鍵的值分布要平均。例如用「狀態」當分區鍵，`delivered` 那個分區會非常大
+- 一對多的子資料可以用集合或 UDT 放在同一列（`list<frozen<order_item>>`），數量少、一起讀時適用
+
+## 4. 查詢：SELECT 的規則
+
+```cql
+SELECT * FROM orders_by_customer WHERE customer_id = 4242;                 -- 單一分區
+SELECT * FROM orders_by_customer WHERE customer_id = 1 LIMIT 3;            -- 分區已排好序，最新 3 筆
+SELECT * FROM orders_by_customer
+WHERE customer_id = 1 AND order_time >= '2025-01-01 00:00:00+0800';       -- 叢集鍵範圍
+SELECT * FROM orders_by_customer WHERE customer_id = 4242 ORDER BY order_time ASC;   -- 反向讀取
+SELECT * FROM products WHERE product_id IN (540, 541, 542);                -- 分區鍵 IN
+SELECT order_day, COUNT(*) FROM orders_by_day
+WHERE order_day IN ('2026-09-01', '2026-09-02') GROUP BY order_day;      -- GROUP BY 只能用主鍵
+SELECT * FROM orders_by_day WHERE order_day IN ('2026-09-01', '2026-09-02') PER PARTITION LIMIT 1;
+SELECT DISTINCT category FROM products_by_category;                        -- 只能用在分區鍵
+SELECT name, WRITETIME(name), TTL(city) FROM customers WHERE customer_id = 4242;
+SELECT customer_id, token(customer_id) FROM customers LIMIT 5;             -- 看分區的 token
+```
+
+| 規則 | 說明 |
+|---|---|
+| ★ 分區鍵要完整給 | 用 `=` 或 `IN`；沒給就是全表掃描，會被拒絕（除非加 `ALLOW FILTERING`） |
+| 叢集鍵從左邊開始限定 | 不能跳過前面的叢集鍵；前一個用了範圍，後面的就不能再限定 |
+| 範圍只能用在叢集鍵 | 分區鍵只能 `=` / `IN`（或 `token()` 範圍） |
+| ORDER BY | 只能用叢集鍵，而且只能是建表的順序或完全相反 |
+| 非主鍵欄位 | 不能放在 WHERE，除非有索引（SAI）或 `ALLOW FILTERING` |
+| aggregate | `COUNT`、`SUM`、`AVG`、`MIN`、`MAX`；★ `AVG(int)` 回傳 int（小數被捨去），要先 `CAST(x AS double)` |
+| PER PARTITION LIMIT | 每個分區只取前 n 列，Cassandra 版的「每組前 n 名」 |
+
+★ `ALLOW FILTERING` 的成本 = 為了找到結果要讀過的列數。限定了分區鍵之後在分區內過濾很便宜；沒有分區鍵就是全表掃描。
+
+★ 時間字串沒寫時區時，用**伺服器的時區**解讀。一律寫清楚：`'2026-09-01 20:00:00+0800'`。timestamp 一律以 UTC 儲存（毫秒精度）。
+
+## 5. 寫入：INSERT、UPDATE、DELETE
+
+```cql
+INSERT INTO customers_by_email (email, customer_id, name) VALUES ('a@example.com', 1, '王小明');
+UPDATE products SET stock = 0, tags = tags + {'缺貨'} WHERE product_id = 540;
+UPDATE products SET specs['color'] = '黑' WHERE product_id = 540;            -- map 的單一 key
+UPDATE customers USING TTL 86400 SET vip_level = 'gold' WHERE customer_id = 4242;
+INSERT INTO kv (k, v) VALUES ('session:1', '…') USING TTL 1800;             -- 整列 30 分鐘後過期
+DELETE birth_date FROM customers WHERE customer_id = 4242;                   -- 刪一個欄位
+DELETE FROM orders_by_customer
+WHERE customer_id = 1 AND order_time < '2023-01-01 00:00:00+0800';          -- 範圍刪除
+UPDATE product_sales SET units = units + 2 WHERE product_id = 540;           -- 計數器
+```
+
+- ★ **INSERT 和 UPDATE 都是 upsert**：寫入前不會先讀，主鍵已存在就覆蓋、不存在就新增，不會報錯
+- ★ **last write wins**：每個欄位值（cell）都帶著寫入時間戳記，讀取時時間戳記大的勝出，跟執行順序無關（`USING TIMESTAMP` 可以指定）。各台應用程式伺服器的時鐘要同步
+- ★ **TTL 是設在每個 cell 上**：UPDATE 只對這次寫的欄位設 TTL；要整列過期就用 INSERT … USING TTL，或建表時設 `default_time_to_live`
+- ★ **寫 null = 刪除 = 墓碑**：沒有值的欄位不要寫（driver 4 的 prepared statement 可以讓參數保持 unset）
+- 計數器：只能 `UPDATE … SET c = c + n`，不能 INSERT、不能設 TTL、表裡除了主鍵只能有 counter 欄位；重試可能重複加，不是冪等的
+
+## 6. 資料型別
+
+| 類別 | 型別 |
+|---|---|
+| 文字 | `text`（= `varchar`）、`ascii` |
+| 整數 | `tinyint` `smallint` `int` `bigint` `varint`（任意長度） |
+| 小數 | `float` `double` `decimal`（金額用 decimal） |
+| 時間 | `timestamp`（毫秒）、`date`、`time`、`duration` |
+| 識別 | `uuid`、`timeuuid`（含時間，可依時間排序，`now()` 產生） |
+| 其他 | `boolean` `blob` `inet` `counter` `vector<float, n>`（5.0，向量搜尋） |
+| 集合 | `list<T>`（有順序、可重複）、`set<T>`（不重複、排序）、`map<K, V>` |
+| 自訂 | UDT（`CREATE TYPE`）、`tuple<…>`、`frozen<…>`（整個當成一個值，只能整個換掉） |
+
+- 集合適合少量資料（幾十個以內），整個集合會一起讀出來
+- ★ `tags = {'a'}` 是整個換掉（會先寫一個墓碑）；`tags = tags + {'a'}` 只新增元素
+- list 的 `+` 會重複加入；set 不會
+
+## 7. ★ 墓碑與 compaction
+
+- SSTable 寫入後不會修改，**刪除是寫入一個墓碑（tombstone）**；DELETE、寫 null、TTL 過期、整個換掉集合都會產生墓碑
+- 讀取時要讀到墓碑才知道資料被刪了：超過 `tombstone_warn_threshold`（1,000）會警告，超過 `tombstone_failure_threshold`（100,000）查詢直接失敗
+- 墓碑要等 `gc_grace_seconds`（預設 10 天）過後、compaction 時才清掉。這段時間是給下線的複本回來時同步刪除，否則被刪的資料會「復活」（zombie）；所以 **repair 一定要在 gc_grace_seconds 內跑完一輪**
+- ★ 範圍刪除只寫一個範圍墓碑；逐筆刪除每一列一個墓碑
+- ★ 反模式：把 Cassandra 當佇列（一直寫入再刪除）、頻繁更新後又刪除
+
+| compaction 策略 | 適合 |
+|---|---|
+| STCS（SizeTiered，預設） | 寫入為主 |
+| LCS（Leveled） | 讀取為主、常更新；讀取時要碰的 SSTable 少，但 compaction 的 I/O 多 |
+| TWCS（TimeWindow） | 時間序列＋TTL：同一時間窗的資料放一起，整個過期後整個檔案丟掉 |
+| UCS（Unified，5.0） | 可以調整成接近上面任何一種，新版建議 |
+
+## 8. ★ 複寫與一致性等級
+
+```cql
+CREATE KEYSPACE shop WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 3, 'dc2': 3};
+CONSISTENCY QUORUM;     -- cqlsh 指令：之後的請求用 QUORUM
+```
+
+- **RF（複本數）**：每份資料存幾份。正式環境常用 3；`NetworkTopologyStrategy` 可以每個機房各設
+- **CL（一致性等級）**：每一次讀寫各自指定「要幾個複本回應才算成功」
+
+| CL | 需要幾個複本回應 |
+|---|---|
+| `ONE` / `TWO` / `THREE` | 1 / 2 / 3 個 |
+| `QUORUM` | ⌊RF / 2⌋ + 1（RF = 3 時是 2），跨所有機房計算 |
+| `LOCAL_QUORUM` | 本地機房的 quorum，不必等跨機房的延遲（最常用） |
+| `EACH_QUORUM` | 每個機房各自達到 quorum（寫入用） |
+| `ALL` | 全部複本，任何一台掛掉就失敗 |
+| `ANY` | 只用在寫入：連 hint 都算成功 |
+
+- ★ **R + W > RF 就是強一致**：讀寫都用 QUORUM（2 + 2 > 3），讀到的複本裡一定有最新的那份
+- 寫 ONE、讀 ONE：最快、最終一致，可能讀到舊資料
+- 複本不足時直接失敗：`UnavailableException: … QUORUM (2 required but only 1 alive)`
+- 修復機制：**hinted handoff**（複本暫時掛掉時，協調節點先記下 hint，回來後補寫，預設保留 3 小時）、**read repair**（讀取時發現複本不一致就修正）、**anti-entropy repair**（`nodetool repair`，定期全面比對）
+- CAP：Cassandra 是 AP 系統，但一致性可以依每個請求調整（tunable consistency）
+
+## 9. ★ 輕量交易（LWT）與 BATCH
+
+```cql
+INSERT INTO customers_by_email (email, customer_id, name) VALUES ('a@example.com', 1, '王小明') IF NOT EXISTS;
+UPDATE products SET price = 27999 WHERE product_id = 540 IF price = 30000;   -- compare-and-set
+UPDATE products SET stock = 9 WHERE product_id = 540 IF EXISTS;
+
+BEGIN BATCH
+  INSERT INTO customers (customer_id, name, email) VALUES (99999, '測試', 't@example.com');
+  INSERT INTO customers_by_email (email, customer_id, name) VALUES ('t@example.com', 99999, '測試');
+APPLY BATCH;
+```
+
+- **LWT**：用 Paxos 達成「先檢查再寫入」，回傳 `[applied]`（失敗時附上目前的值）。只限單一分區；延遲是一般寫入的好幾倍，衝突多時會一直重試
+- 讀取 LWT 寫入的資料用 `SERIAL` / `LOCAL_SERIAL`
+- ★ 同一份資料不要混用 LWT 與一般寫入（一般寫入不經過 Paxos，會破壞 LWT 的保證）
+- **logged BATCH**（預設）：先寫進 batchlog，保證全部「最終都會套用」，用來維持反正規化的多張表一致；**不是交易**：沒有隔離、不能 ROLLBACK
+- **unlogged BATCH**：只有同一個分區時才合理（一次寫入）
+- ★ BATCH 不是用來加速的：跨很多分區的 batch 會壓垮協調節點（`batch_size_warn_threshold` 5 KiB、`batch_size_fail_threshold` 50 KiB）
+- 庫存、餘額這種要「條件扣減」的資料，通常放在關聯式資料庫或 Redis
+
+## 10. 索引：SAI、二級索引、物化視圖
+
+```cql
+CREATE INDEX orders_customer_idx ON orders (customer_id) USING 'sai';
+CREATE INDEX products_tags_idx ON products (tags) USING 'sai';     -- 集合：CONTAINS
+SELECT * FROM products WHERE tags CONTAINS '熱銷' AND price < 1000;  -- 多個 SAI 條件取交集（price 也要有索引）
+DROP INDEX orders_customer_idx;
+```
+
+- **SAI**（Storage-Attached Index，5.0）：索引跟著每個 SSTable 建立，支援等號、範圍、集合、向量搜尋（ANN），多個條件可以一起用
+- ★ 索引是每個節點的**本地索引**：沒有分區鍵時要問遍所有節點（scatter-gather），節點越多越貴。適合低頻查詢、搭配分區鍵、或資料量小的表
+- 舊的二級索引（2i）、SASI 有很多限制；5.0 之後建議用 SAI
+- 物化視圖（MV）：自動維護另一個主鍵的表，但一直是實驗功能、預設關閉，實務上多半自己用 BATCH 寫多張表
+
+## 11. 常見陷阱
+
+| 陷阱 | 說明 |
+|---|---|
+| INSERT 不會報主鍵重複 | upsert，直接覆蓋；要用 `IF NOT EXISTS` |
+| UPDATE 不存在的列會長出一列 | 也是 upsert；要用 `IF EXISTS` |
+| 沒有分區鍵就查不了 | 要建專用的表、SAI，或接受 `ALLOW FILTERING` 的全表掃描 |
+| ORDER BY 任意欄位 | 只能用叢集鍵 |
+| `COUNT(*)` 整張表 | 真的把每一列讀出來數，會逾時；用計數器表或 `nodetool tablestats` 的估計值 |
+| `AVG(int)` | 回傳 int，小數被捨去 |
+| 寫入 null | 等於刪除，產生墓碑 |
+| 時鐘不同步 | last write wins，後寫的可能輸給先寫的 |
+| 把 Cassandra 當佇列 | 墓碑堆積，讀取越來越慢，最後失敗 |
+| 分區無限長大 | 時間序列要分桶 |
+| 分區鍵用 `IN` 帶上千個值 | 協調節點壓力大；改成平行送出多個單一分區查詢 |
+| 計數器重試 | 不是冪等的，可能加兩次 |
+
+## 12. Java / Spring Data Cassandra
+
+```java
+CqlSession session = CqlSession.builder()
+        .addContactPoint(new InetSocketAddress("localhost", 9043))
+        .withLocalDatacenter("dc1")
+        .withAuthCredentials("learner", "learner-lab")
+        .build();
+PreparedStatement ps = session.prepare(
+        "SELECT order_id, total FROM shop.orders_by_customer WHERE customer_id = ?");
+for (Row r : session.execute(ps.bind(4242).setConsistencyLevel(DefaultConsistencyLevel.LOCAL_QUORUM))) {
+    System.out.println(r.getInt("order_id") + " " + r.getInt("total"));
+}
+```
+
+```java
+@Table("orders_by_customer")
+public record OrderByCustomer(
+        @PrimaryKeyColumn(name = "customer_id", type = PrimaryKeyType.PARTITIONED) int customerId,
+        @PrimaryKeyColumn(name = "order_time", type = PrimaryKeyType.CLUSTERED, ordering = Ordering.DESCENDING) Instant orderTime,
+        @PrimaryKeyColumn(name = "order_id", type = PrimaryKeyType.CLUSTERED) int orderId,
+        String status, int total) {
+}
+```
+
+- ★ CqlSession 很重（連線池、metadata），整個應用程式共用一個；一定要用 **prepared statement**（只解析一次，而且知道分區鍵，可以直接送到負責的節點：token-aware）
+- driver 4 的 Maven 座標已經改成 `org.apache.cassandra:java-driver-core`
+- 大結果自動分頁（預設一頁 5,000 列）；做 API 分頁時用 `getPagingState()` 傳給下一次請求，不要用 OFFSET（Cassandra 沒有）
+- Spring Data 的衍生查詢只能用主鍵欄位；用到其他欄位要 `@AllowFiltering` 或自己寫 CQL
+- 寫入重試要小心：一般的 INSERT / UPDATE 是冪等的，可以安全重試；計數器、`list` 的 append、LWT 不行
+
+## 13. ★ 面試題速答
+
+| 問題 | 重點 |
+|---|---|
+| Cassandra 為什麼寫入快？ | 寫入前不讀；commitlog 循序寫入＋memtable；SSTable 不修改，合併交給背景 compaction（LSM tree） |
+| 分區鍵和叢集鍵差在哪？ | 分區鍵決定資料在哪個節點；叢集鍵決定分區內的排序，可以範圍查詢 |
+| 怎麼設計資料模型？ | 查詢先行：列出所有查詢 → 每個查詢一張表；反正規化；控制分區大小（分桶）；避免熱點 |
+| 一致性等級怎麼選？ | 一般用 LOCAL_QUORUM 讀寫；R + W > RF 就是強一致；ONE 最快但可能讀到舊資料 |
+| 一台節點掛了會怎樣？ | RF = 3、QUORUM 時照常運作；hinted handoff 先記下，回來後補寫；之後 repair |
+| 什麼是墓碑？為什麼要 gc_grace_seconds？ | 刪除是寫入標記；等複本都同步刪除後才能清掉，否則資料會復活 |
+| LWT 是什麼？代價？ | Paxos 的 compare-and-set；只限單一分區、延遲高；用在唯一性檢查等低頻操作 |
+| BATCH 可以當交易用嗎？ | 不行。logged batch 只保證最終全部套用，沒有隔離、不能 rollback |
+| 二級索引為什麼要小心？ | 本地索引，沒有分區鍵時要問遍所有節點；高頻查詢應該建專用的表 |
+| Cassandra vs MongoDB？ | Cassandra：無主、寫入量極大、多機房、查詢模式固定；MongoDB：文件模型、查詢彈性高、有交易，主從複寫 |
+| 什麼時候不要用 Cassandra？ | 需要 JOIN、隨意查詢、交易、強一致的計數，或資料量小（一台 PostgreSQL 就夠） |
+
+## 14. cqlsh 與 nodetool 常用指令
+
+```text
+DESCRIBE KEYSPACES;              -- 列出 keyspace（4.0 起在伺服器端執行）
+DESCRIBE TABLE shop.orders;      -- 看建表語句
+CONSISTENCY LOCAL_QUORUM;        -- 之後的請求用這個一致性等級
+TRACING ON;                      -- 之後的查詢附上查詢追蹤
+EXPAND ON;                       -- 每個欄位一行顯示（欄位很多時好讀）
+COPY shop.products TO 'p.csv' WITH HEADER = true;   -- 匯出 / 匯入 CSV
+
+nodetool status                  -- 節點狀態（UN = Up / Normal）、負載、token 數
+nodetool tablestats shop.orders  -- 估計筆數、分區大小、SSTable 數量
+nodetool flush / compact / repair
+nodetool getendpoints shop orders_by_customer 4242   -- 這個分區在哪些節點
+```

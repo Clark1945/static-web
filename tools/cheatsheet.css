@@ -47,6 +47,7 @@ html { scroll-padding-top: 150px; }
 .db-tabs a[data-tab="postgresql"] { --db: #336791; }
 .db-tabs a[data-tab="redis"] { --db: #D82C20; }
 .db-tabs a[data-tab="mongodb"] { --db: #13AA52; }
+.db-tabs a[data-tab="cassandra"] { --db: #1287B1; }
 .db-tabs a:hover { color: var(--ink); }
 .db-tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--db); }
 .db-tabs a[aria-current="page"]::before { opacity: 1; }
@@ -57,6 +58,7 @@ html { scroll-padding-top: 150px; }
   .db-tabs a[data-tab="postgresql"] { --db: #6FA3D3; }
   .db-tabs a[data-tab="redis"] { --db: #FF7B6E; }
   .db-tabs a[data-tab="mongodb"] { --db: #4FD18A; }
+  .db-tabs a[data-tab="cassandra"] { --db: #5CC3E8; }
 }
 
 /* 每個資料庫分頁的開頭 */

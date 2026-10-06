@@ -1,0 +1,468 @@
+# Cassandra 練習題。
+# 查詢題：用唯讀帳號在 shop 執行，比對最後一句的結果（依欄位位置比對值，欄位名稱不算）。
+# 寫入題（有 fixture）：在 scratch keyspace 分別執行你的 CQL 與標準答案，再用 check 比對執行後的資料。
+# fixture：資料表 → WHERE 條件，批改前從 shop 複製這些資料列；條件空白代表只會用到這張表、不複製資料。
+# ordered: false 代表順序不拘。
+
+# ================================================================ 主鍵查詢
+
+- id: by-order-id
+  chapter: 主鍵查詢
+  title: "用訂單編號查訂單"
+  prompt: |
+    查訂單 77621 的狀態（status）與總金額（total）。
+  hints:
+    - "orders 的主鍵是 order_id，WHERE order_id = … 就是一次「單一分區」的讀取。"
+  answer: |
+    SELECT status, total FROM orders WHERE order_id = 77621;
+  explanation: |
+    Cassandra 依分區鍵的雜湊值（token）決定資料放在哪個節點，WHERE 給了完整的分區鍵，協調節點就能直接找到負責的節點，
+    不管叢集有幾台機器都只讀一個地方。這是 Cassandra 最快、也最「正確」的查法。
+
+- id: customer-orders
+  chapter: 主鍵查詢
+  title: "會員的訂單（新的在前）"
+  prompt: |
+    列出會員 4242 的所有訂單，新的在前。
+    回傳 order_time、order_id、status、total 四個欄位。
+  hints:
+    - "orders 沒辦法用 customer_id 查（它不是主鍵），要找「依會員存放」的那張表。"
+    - "orders_by_customer 的叢集鍵是 order_time DESC，資料在分區裡已經排好了，不用寫 ORDER BY。"
+  answer: |
+    SELECT order_time, order_id, status, total
+    FROM orders_by_customer
+    WHERE customer_id = 4242;
+  explanation: |
+    同一個分區裡的資料列依叢集鍵排序後存放在一起。建表時寫了 CLUSTERING ORDER BY (order_time DESC)，
+    所以讀出來就是新的在前，不需要排序。這就是 Cassandra 的「查詢先行」設計：先決定要怎麼查，再決定表的主鍵。
+
+- id: latest-three
+  chapter: 主鍵查詢
+  title: "最近 3 筆訂單"
+  prompt: |
+    會員 1 最近的 3 筆訂單，回傳 order_id、total，新的在前。
+  hints:
+    - "LIMIT 在分區內一樣有效，而且資料已經依時間排好，讀到第 3 列就停。"
+  answer: |
+    SELECT order_id, total FROM orders_by_customer WHERE customer_id = 1 LIMIT 3;
+  explanation: |
+    因為分區內已經依 order_time DESC 排好，LIMIT 3 只要讀分區開頭的 3 列，不用像 SQL 一樣先排序全部再取前 3。
+
+- id: oldest-first
+  chapter: 主鍵查詢
+  title: "由舊到新"
+  prompt: |
+    會員 4242 的訂單改成由舊到新，回傳 order_time、order_id。
+  hints:
+    - "ORDER BY 只能用叢集鍵，而且只能是建表時的順序或完全相反的順序。"
+  answer: |
+    SELECT order_time, order_id FROM orders_by_customer
+    WHERE customer_id = 4242
+    ORDER BY order_time ASC;
+  explanation: |
+    ORDER BY 只能寫叢集鍵：要嘛跟建表時的順序一樣，要嘛全部反過來（反向讀取分區）。
+    ORDER BY order_time ASC 等於把整個叢集順序反過來，order_id 也會跟著反向。想依 total 排序是不行的，只能拿回應用程式排序，或另外建一張以 total 為叢集鍵的表。
+
+- id: year-count
+  chapter: 主鍵查詢
+  title: "某一年的訂單數"
+  prompt: |
+    會員 1 在 2025 年（台灣時間）下了幾筆訂單？回傳一個數字。
+  hints:
+    - "分區鍵用等號，叢集鍵 order_time 可以用範圍。"
+    - "時間字串加上時區，例如 '2025-01-01 00:00:00+0800'，才不會受伺服器時區影響。"
+  answer: |
+    SELECT COUNT(*) FROM orders_by_customer
+    WHERE customer_id = 1
+      AND order_time >= '2025-01-01 00:00:00+0800'
+      AND order_time <  '2026-01-01 00:00:00+0800';
+  explanation: |
+    分區鍵等號 + 叢集鍵範圍，是 Cassandra 最典型的查法：找到分區後，在排好序的資料裡切一段出來。
+    COUNT(*) 限定在單一分區內很便宜；不加分區鍵的 COUNT(*) 會掃整張表（陷阱題有示範）。
+    時間字串沒寫時區時，Cassandra 用伺服器的時區解讀，這個容器剛好設成 Asia/Taipei，換一台機器結果就可能不同，寫清楚最保險。
+
+- id: login-by-email
+  chapter: 主鍵查詢
+  title: "用 email 登入"
+  prompt: |
+    用 email 'user04242@example.com' 查會員編號（customer_id）與姓名（name）。
+  hints:
+    - "customers 的主鍵是 customer_id，用 email 查要找另一張表。"
+  answer: |
+    SELECT customer_id, name FROM customers_by_email WHERE email = 'user04242@example.com';
+  explanation: |
+    同一份會員資料以不同的分區鍵存兩次（customers、customers_by_email），每一種查法都是單一分區讀取。
+    代價是寫入變成兩次，email 變更時兩張表都要改（通常用 logged BATCH 確保兩張表最終都寫成功）。
+
+- id: multi-get
+  chapter: 主鍵查詢
+  title: "一次查多件商品"
+  prompt: |
+    一次查出商品 540、541、542 的 product_id、name、price。順序不拘。
+  hints:
+    - "分區鍵可以用 IN。"
+  answer: |
+    SELECT product_id, name, price FROM products WHERE product_id IN (540, 541, 542);
+  ordered: false
+  explanation: |
+    分區鍵用 IN 時，協調節點要分別去找每個分區（可能在不同節點），IN 的值一多，協調節點的壓力就很大。
+    實務上幾個到幾十個還好；更多時，改成在應用程式裡平行送出多個單一分區查詢，通常比較快也比較穩定。
+
+# ================================================================ 叢集鍵與時間分桶
+
+- id: category-top
+  chapter: 叢集鍵與時間分桶
+  title: "分類裡最貴的 5 件"
+  prompt: |
+    「手機」分類最貴的 5 件商品，回傳 name、price，價格由高到低。
+  hints:
+    - "products_by_category 的分區鍵是 category，叢集鍵是 price DESC。"
+  answer: |
+    SELECT name, price FROM products_by_category WHERE category = '手機' LIMIT 5;
+  explanation: |
+    叢集鍵 (price DESC, product_id) 讓分區裡的商品已經依價格由高到低排好；
+    product_id 也放進叢集鍵，是為了讓「同價的兩件商品」主鍵不同，不會互相覆蓋。
+
+- id: price-range
+  chapter: 叢集鍵與時間分桶
+  title: "價格區間"
+  prompt: |
+    「筆電」分類裡，價格在 20,000 到 30,000 之間（含兩端）的商品，
+    回傳 product_id、name、price，價格由低到高。
+  hints:
+    - "叢集鍵可以用 >=、<= 切範圍。"
+    - "由低到高跟建表的順序相反，要寫 ORDER BY。"
+  answer: |
+    SELECT product_id, name, price FROM products_by_category
+    WHERE category = '筆電' AND price >= 20000 AND price <= 30000
+    ORDER BY price ASC;
+  explanation: |
+    範圍條件只能放在叢集鍵上，而且要依叢集鍵的順序：先限定 price，才能再限定 product_id。
+    ORDER BY price ASC 是把分區反向讀取，不需要額外排序。
+
+- id: day-count
+  chapter: 叢集鍵與時間分桶
+  title: "某一天的訂單數"
+  prompt: |
+    2026-09-01（台灣時間）有幾筆訂單？回傳一個數字。
+  hints:
+    - "orders_by_day 一天一個分區，order_day 是台灣時間的日期。"
+  answer: |
+    SELECT COUNT(*) FROM orders_by_day WHERE order_day = '2026-09-01';
+  explanation: |
+    這叫「時間分桶」（bucketing）：如果分區鍵只用「全部訂單」或「年份」，分區會無限長大；
+    用日期當分區鍵，每個分區大小固定（一天幾十到幾百筆），查詢某段時間就查那幾天的分區。
+    分桶的粒度依寫入量決定：寫入很大的系統可能用小時，甚至 (日期, 0~9 的雜湊) 再拆開。
+
+- id: week-by-day
+  chapter: 叢集鍵與時間分桶
+  title: "一週每天的訂單數"
+  prompt: |
+    2026-09-01 到 2026-09-07（台灣時間）每天各有幾筆訂單？
+    回傳 order_day 與筆數，日期由早到晚。
+  hints:
+    - "分區鍵可以用 IN 列出 7 天。"
+    - "GROUP BY 只能用主鍵欄位，這裡用分區鍵 order_day。"
+  answer: |
+    SELECT order_day, COUNT(*) FROM orders_by_day
+    WHERE order_day IN ('2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04',
+                        '2026-09-05', '2026-09-06', '2026-09-07')
+    GROUP BY order_day;
+  explanation: |
+    GROUP BY 只能用主鍵欄位，而且要依主鍵順序（分區鍵 → 叢集鍵的前綴）。
+    執行時會看到警告「Aggregation query used on multiple partition keys」：IN 跨了好幾個分區，協調節點要把它們都讀回來再彙總。
+    七天還好，資料量大的報表通常用 Spark 之類的工具，或在寫入時就另外累計（例如計數器表）。
+
+- id: evening-orders
+  chapter: 叢集鍵與時間分桶
+  title: "某天晚上的訂單"
+  prompt: |
+    2026-09-01 晚上 8 點到 10 點（台灣時間，含 8 點、不含 10 點）的訂單，
+    回傳 order_time、order_id、total，時間由早到晚。
+  hints:
+    - "先用分區鍵選出那一天，再用叢集鍵 order_time 切範圍。"
+  answer: |
+    SELECT order_time, order_id, total FROM orders_by_day
+    WHERE order_day = '2026-09-01'
+      AND order_time >= '2026-09-01 20:00:00+0800'
+      AND order_time <  '2026-09-01 22:00:00+0800';
+  explanation: |
+    orders_by_day 的叢集鍵 order_time 是預設的 ASC，所以讀出來就是由早到晚。
+    回傳的時間是 UTC（2026-09-01T12:00:00Z 就是台灣時間晚上 8 點），Cassandra 一律以 UTC 儲存 timestamp。
+
+- id: first-of-each-day
+  chapter: 叢集鍵與時間分桶
+  title: "每天的第一筆訂單"
+  prompt: |
+    2026-09-01、09-02、09-03 這三天，每天最早的那一筆訂單，
+    回傳 order_day、order_time、order_id。
+  hints:
+    - "LIMIT 是整個結果的上限；有一個語法可以限制「每個分區」最多幾列。"
+  answer: |
+    SELECT order_day, order_time, order_id FROM orders_by_day
+    WHERE order_day IN ('2026-09-01', '2026-09-02', '2026-09-03')
+    PER PARTITION LIMIT 1;
+  explanation: |
+    PER PARTITION LIMIT n 讓每個分區只回傳前 n 列（依叢集鍵順序），是 Cassandra 版的「每組取前 n 名」。
+    在 SQL 裡要用 ROW_NUMBER() OVER (PARTITION BY …) 才做得到。
+
+- id: latest-buyers
+  chapter: 叢集鍵與時間分桶
+  title: "最近買了這件商品的人"
+  prompt: |
+    商品 540 最近被買的 5 次，回傳 customer_id、order_time，新的在前。
+  hints:
+    - "訂單明細依商品再存了一份。"
+  answer: |
+    SELECT customer_id, order_time FROM items_by_product WHERE product_id = 540 LIMIT 5;
+  explanation: |
+    同一筆明細存在 orders（依訂單）與 items_by_product（依商品）兩個地方。
+    Cassandra 的寫入很便宜，讀取時跨分區才貴，所以「多寫幾份，讓每種查詢都只讀一個分區」是常態。
+
+- id: filter-in-partition
+  chapter: 叢集鍵與時間分桶
+  title: "分區內再篩選"
+  prompt: |
+    會員 4242 的訂單裡，狀態是 returned（退貨）的有哪些？回傳 order_id、total。
+  hints:
+    - "status 不是主鍵，直接寫會被拒絕。"
+    - "已經限定在單一分區裡，篩選的成本只跟這個分區的大小有關。"
+  answer: |
+    SELECT order_id, total FROM orders_by_customer
+    WHERE customer_id = 4242 AND status = 'returned'
+    ALLOW FILTERING;
+  explanation: |
+    ALLOW FILTERING 本身不是壞事，壞的是「沒有限定分區」的 ALLOW FILTERING，那會掃整張表。
+    限定了分區鍵之後，只是在一個分區（這位會員的幾筆訂單）裡逐列過濾，成本很小。
+
+- id: distinct-partitions
+  chapter: 叢集鍵與時間分桶
+  title: "列出所有分類"
+  prompt: |
+    products_by_category 裡有哪些分類？每個分類一列，只回傳 category。順序不拘。
+  hints:
+    - "DISTINCT 只能用在分區鍵上。"
+  answer: |
+    SELECT DISTINCT category FROM products_by_category;
+  ordered: false
+  explanation: |
+    DISTINCT 只能用在分區鍵（以及 static 欄位），它只讀每個分區的開頭，不讀分區裡的資料列。
+    但它還是要走過所有分區，分區很多時一樣是全表掃描。順序是依分區鍵的 token（雜湊值），看起來是亂的。
+
+# ================================================================ 集合與函式
+
+- id: collections
+  chapter: 集合與函式
+  title: "set 與 map"
+  prompt: |
+    查商品 540 的 tags（set）以及 specs 裡 color 這個 key 的值。回傳兩個欄位。
+  hints:
+    - "map 可以用 欄位['key'] 取單一個值。"
+  answer: |
+    SELECT tags, specs['color'] FROM products WHERE product_id = 540;
+  explanation: |
+    set、list、map 適合存「少量、跟著這一列一起讀」的資料（幾十個以內）。
+    非 frozen 的集合可以只更新其中一個元素；frozen 的集合（例如 orders.items 的 list<frozen<order_item>> 裡的每一項）只能整個換掉。
+
+- id: avg-decimal
+  chapter: 集合與函式
+  title: "平均訂單金額"
+  prompt: |
+    會員 4242 的訂單筆數、總金額、平均金額（要有小數）、最大金額。回傳 4 個數字。
+  hints:
+    - "aggregate 函式：COUNT、SUM、AVG、MIN、MAX。"
+    - "total 是 int，AVG(int) 的結果也是 int（小數會被捨去）。"
+  answer: |
+    SELECT COUNT(*), SUM(total), AVG(CAST(total AS double)), MAX(total)
+    FROM orders_by_customer WHERE customer_id = 4242;
+  explanation: |
+    CQL 的 AVG 回傳跟欄位一樣的型別：int 欄位的平均會直接捨去小數（9672.17 變成 9672）。
+    要小數就先 CAST 成 double 或 decimal。aggregate 也只建議用在單一分區內。
+
+- id: writetime
+  chapter: 集合與函式
+  title: "寫入時間"
+  prompt: |
+    查會員 4242 的 name，以及這個欄位的寫入時間 WRITETIME（微秒）。回傳兩個欄位。
+  hints:
+    - "WRITETIME(欄位) 回傳該欄位最後一次寫入的時間戳記。"
+  answer: |
+    SELECT name, WRITETIME(name) FROM customers WHERE customer_id = 4242;
+  explanation: |
+    Cassandra 的每一個欄位值（cell）都帶著自己的寫入時間戳記與 TTL。同一個欄位被寫了好幾次時，時間戳記最大的勝出（last write wins），
+    這也是它不需要鎖、也能在多個複本之間合併資料的原因。主鍵欄位沒有 WRITETIME。
+
+# ================================================================ 寫入
+
+- id: batch-two-tables
+  chapter: 寫入
+  title: "新會員寫兩張表"
+  prompt: |
+    新增一位會員：customer_id 99999、name '測試會員'、email 'test99999@example.com'、
+    signup_date '2026-10-06'、vip_level 'normal'。
+    會員資料要同時寫進 customers 與 customers_by_email（email、customer_id、name）。
+  hints:
+    - "兩張表都要寫，而且要確保兩邊最終都會寫成功。"
+    - "BEGIN BATCH … APPLY BATCH 可以把多句包在一起。"
+  fixture:
+    customers: ""
+    customers_by_email: ""
+  answer: |
+    BEGIN BATCH
+      INSERT INTO customers (customer_id, name, email, signup_date, vip_level)
+      VALUES (99999, '測試會員', 'test99999@example.com', '2026-10-06', 'normal');
+      INSERT INTO customers_by_email (email, customer_id, name)
+      VALUES ('test99999@example.com', 99999, '測試會員');
+    APPLY BATCH;
+  check: |
+    SELECT customer_id, name, email, signup_date, vip_level, city FROM customers WHERE customer_id = 99999;
+    SELECT email, customer_id, name FROM customers_by_email WHERE email = 'test99999@example.com';
+  explanation: |
+    logged BATCH（預設）先把整批寫進 batchlog，保證「全部最終都會套用」，用來維持反正規化的多張表一致。
+    它不是交易：沒有隔離性，別人可能讀到只寫了一半的狀態，也不能 ROLLBACK。
+    BATCH 也不是加速用的：跨很多分區的 batch 反而會拖慢協調節點。
+
+- id: update-set
+  chapter: 寫入
+  title: "改庫存、加標籤"
+  prompt: |
+    商品 540 賣完了：庫存（stock）改成 0，tags 加上 '缺貨'（保留原本的標籤）。
+  hints:
+    - "set 可以用 tags = tags + {'…'} 加元素。"
+  fixture:
+    products: "product_id = 540"
+  answer: |
+    UPDATE products SET stock = 0, tags = tags + {'缺貨'} WHERE product_id = 540;
+  check: |
+    SELECT product_id, stock, tags FROM products WHERE product_id = 540;
+  explanation: |
+    tags = tags + {…} 只寫入新的元素，不需要先讀出整個 set。如果寫成 tags = {'缺貨'} 會把整個 set 換掉，
+    原本的「特價」就不見了，而且整個換掉還會產生一個墓碑（tombstone）。
+
+- id: map-update
+  chapter: 寫入
+  title: "改 map 的一個 key"
+  prompt: |
+    商品 540 的規格：把 specs 的 color 改成 '黑'，並刪掉 '5g' 這個 key，其他規格不變。
+  hints:
+    - "map 可以 SET specs['key'] = 值。"
+    - "刪除一個 key：DELETE specs['key'] FROM …，或 SET specs = specs - {'key'}。"
+  fixture:
+    products: "product_id = 540"
+  answer: |
+    UPDATE products SET specs['color'] = '黑' WHERE product_id = 540;
+    DELETE specs['5g'] FROM products WHERE product_id = 540;
+  check: |
+    SELECT specs FROM products WHERE product_id = 540;
+  explanation: |
+    非 frozen 的 map 每個 key 都是獨立的 cell，可以單獨更新或刪除，不必讀出整個 map 再寫回去。
+
+- id: counter
+  chapter: 寫入
+  title: "計數器"
+  prompt: |
+    商品 540 又被一張訂單買走 2 件：product_sales 的 units 加 2、orders 加 1。
+  hints:
+    - "計數器只能用 UPDATE … SET 欄位 = 欄位 + n。"
+  fixture:
+    product_sales: "product_id = 540"
+  answer: |
+    UPDATE product_sales SET units = units + 2, orders = orders + 1 WHERE product_id = 540;
+  check: |
+    SELECT product_id, units, orders FROM product_sales WHERE product_id = 540;
+  explanation: |
+    counter 是分散式的加減，不用先讀再寫。但它不是冪等的：寫入逾時後重試，可能會加兩次。
+    所以計數器適合統計（瀏覽數、銷售量），不適合需要精確的金額或庫存。
+
+- id: lwt-insert
+  chapter: 寫入
+  title: "email 不能重複註冊"
+  prompt: |
+    有人想用 email 'user04242@example.com' 註冊新會員（customer_id 99999、name '冒用者'）。
+    寫進 customers_by_email，但 email 已經存在時不能覆蓋原本的資料。
+  hints:
+    - "Cassandra 的 INSERT 預設會直接覆蓋（upsert），不會報主鍵重複。"
+    - "INSERT … IF NOT EXISTS 是輕量交易（LWT）。"
+  fixture:
+    customers_by_email: "email = 'user04242@example.com'"
+  answer: |
+    INSERT INTO customers_by_email (email, customer_id, name)
+    VALUES ('user04242@example.com', 99999, '冒用者')
+    IF NOT EXISTS;
+  check: |
+    SELECT email, customer_id, name FROM customers_by_email WHERE email = 'user04242@example.com';
+  explanation: |
+    IF NOT EXISTS 會用 Paxos 先確認這個主鍵還不存在，才寫入；回傳的 [applied] 告訴你有沒有寫成功，
+    沒寫成功時還會附上目前的值。代價是多好幾次節點間的來回（大約是一般寫入的 4 倍延遲），只用在真的需要「先檢查再寫」的地方。
+
+- id: lwt-update
+  chapter: 寫入
+  title: "樂觀鎖"
+  prompt: |
+    你打算把商品 540 的價格改成 27999，但只有在價格「還是 30000」的時候才改
+    （你之前讀到的是 30000，可能已經被別人改掉了）。
+  hints:
+    - "UPDATE … IF 欄位 = 值，條件不成立時不會寫入。"
+  fixture:
+    products: "product_id = 540"
+  answer: |
+    UPDATE products SET price = 27999 WHERE product_id = 540 IF price = 30000;
+  check: |
+    SELECT product_id, price FROM products WHERE product_id = 540;
+  explanation: |
+    目前的價格是 29949，條件不成立，所以 [applied] = false，價格不變，回傳的 price 欄位就是目前的值。
+    這就是 compare-and-set（樂觀鎖）：不用鎖住資料，靠條件寫入偵測別人有沒有先改過。
+
+- id: ttl-update
+  chapter: 寫入
+  title: "會自動消失的欄位"
+  prompt: |
+    會員 4242 參加活動，vip_level 暫時升級成 'gold'，24 小時（86400 秒）後自動失效。
+  hints:
+    - "USING TTL 秒數，寫在 UPDATE 表名之後。"
+  fixture:
+    customers: "customer_id = 4242"
+  answer: |
+    UPDATE customers USING TTL 86400 SET vip_level = 'gold' WHERE customer_id = 4242;
+  check: |
+    SELECT customer_id, vip_level, (TTL(vip_level) + 60) / 3600 AS hours_left, city FROM customers WHERE customer_id = 4242;
+  explanation: |
+    TTL 是設在「這次寫入的欄位」上，不是整列：時間到了只有 vip_level 會消失（變成墓碑），name、city 都還在。
+    要整列一起過期，就要用 INSERT … USING TTL 把整列重新寫一次，或在建表時設 default_time_to_live。
+
+- id: range-delete
+  chapter: 寫入
+  title: "刪掉一段時間的資料"
+  prompt: |
+    會員 1 要求刪除 2023 年以前（台灣時間 2023-01-01 之前）的訂單紀錄。
+    從 orders_by_customer 刪掉這些資料列，用一句 CQL 完成。
+  hints:
+    - "DELETE 的 WHERE 可以在叢集鍵上用範圍。"
+  fixture:
+    orders_by_customer: "customer_id = 1"
+  answer: |
+    DELETE FROM orders_by_customer
+    WHERE customer_id = 1 AND order_time < '2023-01-01 00:00:00+0800';
+  check: |
+    SELECT COUNT(*) FROM orders_by_customer WHERE customer_id = 1;
+    SELECT order_time, order_id FROM orders_by_customer WHERE customer_id = 1 ORDER BY order_time ASC LIMIT 1;
+  explanation: |
+    範圍刪除只會寫入「一個」範圍墓碑（range tombstone），不管範圍裡有幾列。
+    如果先查出 39 筆再一筆一筆刪，會產生 39 個墓碑，之後讀這個分區時都要跳過它們（實驗室有示範墓碑的影響）。
+
+- id: delete-column
+  chapter: 寫入
+  title: "刪除一個欄位"
+  prompt: |
+    會員 4242 要求刪除生日資料：只刪 birth_date，其他欄位保留。
+  hints:
+    - "DELETE 欄位名稱 FROM 表 WHERE …"
+  fixture:
+    customers: "customer_id = 4242"
+  answer: |
+    DELETE birth_date FROM customers WHERE customer_id = 4242;
+  check: |
+    SELECT customer_id, name, birth_date, city FROM customers WHERE customer_id = 4242;
+  explanation: |
+    在 Cassandra 裡，DELETE 欄位和 UPDATE … SET birth_date = null 的效果一樣：都是寫入一個墓碑。
+    資料不會馬上從硬碟消失，要等 gc_grace_seconds（預設 10 天）過後、compaction 時才真正清掉。

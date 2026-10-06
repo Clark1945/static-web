@@ -29,4 +29,17 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(503).body(Map.of("error",
                 "連不上 Redis：" + e.getMessage() + "\n請確認 redis-lab 容器有在執行（docker compose up -d redis）。"));
     }
+
+    /** Cassandra 連不上（容器沒啟動，或還在啟動中：要將近一分鐘）。 */
+    @ExceptionHandler(com.datastax.oss.driver.api.core.AllNodesFailedException.class)
+    public ResponseEntity<Map<String, String>> cassandraDown(com.datastax.oss.driver.api.core.AllNodesFailedException e) {
+        return ResponseEntity.status(503).body(Map.of("error",
+                "連不上 Cassandra：" + e.getMessage() + "\n請確認 cassandra-lab 容器有在執行（docker compose up -d cassandra），剛啟動的話要等將近一分鐘。"));
+    }
+
+    /** 實驗室裡後端自己組的 CQL 出錯時（例如權限、逾時），把 Cassandra 的訊息回給前端。 */
+    @ExceptionHandler(com.datastax.oss.driver.api.core.DriverException.class)
+    public ResponseEntity<Map<String, String>> cassandra(com.datastax.oss.driver.api.core.DriverException e) {
+        return ResponseEntity.badRequest().body(Map.of("error", com.example.dbshowcase.cassandra.CqlShell.describe(e)));
+    }
 }

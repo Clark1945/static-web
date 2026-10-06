@@ -1,0 +1,227 @@
+# Cassandra 陷阱題：先猜結果，再執行對照。
+# 沒有 fixture 的題目用唯讀帳號在 shop 執行；有 fixture 的題目，每段 CQL 各自在一份乾淨的 scratch 副本執行。
+# answer 是正確選項的索引（從 0 開始）。
+
+- id: insert-is-upsert
+  title: "INSERT 一個已經存在的主鍵"
+  question: "customers_by_email 已經有 user04242@example.com 這一列（customer_id 4242）。再 INSERT 一次同樣的 email，會發生什麼事？"
+  fixture:
+    customers_by_email: "email = 'user04242@example.com'"
+  scripts:
+    - label: "INSERT 同一個主鍵"
+      commands: |
+        INSERT INTO customers_by_email (email, customer_id, name)
+        VALUES ('user04242@example.com', 99999, '冒用者');
+        SELECT * FROM customers_by_email WHERE email = 'user04242@example.com';
+  options:
+    - "報錯：主鍵重複"
+    - "成功，原本那一列被覆蓋成 99999"
+    - "成功，同一個 email 變成兩列"
+  answer: 1
+  explanation: |
+    Cassandra 寫入前不會先讀，所以不知道這個主鍵「已經存在」。INSERT 和 UPDATE 都是 upsert：寫入一份新版本，讀取時時間戳記新的勝出。
+    要「不存在才寫入」得用 IF NOT EXISTS（輕量交易），代價是好幾次節點間的來回。
+    面試常問：為什麼 Cassandra 寫入這麼快？其中一個原因就是「寫入前不讀」。
+
+- id: update-creates-row
+  title: "UPDATE 一個不存在的商品"
+  question: "products 裡沒有商品 99999。執行 UPDATE products SET stock = 5 WHERE product_id = 99999 之後，查得到這件商品嗎？"
+  fixture:
+    products: ""
+  scripts:
+    - label: "UPDATE 不存在的主鍵"
+      commands: |
+        UPDATE products SET stock = 5 WHERE product_id = 99999;
+        SELECT product_id, name, price, stock FROM products WHERE product_id = 99999;
+  options:
+    - "查得到：多了一列，只有 stock 有值"
+    - "查不到：UPDATE 找不到資料列，影響 0 列"
+    - "報錯：資料列不存在"
+  answer: 0
+  explanation: |
+    UPDATE 也是 upsert，不會先檢查資料列存不存在，所以會「長出」一列只有 stock 的商品。
+    要避免可以寫 UPDATE … IF EXISTS（輕量交易）。
+    小差異：INSERT 會寫入一個「列標記」（row marker），UPDATE 不會；所以用 UPDATE 建出來的列，如果把 stock 刪掉，整列就消失了。
+
+- id: filter-needs-key
+  title: "用非主鍵欄位查詢"
+  question: "orders 表的主鍵是 order_id。直接查 WHERE customer_id = 4242（不加 ALLOW FILTERING），結果是？"
+  scripts:
+    - label: "orders：customer_id 不是主鍵"
+      commands: |
+        SELECT order_id, total FROM orders WHERE customer_id = 4242;
+    - label: "orders_by_customer：customer_id 是分區鍵"
+      commands: |
+        SELECT order_id, total FROM orders_by_customer WHERE customer_id = 4242;
+  options:
+    - "兩段都回傳 6 筆，只是第一段比較慢"
+    - "第一段回傳 0 筆"
+    - "第一段被拒絕，要加 ALLOW FILTERING"
+  answer: 2
+  explanation: |
+    沒有分區鍵，Cassandra 不知道資料在哪個節點，只能問遍所有節點、掃過整張表。它不會默默幫你掃，而是直接拒絕。
+    加上 ALLOW FILTERING 就會執行（實驗室有量給你看：讀了 8 萬列只為了拿 6 列）。
+    正確的解法是建一張以 customer_id 為分區鍵的表（orders_by_customer），或在小量資料上用 SAI 索引。
+
+- id: order-by-non-clustering
+  title: "依金額排序"
+  question: "想看會員 4242 的訂單依金額由高到低：SELECT … FROM orders_by_customer WHERE customer_id = 4242 ORDER BY total DESC。結果是？"
+  scripts:
+    - label: "ORDER BY 非叢集鍵"
+      commands: |
+        SELECT order_id, total FROM orders_by_customer WHERE customer_id = 4242 ORDER BY total DESC;
+  options:
+    - "報錯：ORDER BY 只能用叢集鍵"
+    - "依金額由高到低排好"
+    - "成功，但順序沒變（ORDER BY 被忽略）"
+  answer: 0
+  explanation: |
+    Cassandra 不在查詢時排序，它只能「依照資料存放的順序」或「完全反過來」讀取。
+    分區內的順序由叢集鍵決定，所以 ORDER BY 只能寫叢集鍵。
+    需要依金額排序：取回這位會員的訂單後在應用程式排序（一個分區通常不大），或另外建一張叢集鍵是 total 的表。
+
+- id: skip-clustering
+  title: "跳過前面的叢集鍵"
+  question: "orders_by_day 的主鍵是 ((order_day), order_time, order_id)。WHERE order_day = '2026-09-01' AND order_id = 77082（沒有限定 order_time），結果是？"
+  scripts:
+    - label: "跳過 order_time 直接限定 order_id"
+      commands: |
+        SELECT order_time, order_id FROM orders_by_day
+        WHERE order_day = '2026-09-01' AND order_id = 77082;
+  options:
+    - "回傳訂單 77082"
+    - "報錯：order_id 前面的 order_time 沒有限定"
+    - "回傳 0 筆"
+  answer: 1
+  explanation: |
+    分區內的資料列依 (order_time, order_id) 排序，就像電話簿依「姓、名」排序：只知道「名」沒辦法翻到正確的位置。
+    叢集鍵只能從左邊開始限定；而且前面的欄位用了範圍（>、<）之後，後面的欄位就不能再限定了。
+    這跟 SQL 複合索引的「最左前綴」是同一個道理。
+
+- id: count-star
+  title: "COUNT(*) 整張表"
+  question: "SELECT COUNT(*) FROM orders（沒有 WHERE）會怎樣？"
+  scripts:
+    - label: "沒有分區鍵的 COUNT(*)"
+      commands: |
+        SELECT COUNT(*) FROM orders;
+    - label: "單一分區的 COUNT(*)"
+      commands: |
+        SELECT COUNT(*) FROM orders_by_customer WHERE customer_id = 4242;
+  options:
+    - "報錯：需要 ALLOW FILTERING"
+    - "立刻回傳 80000（Cassandra 有記錄筆數）"
+    - "回傳 80000，但讀過整張表，還附上一個警告"
+  answer: 2
+  explanation: |
+    Cassandra 沒有記錄「表裡有幾列」，COUNT(*) 只能真的把每一列讀出來數（看耗時：幾百毫秒 vs 幾毫秒）。
+    伺服器還會回傳警告「Aggregation query used without partition key」。資料量大時會逾時。
+    要知道筆數：用計數器表在寫入時累計、用 nodetool tablestats 看估計值，或用 Spark 之類的工具。
+
+- id: avg-int
+  title: "AVG 一個 int 欄位"
+  question: "會員 4242 的 6 筆訂單總額是 58033，平均是 9672.17。SELECT AVG(total)（total 是 int）會回傳？"
+  scripts:
+    - label: "AVG(int)"
+      commands: |
+        SELECT AVG(total) FROM orders_by_customer WHERE customer_id = 4242;
+    - label: "先 CAST 成 double"
+      commands: |
+        SELECT AVG(CAST(total AS double)) FROM orders_by_customer WHERE customer_id = 4242;
+  options:
+    - "9672（小數被捨去）"
+    - "9672.17"
+    - "報錯：AVG 不能用在 int"
+  answer: 0
+  explanation: |
+    CQL 的 AVG 回傳跟輸入一樣的型別，int 的平均就是 int，小數直接捨去（SQL 的 PostgreSQL 會回傳 numeric）。
+    要小數就先 CAST 成 double 或 decimal。SUM(int) 也一樣是 int，金額很大時可能溢位，可以先 CAST 成 bigint / varint。
+
+- id: older-timestamp
+  title: "用比較舊的時間戳記寫入"
+  question: "先 UPDATE products USING TIMESTAMP 1000 SET stock = 999（時間戳記 1000 微秒，也就是 1970 年），再查 stock，會是多少？目前 stock 是 11。"
+  fixture:
+    products: "product_id = 540"
+  scripts:
+    - label: "用很舊的時間戳記寫入"
+      commands: |
+        UPDATE products USING TIMESTAMP 1000 SET stock = 999 WHERE product_id = 540;
+        SELECT stock, WRITETIME(stock) FROM products WHERE product_id = 540;
+  options:
+    - "999：最後執行的那一句勝出"
+    - "11：時間戳記比較舊，被當成過期的寫入"
+    - "報錯：時間戳記不能早於現有資料"
+  answer: 1
+  explanation: |
+    Cassandra 用「每個欄位的時間戳記」決定誰勝出（last write wins），不是用執行的先後順序。
+    這次寫入成功了，但讀取時遇到兩個版本，時間戳記較新的 11 勝出，999 等於被忽略。
+    實務上的影響：各台應用程式伺服器的時鐘如果不同步，後寫的資料可能「輸給」先寫的資料。
+
+- id: ttl-per-cell
+  title: "TTL 是設在誰身上？"
+  question: "UPDATE customers USING TTL 86400 SET city = '台南市' WHERE customer_id = 4242。一天後，這位會員的資料會變成？"
+  fixture:
+    customers: "customer_id = 4242"
+  scripts:
+    - label: "只對 city 設 TTL"
+      commands: |
+        UPDATE customers USING TTL 86400 SET city = '台南市' WHERE customer_id = 4242;
+        SELECT name, TTL(name), city, TTL(city) FROM customers WHERE customer_id = 4242;
+  options:
+    - "整列消失"
+    - "什麼都沒變，TTL 只對 INSERT 有效"
+    - "只有 city 消失，其他欄位都還在"
+  answer: 2
+  explanation: |
+    TTL 屬於每一個欄位值（cell），只有這次寫入的 city 帶著 86400 秒的 TTL，name 的 TTL 是 null（永不過期）。
+    時間到了 city 會變成墓碑，整列還在。要整列一起過期，就要把整列用 INSERT … USING TTL 重新寫一次，
+    或是建表時設定 default_time_to_live。
+
+- id: null-is-tombstone
+  title: "寫入 null"
+  question: "INSERT 一位會員時，city 欄位明確寫成 null。Cassandra 會怎麼處理？（看查詢追蹤的 tombstone cells）"
+  fixture:
+    customers: ""
+  scripts:
+    - label: "city 寫 null"
+      commands: |
+        INSERT INTO customers (customer_id, name, city) VALUES (99999, '測試', null);
+        TRACING ON;
+        SELECT * FROM customers WHERE customer_id = 99999;
+    - label: "city 不寫（不要放進 INSERT）"
+      commands: |
+        INSERT INTO customers (customer_id, name) VALUES (99998, '測試');
+        TRACING ON;
+        SELECT * FROM customers WHERE customer_id = 99998;
+  options:
+    - "寫 null 會存一個墓碑（tombstone）"
+    - "兩者一樣：null 就是沒有值，什麼都不存"
+    - "報錯：不能寫入 null"
+  answer: 0
+  explanation: |
+    在 Cassandra 裡，「把欄位設成 null」等於「刪除這個欄位」，會寫入一個墓碑，讀取時要讀到它、再把它跳過。
+    看追蹤：寫 null 的那一段是「Read 1 live rows and 1 tombstone cells」，沒寫的那一段是 0。
+    用 ORM 或 prepared statement 時特別容易踩到（把所有欄位都綁上去，沒值的就綁 null）。
+    driver 4 可以不綁定那個參數（unset），本專案載入資料時就是這樣做的。
+
+- id: counter-insert
+  title: "INSERT 到計數器表"
+  question: "product_sales 是計數器表。INSERT INTO product_sales (product_id, units, orders) VALUES (99999, 1, 1) 會怎樣？"
+  fixture:
+    product_sales: ""
+  scripts:
+    - label: "INSERT 計數器"
+      commands: |
+        INSERT INTO product_sales (product_id, units, orders) VALUES (99999, 1, 1);
+    - label: "UPDATE 計數器"
+      commands: |
+        UPDATE product_sales SET units = units + 1, orders = orders + 1 WHERE product_id = 99999;
+        SELECT * FROM product_sales WHERE product_id = 99999;
+  options:
+    - "成功，跟 UPDATE 一樣"
+    - "報錯：計數器表只能用 UPDATE"
+    - "成功，但 units 和 orders 都是 0"
+  answer: 1
+  explanation: |
+    counter 只能加減，不能直接設定成某個值，所以不能 INSERT，也不能 UPDATE … SET units = 5。
+    不存在的 counter 從 0 開始加。計數器表裡除了主鍵以外只能放 counter 欄位，也不能設 TTL。

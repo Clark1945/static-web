@@ -1,0 +1,112 @@
+# Cassandra 實驗室「查詢與表設計」的步驟。每一句查詢都會開啟查詢追蹤（TRACING），
+# 頁面整理出：讀了幾列（live rows）、跳過幾個墓碑、是單一分區讀取還是範圍掃描、耗時。
+# indexes：這一步建議先建立的索引（頁面上有按鈕可以直接建立）。
+
+- id: partition-key
+  title: "有分區鍵 vs 沒有分區鍵"
+  goal: "同樣是「會員 4242 的訂單」，一個用以 customer_id 為分區鍵的表，一個用 ALLOW FILTERING 硬查。"
+  queries:
+    - label: "A：orders_by_customer（customer_id 是分區鍵）"
+      cql: "SELECT order_id, order_time, total FROM orders_by_customer WHERE customer_id = 4242"
+    - label: "B：orders + ALLOW FILTERING"
+      cql: "SELECT order_id, order_time, total FROM orders WHERE customer_id = 4242 ALLOW FILTERING"
+  question: "兩句都回傳 6 列。看追蹤裡的「讀取列數」：B 為了這 6 列讀了幾列？"
+  takeaway: |
+    A 是「Executing single-partition query」：用分區鍵算出 token，直接讀那一個分區，只讀 6 列。
+    B 是「Submitting range requests」+「seq scan」：把整張表 8 萬列讀過一遍，再丟掉不符合的。
+    這裡只有一個節點、資料也都在記憶體裡，B 才幾百毫秒；正式環境資料在好幾台機器、好幾百 GB，B 會逾時，還會拖慢整個叢集。
+    這就是 Cassandra 的第一條規則：每一個查詢都要有完整的分區鍵。為了做到這點，同一份資料常常要存好幾張表。
+
+- id: clustering-slice
+  title: "叢集鍵：只讀需要的那一段"
+  goal: "會員 1 有 152 筆訂單（最大的分區）。比較讀整個分區、LIMIT、以及用叢集鍵切一段時間。"
+  queries:
+    - label: "A：整個分區"
+      cql: "SELECT order_id, order_time FROM orders_by_customer WHERE customer_id = 1"
+    - label: "B：最新 3 筆（LIMIT 3）"
+      cql: "SELECT order_id, order_time FROM orders_by_customer WHERE customer_id = 1 LIMIT 3"
+    - label: "C：2025 年（叢集鍵範圍）"
+      cql: |
+        SELECT order_id, order_time FROM orders_by_customer
+        WHERE customer_id = 1
+          AND order_time >= '2025-01-01 00:00:00+0800'
+          AND order_time <  '2026-01-01 00:00:00+0800'
+  question: "B 和 C 各讀了幾列？跟 A 的 152 列比起來呢？"
+  takeaway: |
+    分區內的資料依叢集鍵排好存在一起，所以 LIMIT 3 只讀開頭 3 列，時間範圍也只讀那一段，不必把整個分區讀出來再過濾。
+    設計叢集鍵時要想：「我最常要哪一段？」最新的在前（DESC）、時間範圍、價格範圍，都是叢集鍵的典型用法。
+
+- id: time-bucket
+  title: "時間分桶 vs 時間範圍掃描"
+  goal: "查「2026-09-01 這一天的訂單」：用一天一個分區的 orders_by_day，或是在 orders_by_day 上不給分區鍵、只用時間範圍。"
+  queries:
+    - label: "A：分區鍵 order_day"
+      cql: "SELECT COUNT(*) FROM orders_by_day WHERE order_day = '2026-09-01'"
+    - label: "B：只用 order_time 範圍（ALLOW FILTERING）"
+      cql: |
+        SELECT COUNT(*) FROM orders_by_day
+        WHERE order_time >= '2026-09-01 00:00:00+0800' AND order_time < '2026-09-02 00:00:00+0800'
+        ALLOW FILTERING
+    - label: "C：一週（IN 7 個分區）"
+      cql: |
+        SELECT COUNT(*) FROM orders_by_day
+        WHERE order_day IN ('2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07')
+  question: "A 和 B 讀的列數其實一樣（都是 87 列），那差在哪裡？看「讀取方式」。C 讀了幾個分區？"
+  takeaway: |
+    A 是「單一分區」：用 order_day 算出 token，直接找到那一天的分區。
+    B 是「範圍掃描」：order_time 雖然是叢集鍵，但叢集鍵只在同一個分區裡有排序；沒有分區鍵時，Cassandra 要走過全部 1,728 個分區（每一天一個），
+    在每個分區裡切出符合的那一段。讀到的列數一樣，但多了「走過每一個分區」的成本。
+    這裡只有一個節點、資料量也小，所以只慢了一兩毫秒；在多節點的叢集裡，範圍掃描要問遍「每一個節點」，資料越多越慢，而且會影響其他查詢。
+    C 用 IN 讀 7 個分區，是查一段時間的正確做法（或在應用程式裡平行送出 7 個查詢）。
+    分桶的粒度是取捨：分區太大（例如一個月）會變成熱點、讀取變慢；太小（例如一分鐘）則查一段時間要讀很多分區。
+    一般建議單一分區不超過 100 MB、10 萬列以內。
+
+- id: sai-index
+  title: "SAI 索引：不建新表也能用其他欄位查"
+  goal: "Cassandra 5.0 的 SAI（Storage-Attached Index）讓 orders 也能用 customer_id 查。先執行一次（會被拒絕），建立索引後再執行一次。"
+  indexes:
+    - "CREATE INDEX IF NOT EXISTS orders_customer_idx ON orders (customer_id) USING 'sai'"
+  queries:
+    - label: "A：orders 用 customer_id 查（沒有 ALLOW FILTERING）"
+      cql: "SELECT order_id, order_time, total FROM orders WHERE customer_id = 4242"
+    - label: "B：orders_by_customer（對照）"
+      cql: "SELECT order_id, order_time, total FROM orders_by_customer WHERE customer_id = 4242"
+  question: "有了索引，A 讀了幾列？耗時跟 B 比呢？"
+  takeaway: |
+    SAI 把索引建在每個 SSTable 旁邊，查詢時先在索引裡找到符合的主鍵，再去讀那幾列，不用全表掃描。
+    但它還是「每個節點各自的本地索引」：在多節點的叢集裡，協調節點要問遍所有節點（scatter-gather），節點越多越貴。
+    所以 SAI 適合：低頻的查詢、搭配分區鍵一起用、或資料量不大的表；高頻的主要查詢還是建一張專用的表（B）。
+    舊版的二級索引（2i）與 SASI 都有很多限制，Cassandra 5.0 之後建議用 SAI。
+
+- id: sai-multi
+  title: "SAI：集合與多個條件"
+  goal: "商品表只有 1,500 件，很適合用 SAI。建立 tags 與 price 的索引，查「有熱銷標籤、而且 1,000 元以下」的商品。"
+  indexes:
+    - "CREATE INDEX IF NOT EXISTS products_tags_idx ON products (tags) USING 'sai'"
+    - "CREATE INDEX IF NOT EXISTS products_price_idx ON products (price) USING 'sai'"
+  queries:
+    - label: "A：tags CONTAINS（set 的元素）"
+      cql: "SELECT product_id, name, price, tags FROM products WHERE tags CONTAINS '熱銷'"
+    - label: "B：tags + price 範圍（兩個索引一起用）"
+      cql: "SELECT product_id, name, price FROM products WHERE tags CONTAINS '熱銷' AND price < 1000"
+  question: "沒有索引時這兩句會怎樣？建了索引之後各回傳幾列？"
+  takeaway: |
+    SAI 支援集合（CONTAINS / CONTAINS KEY）、範圍（< >），多個 SAI 條件可以用 AND 一起查，Cassandra 會取交集。
+    對照：沒有索引時要加 ALLOW FILTERING 才能查，而且是全表掃描。
+    面試常見說法：「Cassandra 的查詢彈性很低」在 5.0 之後有改善，但核心原則不變：主要查詢靠表設計，索引是輔助。
+
+- id: filter-in-partition
+  title: "ALLOW FILTERING 也有不貴的時候"
+  goal: "同樣是篩選 status = 'returned'，一個限定在會員 4242 的分區裡，一個沒有限定分區（加了 LIMIT 5）。"
+  queries:
+    - label: "A：分區內篩選"
+      cql: "SELECT order_id, total FROM orders_by_customer WHERE customer_id = 4242 AND status = 'returned' ALLOW FILTERING"
+    - label: "B：沒有分區鍵，但只要 5 筆"
+      cql: "SELECT order_id, total FROM orders WHERE status = 'returned' LIMIT 5 ALLOW FILTERING"
+    - label: "C：沒有分區鍵，要全部"
+      cql: "SELECT COUNT(*) FROM orders WHERE status = 'returned' ALLOW FILTERING"
+  question: "A、B、C 各讀了幾列？"
+  takeaway: |
+    ALLOW FILTERING 的成本 = 為了找到結果要讀過的列數。
+    A 只在一個分區裡過濾，讀 6 列；B 沒有分區鍵，但找到 5 筆就停了，讀的列數取決於符合條件的資料有多「密」；C 要掃完整張表。
+    所以重點不是「不准寫 ALLOW FILTERING」，而是要知道它會讀多少資料。
