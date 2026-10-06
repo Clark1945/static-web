@@ -1,29 +1,35 @@
-# PostgreSQL 面試練習庫（shop）
+# 資料庫面試練習庫（shop）
 
-一間台灣電商「shop」的模擬資料，約 30 萬筆，彼此有關聯。
+以一間台灣電商「shop」的模擬資料（約 30 萬筆，彼此有關聯）練習各種資料庫。目前有 PostgreSQL 與 Redis。
 
 ## 連線資訊
 
-| 項目 | 值 |
-|---|---|
-| Host | localhost |
-| Port | 5434 |
-| Database | shop |
-| User / Password | lab / lab |
+| | PostgreSQL | Redis |
+|---|---|---|
+| 容器 | `pg-lab` | `redis-lab` |
+| Host / Port | localhost:5434 | localhost:6380 |
+| 資料庫 | shop | db 0（練習資料）、db 1（批改用的隔離區） |
+| 帳號 | lab / lab | `default` / admin-lab（管理）、`learner` / learner-lab（受限） |
 
 ```bash
 docker exec -it pg-lab psql -U lab -d shop
 ```
 
-圖形介面推薦 DBeaver 或 pgAdmin，填上面的連線資訊即可。
+```bash
+docker exec -it redis-lab redis-cli --user learner --pass learner-lab
+```
+
+圖形介面：PostgreSQL 用 DBeaver 或 pgAdmin；Redis 用 RedisInsight。
 
 ## 常用指令
 
 ```bash
-docker compose up -d          # 啟動
+docker compose up -d          # 啟動 PostgreSQL 與 Redis
 docker compose stop           # 停止（資料保留）
 docker compose down -v        # 刪掉資料庫，下次 up 會重新產生一模一樣的資料
 ```
+
+Redis 的資料不持久化：展示台每次啟動都會從 PostgreSQL 重新轉入（約 1 秒、4 萬個 key），也可以在頁面上按「重置資料」。
 
 ## 資料表關聯
 
@@ -70,7 +76,9 @@ erDiagram
 
 ## 展示台 APP
 
-[db-showcase/](db-showcase/) 是 Spring Boot 寫的多資料庫展示台（http://localhost:8081），目前已串接 PostgreSQL：
+[db-showcase/](db-showcase/) 是 Spring Boot 寫的多資料庫展示台（http://localhost:8081），目前已串接 PostgreSQL 與 Redis。
+
+**PostgreSQL**
 
 | 分頁 | 內容 |
 |---|---|
@@ -80,7 +88,16 @@ erDiagram
 | 索引實驗室 | 11 個步驟：B-tree、複合索引、Partial、Expression、BRIN、GIN，看 EXPLAIN ANALYZE 的變化 |
 | 範例與自由查詢 | 示範查詢，或寫任何 SELECT |
 
-題目內容放在 `db-showcase/src/main/resources/postgres/` 的 YAML 檔，加題目不用改程式。
+**Redis**（資料從 PostgreSQL 轉成 String、Hash、List、Set、Sorted Set、Stream、HyperLogLog、Bitmap、Geo）
+
+| 分頁 | 內容 |
+|---|---|
+| 練習題 | 26 題，自己寫指令；在隔離的 db 1 分別執行你的指令與標準答案，比對回傳值或執行後的資料狀態 |
+| 陷阱題 | 8 題：交易沒有 ROLLBACK、SET 會清掉 TTL、LRANGE 包含結尾、HyperLogLog 是估計值、KEYS 與 SCAN… |
+| 實戰實驗室 | Cache-Aside（含快取穿透）、限流、分散式鎖（含錯誤的釋放方式）、庫存超賣、排行榜、Pipeline |
+| 指令主控台 | 以 ACL 受限的 learner 帳號執行任何指令 |
+
+題目內容放在 `db-showcase/src/main/resources/postgres/`、`redis/` 的 YAML 檔，加題目不用改程式。
 
 ```bash
 cd db-showcase

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PostgreSQL 學習筆記</title>
+<title>資料庫學習筆記</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <style>
 /* 兩份靜態頁共用：上方固定標題列 + 內容區；色彩沿用展示台的 PostgreSQL 藍 */
@@ -116,22 +116,23 @@ pre.code:hover .copy, .copy:focus-visible { opacity: 1; }
 </head>
 <body>
 
-<header class="top"><div class="top-in"><div><b class="brand">PostgreSQL 學習筆記</b>
+<header class="top"><div class="top-in"><div><b class="brand">資料庫學習筆記</b>
   <span class="sub">面試準備 · shop 練習資料庫</span></div></div></header>
 <main class="home">
-  <p class="lead">一個台灣電商「shop」的模擬資料庫（會員、訂單、明細、商品、分類，約 30 萬筆），
-    從 JOIN、視窗函數一路練到 JSONB、UPSERT 與各種索引。</p>
+  <p class="lead">以一個台灣電商「shop」的模擬資料（會員、訂單、明細、商品、分類，約 30 萬筆）為例，
+    練習 PostgreSQL 的 SQL 與索引，以及 Redis 的資料結構與快取、鎖、限流等實戰場景。</p>
   <div class="home-grid">
     <a class="home-card" href="cheatsheet.html">
       <b>CheatSheet</b>
-      <span>SQL 執行順序、JOIN、NULL、子查詢、CTE、視窗函數、DML、索引、交易，以及 JSONB / Array / UPSERT 等 PostgreSQL 進階語法。</span>
+      <span>PostgreSQL：SQL 執行順序、JOIN、NULL、視窗函數、索引、交易、JSONB / UPSERT。
+        Redis：資料結構、交易與 Lua、快取穿透 / 擊穿 / 雪崩、分散式鎖、持久化、叢集。</span>
     </a>
     <a class="home-card" href="question-bank.html">
-      <b>題庫</b>
+      <b>PostgreSQL 題庫</b>
       <span>練習題 43 題、陷阱題 10 題、索引實驗 11 步。附提示、答案、解說與正確答案的實際執行結果。</span>
     </a>
   </div>
-  <p class="foot">更新於 2026-10-05</p>
+  <p class="foot">更新於 2026-10-06</p>
 </main>
 <script>
 // 兩份靜態頁共用：SQL 上色、複製按鈕、HTML 跳脫
@@ -172,6 +173,20 @@ function highlightSQL(text) {
   return out + esc(text.slice(last));
 }
 
+/** Redis 指令：每行第一個字是指令（上色），-- 之後是註解。 */
+function highlightRedis(text) {
+  return text.split("\n").map((line) => {
+    const c = line.indexOf("--");
+    const body = c >= 0 ? line.slice(0, c) : line;
+    const comment = c >= 0 ? `<span class="hl-cmt">${esc(line.slice(c))}</span>` : "";
+    const html = esc(body)
+      .replace(/^(\s*)([A-Za-z][A-Za-z.]*)/, '$1<span class="hl-kw">$2</span>')
+      .replace(/(&quot;[^&]*&quot;|'[^']*')/g, '<span class="hl-str">$1</span>')
+      .replace(/(\s)(-?\d+(?:\.\d+)?)(?=\s|$)/g, '$1<span class="hl-num">$2</span>');
+    return html + comment;
+  }).join("\n");
+}
+
 /** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
 function enhanceCode(root) {
   root.querySelectorAll("pre.code").forEach((pre) => {
@@ -179,7 +194,8 @@ function enhanceCode(root) {
     pre.dataset.ready = "1";
     const code = pre.querySelector("code") ?? pre;
     const raw = code.textContent;
-    if (pre.dataset.lang !== "text") code.innerHTML = highlightSQL(raw);
+    if (pre.dataset.lang === "redis") code.innerHTML = highlightRedis(raw);
+    else if (pre.dataset.lang !== "text") code.innerHTML = highlightSQL(raw);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "copy";

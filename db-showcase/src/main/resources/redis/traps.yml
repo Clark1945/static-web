@@ -1,0 +1,199 @@
+# Redis 陷阱題：先猜答案，再執行兩段指令對照
+# 每段指令都在乾淨的隔離 db 執行（先複製 keys、跑 setup）；dataDb: true 則直接在 db 0 執行唯讀指令
+# answer 是 options 的索引（從 0 開始）
+
+- id: multi-no-rollback
+  title: 交易失敗會 ROLLBACK 嗎
+  question: A 的交易裡，HSET 那一句會失敗（a 是 String 不是 Hash）。EXEC 之後 a 是多少？
+  setup: |
+    SET a 1
+  scripts:
+    - label: A：執行時才出錯（型別錯誤）
+      commands: |
+        MULTI
+        SET a 2
+        HSET a field value
+        SET b 3
+        EXEC
+        GET a
+        GET b
+    - label: B：排隊時就出錯（語法錯誤）
+      commands: |
+        MULTI
+        SET a 2
+        SET
+        SET b 3
+        EXEC
+        GET a
+        GET b
+  options:
+    - "1：整個交易被還原"
+    - "2：其他指令照樣生效"
+    - 整個 EXEC 被拒絕，什麼都沒做
+  answer: 1
+  explanation: |
+    ★ Redis 交易沒有 ROLLBACK。分兩種情況：
+    A：指令格式正確、執行時才出錯（例如型別不對）：只有那一句失敗，其他句照樣生效，所以 a = 2、b = 3。
+    B：排隊時就發現語法錯誤：EXEC 回傳 EXECABORT，整個交易都不執行，a 還是 1。
+    官方的理由是「執行時的錯誤都是程式寫錯，應該在開發時就發現」。需要全有或全無時改用 Lua 腳本。
+
+- id: set-drops-ttl
+  title: SET 會把過期時間清掉
+  question: A 先 SET 一個 100 秒後過期的 key，再 SET 一次新的值。最後的 TTL 是多少？
+  scripts:
+    - label: A：直接再 SET 一次
+      commands: |
+        SET k v1 EX 100
+        SET k v2
+        TTL k
+    - label: B：加上 KEEPTTL
+      commands: |
+        SET k v1 EX 100
+        SET k v2 KEEPTTL
+        TTL k
+  options:
+    - 大約 100
+    - "-1（沒有過期時間）"
+    - "-2（key 不存在）"
+  answer: 1
+  explanation: |
+    ★ SET 會覆蓋整個 key，連原本的過期時間也一起清掉。快取更新時很容易踩到：
+    原本 30 分鐘後過期的快取，被一次「SET 新值」變成永遠不會過期，最後吃光記憶體。
+    更新時要重新給 EX，或用 KEEPTTL（Redis 6.0+）保留原本的過期時間。
+    INCR、HSET、LPUSH 這類「修改」指令不會影響 TTL；只有覆蓋整個值的 SET、GETSET 會。
+
+- id: ttl-codes
+  title: TTL 的 -1 和 -2
+  question: 對一個「不存在」的 key 執行 TTL，會回傳什麼？
+  scripts:
+    - label: A：不存在的 key
+      commands: |
+        TTL no-such-key
+    - label: B：存在、但沒有設定過期時間
+      commands: |
+        SET k v
+        TTL k
+  options:
+    - "-1"
+    - "-2"
+    - "0"
+    - nil
+  answer: 1
+  explanation: |
+    -2：key 不存在（或已經過期被刪掉）。
+    -1：key 存在，但沒有過期時間。
+    正數：還剩幾秒。PTTL 是毫秒版本，規則一樣。
+
+- id: list-range-inclusive
+  title: LRANGE 的結尾包含在內
+  question: List 裡有 12 個元素。LRANGE list 0 10 會回傳幾個？
+  setup: |
+    RPUSH list a b c d e f g h i j k l
+  scripts:
+    - label: A：LRANGE list 0 10
+      commands: |
+        LRANGE list 0 10
+    - label: B：LRANGE list 0 -1
+      commands: |
+        LRANGE list 0 -1
+  options:
+    - "10"
+    - "11"
+    - "12"
+  answer: 1
+  explanation: |
+    LRANGE、ZRANGE、GETRANGE 的結尾都是「包含在內」，0 10 是 11 個。
+    跟 Java 的 subList(0, 10)、Python 的 list[0:10]（不包含結尾）剛好相反，分頁時最容易差一。
+    -1 代表最後一個，0 -1 就是全部。
+
+- id: zset-tie-order
+  title: 同分時的排序
+  question: alice、bob、carol 都是 100 分。A 由高到低排序（REV），同分的三個人順序是？
+  setup: |
+    ZADD board 100 alice 100 bob 100 carol 90 dave
+  scripts:
+    - label: A：由高到低（REV）
+      commands: |
+        ZRANGE board 0 -1 REV WITHSCORES
+    - label: B：由低到高
+      commands: |
+        ZRANGE board 0 -1 WITHSCORES
+  options:
+    - 依加入順序：alice、bob、carol
+    - 依名稱倒序：carol、bob、alice
+    - 每次執行都不一樣
+  answer: 1
+  explanation: |
+    Sorted Set 同分時依 member 的字典順序排列；加上 REV 時整個反過來，所以變成 carol、bob、alice。
+    排行榜想要「同分時先達到的人排前面」，常見做法是把時間編進分數：分數 = 積分 × 10^10 + (很大的數 − 時間戳)。
+
+- id: get-wrong-type
+  title: 用錯指令讀錯型別
+  question: product:540 是 Hash。對它執行 GET 會得到什麼？
+  keys: ["product:540"]
+  scripts:
+    - label: A：GET
+      commands: |
+        GET product:540
+        TYPE product:540
+    - label: B：HGETALL
+      commands: |
+        HGETALL product:540
+  options:
+    - nil
+    - WRONGTYPE 錯誤
+    - 整個 Hash 的內容
+  answer: 1
+  explanation: |
+    每個 key 都有固定的型別，用錯型別的指令會得到 WRONGTYPE 錯誤。不確定時先用 TYPE key 查。
+    Java 端最常見的情況：同一個 key 一下用 opsForValue()、一下用 opsForHash() 操作。
+
+- id: hll-is-estimate
+  title: HyperLogLog 是估計值
+  question: 用 HyperLogLog 合併 9 月 30 天的資料，估算「9 月不重複下單人數」。跟用 Bitmap 算出來的精確值一樣嗎？
+  keys: ["uv:2026-09-01", "uv:2026-09-02", "uv:2026-09-03", "uv:2026-09-04", "uv:2026-09-05", "uv:2026-09-06", "uv:2026-09-07", "uv:2026-09-08", "uv:2026-09-09", "uv:2026-09-10", "uv:2026-09-11", "uv:2026-09-12", "uv:2026-09-13", "uv:2026-09-14", "uv:2026-09-15", "uv:2026-09-16", "uv:2026-09-17", "uv:2026-09-18", "uv:2026-09-19", "uv:2026-09-20", "uv:2026-09-21", "uv:2026-09-22", "uv:2026-09-23", "uv:2026-09-24", "uv:2026-09-25", "uv:2026-09-26", "uv:2026-09-27", "uv:2026-09-28", "uv:2026-09-29", "uv:2026-09-30", "active:2026-09-01", "active:2026-09-02", "active:2026-09-03", "active:2026-09-04", "active:2026-09-05", "active:2026-09-06", "active:2026-09-07", "active:2026-09-08", "active:2026-09-09", "active:2026-09-10", "active:2026-09-11", "active:2026-09-12", "active:2026-09-13", "active:2026-09-14", "active:2026-09-15", "active:2026-09-16", "active:2026-09-17", "active:2026-09-18", "active:2026-09-19", "active:2026-09-20", "active:2026-09-21", "active:2026-09-22", "active:2026-09-23", "active:2026-09-24", "active:2026-09-25", "active:2026-09-26", "active:2026-09-27", "active:2026-09-28", "active:2026-09-29", "active:2026-09-30"]
+  scripts:
+    - label: A：HyperLogLog 估計
+      commands: |
+        PFMERGE uv:2026-09 uv:2026-09-01 uv:2026-09-02 uv:2026-09-03 uv:2026-09-04 uv:2026-09-05 uv:2026-09-06 uv:2026-09-07 uv:2026-09-08 uv:2026-09-09 uv:2026-09-10 uv:2026-09-11 uv:2026-09-12 uv:2026-09-13 uv:2026-09-14 uv:2026-09-15 uv:2026-09-16 uv:2026-09-17 uv:2026-09-18 uv:2026-09-19 uv:2026-09-20 uv:2026-09-21 uv:2026-09-22 uv:2026-09-23 uv:2026-09-24 uv:2026-09-25 uv:2026-09-26 uv:2026-09-27 uv:2026-09-28 uv:2026-09-29 uv:2026-09-30
+        PFCOUNT uv:2026-09
+        MEMORY USAGE uv:2026-09
+    - label: B：Bitmap 精確計算
+      commands: |
+        BITOP OR active:2026-09 active:2026-09-01 active:2026-09-02 active:2026-09-03 active:2026-09-04 active:2026-09-05 active:2026-09-06 active:2026-09-07 active:2026-09-08 active:2026-09-09 active:2026-09-10 active:2026-09-11 active:2026-09-12 active:2026-09-13 active:2026-09-14 active:2026-09-15 active:2026-09-16 active:2026-09-17 active:2026-09-18 active:2026-09-19 active:2026-09-20 active:2026-09-21 active:2026-09-22 active:2026-09-23 active:2026-09-24 active:2026-09-25 active:2026-09-26 active:2026-09-27 active:2026-09-28 active:2026-09-29 active:2026-09-30
+        BITCOUNT active:2026-09
+        MEMORY USAGE active:2026-09
+  options:
+    - 完全一樣
+    - 很接近，但有一點誤差
+    - 差很多
+  answer: 1
+  explanation: |
+    HyperLogLog 是機率演算法，標準誤差約 0.81%；資料量小的時候常常剛好相等，量越大越看得出誤差。
+    換來的好處是記憶體固定：不管統計 1 千人還是 1 億人，一個 HyperLogLog 最多 12 KB。
+    Bitmap 精確，但大小跟「最大的 id」成正比：id 到 1 億就要 12 MB。
+    面試常問「怎麼統計每日 UV」：量小用 Set，id 連續用 Bitmap，量很大又允許誤差用 HyperLogLog。
+
+- id: keys-vs-scan
+  title: KEYS 與 SCAN
+  question: A 和 B 都在找 product:99 開頭的 key。B 的 SCAN 一次就會回傳全部符合的 key 嗎？
+  dataDb: true
+  scripts:
+    - label: A：KEYS（掃過整個資料庫）
+      commands: |
+        KEYS product:99*
+        DBSIZE
+    - label: B：SCAN（從游標 0 開始，一次看 100 個）
+      commands: |
+        SCAN 0 MATCH product:99* COUNT 100
+  options:
+    - 會，結果跟 KEYS 一樣
+    - 不一定，要拿回傳的游標繼續掃，直到游標回到 0
+    - 會報錯
+  answer: 1
+  explanation: |
+    ★ KEYS 會一次掃過全部 key（這裡約 4 萬個）。Redis 執行指令是單執行緒的，KEYS 執行期間其他請求全部要排隊；
+    正式環境有幾百萬個 key 時，一個 KEYS 就能讓服務卡住好幾秒，所以展示台的 learner 帳號根本不能用 KEYS。
+    SCAN 每次只看一小批（COUNT 是「大約看幾個」，不是回傳幾筆），回傳 [下一個游標, 這批符合的 key]。
+    這一批可能完全沒有符合的 key，要一直用新游標呼叫，直到游標回到 0 才算掃完。
+    SCAN 可能回傳重複的 key，程式要自己去重。

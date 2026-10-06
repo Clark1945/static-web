@@ -8,7 +8,7 @@ export const DATABASES = [
   {
     id: "redis", name: "Redis", kind: "鍵值", mono: "Rd", color: "#D82C20", ink: "#FFFFFF",
     tagline: "資料放在記憶體的鍵值資料庫，常用在快取、排行榜、Session、限流。",
-    status: "planned",
+    status: "ready", page: () => import("./pages/redis/index.js"),
   },
   {
     id: "mongodb", name: "MongoDB", kind: "文件", mono: "Mg", color: "#13AA52", ink: "#FFFFFF",

@@ -1,0 +1,415 @@
+# Redis 練習題
+# keys   ：批改前從 db 0 複製到隔離 db 的 key
+# setup  ：批改前先在隔離 db 執行的指令
+# check  ：執行完後檢查資料狀態的指令（有設定就比對這些結果，不比最後一個指令的回傳值）
+# ordered: false → 回傳的陣列順序不拘（SMEMBERS、SINTER…）
+
+# ------------------------------------------------------------------ String
+- id: str-get
+  chapter: String
+  title: 讀出訂單總數
+  prompt: |
+    訂單總數存在 stats:orders:total 這個 String 裡。把它讀出來。
+  keys: ["stats:orders:total"]
+  hints:
+    - "GET key"
+  answer: |
+    GET stats:orders:total
+  explanation: |
+    String 是 Redis 最基本的型別，值可以是文字、數字，或序列化後的 JSON，最大 512 MB。
+    Redis 的 key 習慣用冒號分層：物件類型:id:欄位，例如 stats:orders:total、product:540。
+
+- id: str-incr
+  chapter: String
+  title: 計數器加一（INCR）
+  prompt: |
+    又成立了一筆訂單。把 stats:orders:total 加 1，並拿到加完之後的值。
+    只能用一個指令完成。
+  keys: ["stats:orders:total"]
+  hints:
+    - "INCR key 會把數字加 1，並回傳新的值。"
+  answer: |
+    INCR stats:orders:total
+  explanation: |
+    ★ INCR 是原子操作：就算 1000 個請求同時加，結果也一定正確。
+    如果寫成 GET → 程式裡 +1 → SET，兩個請求可能同時讀到同一個值，最後只加了 1（實驗室的「庫存扣減」有實際示範）。
+    相關指令：INCRBY key 10、DECR、INCRBYFLOAT。
+
+- id: str-session
+  chapter: String
+  title: 建立 30 分鐘後過期的 Session
+  prompt: |
+    使用者登入了。建立 session:zz9，值是 customer:42，30 分鐘後自動過期。
+    用一個指令完成（不要分成 SET 和 EXPIRE 兩個指令）。
+  hints:
+    - "SET key value EX 秒數"
+  answer: |
+    SET session:zz9 customer:42 EX 1800
+  check: |
+    GET session:zz9
+    TTL session:zz9
+  explanation: |
+    SET 的 EX（秒）/ PX（毫秒）選項可以在寫入的同時設定過期時間，而且是一個原子操作。
+    分成 SET + EXPIRE 兩個指令的話，如果程式在中間當掉，就會留下一個永遠不會過期的 key。
+
+- id: str-lock
+  chapter: String
+  title: 搶鎖（SET NX）
+  prompt: |
+    訂單 1 的鎖 lock:order:1 目前被 worker-b 拿著（題目已經先幫你設定好，30 秒後過期）。
+    現在 worker-a 也想拿這把鎖：只有在 key 不存在時才寫入 worker-a，並設定 10 秒後過期。
+    注意：不能影響到 worker-b 原本的鎖。
+  setup: |
+    SET lock:order:1 worker-b EX 30
+  hints:
+    - "SET key value NX EX 秒數：NX = 只有 key 不存在時才寫入。"
+    - 拿不到鎖時會回傳 nil。
+  answer: |
+    SET lock:order:1 worker-a NX EX 10
+  check: |
+    GET lock:order:1
+    TTL lock:order:1
+  explanation: |
+    ★ 分散式鎖的基本款：SET key token NX EX/PX。
+    常見錯誤是寫成 SETNX 再 EXPIRE：SETNX 失敗了，接著的 EXPIRE 卻把 worker-b 那把鎖的過期時間改成 10 秒，等於動到別人的鎖。
+    （試試看用 SETNX + EXPIRE 交一次，看批改怎麼說。）
+    釋放鎖也有陷阱：不能直接 DEL，要先確認 value 還是自己的 token（實驗室有示範）。
+
+# ------------------------------------------------------------------ Hash
+- id: hash-getall
+  chapter: Hash
+  title: 商品 540 的所有欄位
+  prompt: |
+    商品資料用 Hash 存在 product:{id}。讀出 product:540 的所有欄位與值。
+  keys: ["product:540"]
+  hints:
+    - "HGETALL key"
+  answer: |
+    HGETALL product:540
+  explanation: |
+    HGETALL 回傳「欄位、值、欄位、值…」交錯的陣列。
+    ★ 欄位很多的大 Hash（幾萬個欄位）不要用 HGETALL，會阻塞 Redis；改用 HSCAN 分批讀，或只讀需要的欄位。
+
+- id: hash-hmget
+  chapter: Hash
+  title: 只讀需要的欄位
+  prompt: |
+    只需要會員 1 的姓名（name）和城市（city）。用一個指令讀出這兩個欄位。
+  keys: ["customer:1"]
+  hints:
+    - "HMGET key field1 field2"
+  answer: |
+    HMGET customer:1 name city
+  explanation: |
+    HMGET 依照你給的欄位順序回傳；欄位不存在時那個位置會是 nil。
+    物件快取用 Hash 而不是整包 JSON String 的好處：可以只讀、只改其中幾個欄位。
+
+- id: hash-hincrby
+  chapter: Hash
+  title: 扣庫存（HINCRBY）
+  prompt: |
+    商品 540 賣出了 2 件。把 stock 欄位減 2，並回傳新的庫存。
+  keys: ["product:540"]
+  hints:
+    - "HINCRBY key field 增量，增量可以是負數。"
+  answer: |
+    HINCRBY product:540 stock -2
+  check: |
+    HGET product:540 stock
+  explanation: |
+    HINCRBY 跟 INCR 一樣是原子操作，適合計數類的欄位（庫存、按讚數、瀏覽數）。
+    但它不會檢查「扣到負數」；要「庫存夠才扣」得用 Lua 腳本或 WATCH（實驗室的庫存扣減有示範）。
+
+- id: hash-hset-new-field
+  chapter: Hash
+  title: 加一個新欄位
+  prompt: |
+    幫會員 1 加上 phone 欄位，值是 0912345678。
+  keys: ["customer:1"]
+  hints:
+    - "HSET key field value，回傳的是「新增了幾個欄位」。"
+  answer: |
+    HSET customer:1 phone 0912345678
+  check: |
+    HGET customer:1 phone
+    HLEN customer:1
+  explanation: |
+    HSET 回傳新增的欄位數：欄位本來就存在、只是更新值的話會回傳 0。
+    Redis 7.4 起可以替單一欄位設定過期時間：HEXPIRE key 秒數 FIELDS 1 field。
+
+# ------------------------------------------------------------------ List
+- id: list-lrange
+  chapter: List
+  title: 最近 3 筆訂單
+  prompt: |
+    customer:1:recent_orders 是會員 1 最近的訂單 id，索引 0 是最新的一筆。
+    讀出最新的 3 筆。
+  keys: ["customer:1:recent_orders"]
+  hints:
+    - "LRANGE key start stop，stop 是包含在內的。"
+  answer: |
+    LRANGE customer:1:recent_orders 0 2
+  explanation: |
+    ★ LRANGE 的 stop 是「包含」的：0 2 是 3 筆（Java 的 subList 是不包含）。
+    -1 代表最後一個，所以 LRANGE key 0 -1 是全部。
+
+- id: list-push-trim
+  chapter: List
+  title: 新訂單放最前面，只保留 10 筆
+  prompt: |
+    會員 1 剛下了訂單 90001。把它放到 customer:1:recent_orders 的最前面，
+    而且整個 List 只保留最新的 10 筆。
+  keys: ["customer:1:recent_orders"]
+  hints:
+    - LPUSH 從左邊（最前面）放入。
+    - "LTRIM key 0 9 只保留索引 0~9。"
+  answer: |
+    LPUSH customer:1:recent_orders 90001
+    LTRIM customer:1:recent_orders 0 9
+  check: |
+    LLEN customer:1:recent_orders
+    LRANGE customer:1:recent_orders 0 -1
+  explanation: |
+    LPUSH + LTRIM 是「固定長度的最新清單」標準寫法：最新動態、最近瀏覽、最近 N 筆日誌。
+    想讓兩個指令一起成功，可以包在 MULTI / EXEC 裡，或用 Pipeline 一次送出。
+
+# ------------------------------------------------------------------ Set
+- id: set-scard
+  chapter: Set
+  title: 特價商品有幾件
+  prompt: |
+    tag:特價 是一個 Set，裡面是有「特價」標籤的商品 id。有幾件？
+  keys: ["tag:特價"]
+  hints:
+    - "SCARD key 回傳 Set 的元素個數。"
+  answer: |
+    SCARD tag:特價
+  explanation: |
+    SCARD 是 O(1)，不用把整個 Set 讀出來再數。
+
+- id: set-sinter
+  chapter: Set
+  title: 熱銷又限量（SINTER）
+  prompt: |
+    同時有「熱銷」和「限量」兩個標籤的商品 id 有哪些？
+  keys: ["tag:熱銷", "tag:限量"]
+  ordered: false
+  hints:
+    - "SINTER key1 key2 取交集。"
+  answer: |
+    SINTER tag:熱銷 tag:限量
+  explanation: |
+    Set 沒有順序，所以這題不比對順序。SINTER 交集、SUNION 聯集、SDIFF 差集。
+    只要數量的話用 SINTERCARD 2 key1 key2，不用把結果傳回來。
+
+- id: set-sismember
+  chapter: Set
+  title: 商品 540 是熱銷商品嗎
+  prompt: |
+    判斷商品 540 有沒有「熱銷」標籤。
+  keys: ["tag:熱銷"]
+  hints:
+    - "SISMEMBER key member：有回傳 1，沒有回傳 0。"
+  answer: |
+    SISMEMBER tag:熱銷 540
+  explanation: |
+    SISMEMBER 是 O(1)。常見用途：判斷使用者是否按過讚、是否已經領過優惠券、黑名單。
+
+- id: set-sdiffstore
+  chapter: Set
+  title: 熱銷但沒有特價的商品數
+  prompt: |
+    有「熱銷」標籤、但沒有「特價」標籤的商品有幾件？最後一個指令要回傳這個數字。
+  keys: ["tag:熱銷", "tag:特價"]
+  hints:
+    - SDIFF 會回傳整串 id；想要數量，可以用 SDIFFSTORE 把結果存到一個新 key，它會回傳結果的元素個數。
+  answer: |
+    SDIFFSTORE tmp:hot-not-sale tag:熱銷 tag:特價
+  explanation: |
+    SDIFF A B = 在 A 但不在 B。*STORE 版本（SINTERSTORE、SUNIONSTORE、SDIFFSTORE）會把結果存起來並回傳個數，
+    適合「先算好、之後重複使用」的情境，記得替暫存 key 設過期時間。
+
+# ------------------------------------------------------------------ Sorted Set
+- id: zset-top5
+  chapter: Sorted Set
+  title: 銷量前 5 名（排行榜）
+  prompt: |
+    leaderboard:products:sales 是商品銷量排行，分數 = 賣出的件數。
+    列出銷量最高的 5 個商品 id，以及它們的件數，由高到低。
+  keys: ["leaderboard:products:sales"]
+  hints:
+    - "ZRANGE key 0 4 REV WITHSCORES（Redis 6.2 以前寫成 ZREVRANGE key 0 4 WITHSCORES）"
+  answer: |
+    ZRANGE leaderboard:products:sales 0 4 REV WITHSCORES
+  explanation: |
+    ★ 排行榜是 Sorted Set 最經典的用途：更新分數 O(log N)、取前 N 名 O(log N + N)。
+    用 SQL 做排行榜每次都要 ORDER BY 全表；Redis 隨時都是排好的。
+
+- id: zset-rank
+  chapter: Sorted Set
+  title: 會員 1 的消費名次
+  prompt: |
+    leaderboard:customers:spend 是會員累計消費排行。會員 1 排第幾名（消費越多名次越前面）？
+    直接回傳 Redis 給的名次就好。
+  keys: ["leaderboard:customers:spend"]
+  hints:
+    - "ZREVRANK key member：分數由高到低的名次。"
+  answer: |
+    ZREVRANK leaderboard:customers:spend 1
+  explanation: |
+    ★ 名次從 0 開始：第一名回傳 0。畫面上顯示時要 +1。
+    ZRANK 是由低到高的名次；Redis 7.2 起可以加 WITHSCORE 一起拿到分數。
+
+- id: zset-count
+  chapter: Sorted Set
+  title: 消費介於 5 萬到 10 萬的會員數
+  prompt: |
+    累計消費在 50000 到 100000 之間（含）的會員有幾位？
+  keys: ["leaderboard:customers:spend"]
+  hints:
+    - "ZCOUNT key min max"
+  answer: |
+    ZCOUNT leaderboard:customers:spend 50000 100000
+  explanation: |
+    ZCOUNT 依分數範圍計數，O(log N)。不含邊界要寫成 (50000 (100000。
+    依分數範圍取資料用 ZRANGE key 50000 100000 BYSCORE。
+
+- id: zset-incr
+  chapter: Sorted Set
+  title: 消費後更新排行榜
+  prompt: |
+    會員 1 又完成了一筆 1200 元的訂單。更新他在 leaderboard:customers:spend 的分數，並回傳新的分數。
+  keys: ["leaderboard:customers:spend"]
+  hints:
+    - "ZINCRBY key 增量 member"
+  answer: |
+    ZINCRBY leaderboard:customers:spend 1200 1
+  check: |
+    ZSCORE leaderboard:customers:spend 1
+  explanation: |
+    ZINCRBY 原子地增加分數，排名會自動更新。member 不存在時會自動新增，分數從 0 開始加。
+
+# ------------------------------------------------------------------ Stream
+- id: stream-len
+  chapter: Stream
+  title: 事件流有幾筆
+  prompt: |
+    orders:stream 是訂單事件流。目前有幾筆事件？
+  keys: ["orders:stream"]
+  hints:
+    - "XLEN key"
+  answer: |
+    XLEN orders:stream
+  explanation: |
+    Stream 是 Redis 5.0 加入的「只能附加的日誌」，可以當成輕量的訊息佇列（類似 Kafka）。
+
+- id: stream-latest
+  chapter: Stream
+  title: 最新 3 筆事件
+  prompt: |
+    讀出 orders:stream 最新的 3 筆事件（最新的在最前面）。
+  keys: ["orders:stream"]
+  hints:
+    - "XREVRANGE key + - COUNT 3：+ 是最大的 ID、- 是最小的 ID。"
+  answer: |
+    XREVRANGE orders:stream + - COUNT 3
+  explanation: |
+    Stream 的 ID 格式是「毫秒時間戳-序號」。這份資料的 ID 用的是下單時間，所以可以直接依時間範圍查詢。
+    消費者群組（XGROUP、XREADGROUP、XACK）可以讓多個 worker 分工處理，而且有確認機制，訊息不會遺失。
+
+# ------------------------------------------------------------------ Bitmap / HyperLogLog
+- id: bitmap-count
+  chapter: Bitmap / HyperLogLog
+  title: 9/1 有幾位會員下單（Bitmap）
+  prompt: |
+    active:2026-09-01 是 Bitmap：第 N 個 bit 是 1，代表會員 N 那天有下單。
+    算出 9 月 1 日有幾位會員下單。
+  keys: ["active:2026-09-01"]
+  hints:
+    - "BITCOUNT key 數有幾個 bit 是 1。"
+  answer: |
+    BITCOUNT active:2026-09-01
+  explanation: |
+    2 萬位會員只需要 2 萬個 bit ≈ 2.5 KB。用 Set 存 2 萬個 id 則要幾百 KB。
+    常見用途：每日簽到、每日活躍使用者、功能開關。
+
+- id: bitmap-and
+  chapter: Bitmap / HyperLogLog
+  title: 9/1 和 9/2 都有下單的會員
+  prompt: |
+    9 月 1 日和 9 月 2 日「兩天都有下單」的會員有幾位？最後一個指令要回傳這個數字。
+  keys: ["active:2026-09-01", "active:2026-09-02"]
+  hints:
+    - "BITOP AND 目的key 來源1 來源2：兩個 Bitmap 逐位元 AND，結果存到目的 key。"
+    - 再用 BITCOUNT 數結果。
+  answer: |
+    BITOP AND tmp:both active:2026-09-01 active:2026-09-02
+    BITCOUNT tmp:both
+  explanation: |
+    BITOP 支援 AND、OR、XOR、NOT。「連續 7 天都簽到」就是 7 個 Bitmap 做 AND。
+
+- id: hll-week
+  chapter: Bitmap / HyperLogLog
+  title: 9/1 ~ 9/7 不重複下單人數（HyperLogLog）
+  prompt: |
+    uv:{日期} 是每天下單會員的 HyperLogLog。估算 9 月 1 日到 9 月 7 日「不重複」的下單人數。
+  keys: ["uv:2026-09-01", "uv:2026-09-02", "uv:2026-09-03", "uv:2026-09-04", "uv:2026-09-05", "uv:2026-09-06", "uv:2026-09-07"]
+  hints:
+    - PFCOUNT 可以一次給好幾個 key，算的是它們「合併後」的不重複數。
+  answer: |
+    PFCOUNT uv:2026-09-01 uv:2026-09-02 uv:2026-09-03 uv:2026-09-04 uv:2026-09-05 uv:2026-09-06 uv:2026-09-07
+  explanation: |
+    ★ HyperLogLog 用固定最多 12 KB 估算不重複數量，標準誤差約 0.81%。不能列出有哪些人，只能算有幾個。
+    適合 UV（不重複訪客）這種「量很大、允許一點誤差」的統計。要精確就用 Bitmap 或 Set。
+
+# ------------------------------------------------------------------ Geo
+- id: geo-dist
+  chapter: Geo
+  title: 台北到高雄的距離
+  prompt: |
+    store:locations 存了各縣市門市的座標。台北市門市到高雄市門市的直線距離是幾公里？
+  keys: ["store:locations"]
+  hints:
+    - "GEODIST key 成員1 成員2 km"
+  answer: |
+    GEODIST store:locations 台北市 高雄市 km
+  explanation: |
+    Geo 底層就是 Sorted Set：經緯度被編碼成 geohash 當作分數，所以 ZRANGE、ZREM 也能用在 Geo 的 key 上。
+
+- id: geo-search
+  chapter: Geo
+  title: 台北 60 公里內的門市
+  prompt: |
+    找出距離台北市門市 60 公里以內的所有門市（包含台北市自己），由近到遠排列。只要門市名稱。
+  keys: ["store:locations"]
+  hints:
+    - "GEOSEARCH key FROMMEMBER 台北市 BYRADIUS 60 km ASC"
+  answer: |
+    GEOSEARCH store:locations FROMMEMBER 台北市 BYRADIUS 60 km ASC
+  explanation: |
+    GEOSEARCH（Redis 6.2+）取代舊的 GEORADIUS。也可以用 FROMLONLAT 從任意座標找，或用 BYBOX 找矩形範圍。
+    加上 WITHDIST 會連距離一起回傳。外送平台「附近的店家」就是這樣查的。
+
+# ------------------------------------------------------------------ 交易
+- id: multi-exec
+  chapter: 交易
+  title: 兩件事一起做（MULTI / EXEC）
+  prompt: |
+    會員 1 下了訂單 90001。用交易讓下面兩件事一起執行：
+    1. stats:orders:total 加 1
+    2. 把 90001 放到 customer:1:recent_orders 的最前面
+  keys: ["stats:orders:total", "customer:1:recent_orders"]
+  hints:
+    - MULTI 開始交易，接下來的指令會先排隊（回傳 QUEUED），EXEC 時才一起執行。
+  answer: |
+    MULTI
+    INCR stats:orders:total
+    LPUSH customer:1:recent_orders 90001
+    EXEC
+  check: |
+    GET stats:orders:total
+    LINDEX customer:1:recent_orders 0
+  explanation: |
+    ★ Redis 的交易保證「中間不會插入其他客戶端的指令」，但不保證全有或全無：
+    EXEC 時某一句執行失敗，其他句照樣生效，沒有 ROLLBACK（陷阱題有示範）。
+    需要「條件成立才執行」時用 WATCH（樂觀鎖）或 Lua 腳本。

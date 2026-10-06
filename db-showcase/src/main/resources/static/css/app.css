@@ -32,11 +32,14 @@
 
 /* 各資料庫的主色 */
 [data-db="postgres"] { --accent: #336791; --accent-soft: #E3ECF4; }
+[data-db="redis"] { --accent: #C42A1E; --accent-soft: #FBE7E4; }
 @media (prefers-color-scheme: dark) {
   [data-db="postgres"] { --accent: #6FA3D3; --accent-soft: #1B2C3D; }
+  [data-db="redis"] { --accent: #FF7B6E; --accent-soft: #3A1A17; }
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }   /* 避免 display: grid / flex 蓋過 hidden 屬性 */
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--ink);

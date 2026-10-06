@@ -22,4 +22,11 @@ public class ApiExceptionHandler {
         String message = e.getMostSpecificCause().getMessage();
         return ResponseEntity.badRequest().body(Map.of("error", message == null ? e.getMessage() : message));
     }
+
+    /** Redis 連不上（容器沒啟動）時，給一個看得懂的訊息。 */
+    @ExceptionHandler(redis.clients.jedis.exceptions.JedisConnectionException.class)
+    public ResponseEntity<Map<String, String>> redisDown(redis.clients.jedis.exceptions.JedisConnectionException e) {
+        return ResponseEntity.status(503).body(Map.of("error",
+                "連不上 Redis：" + e.getMessage() + "\n請確認 redis-lab 容器有在執行（docker compose up -d redis）。"));
+    }
 }

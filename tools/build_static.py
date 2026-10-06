@@ -49,6 +49,8 @@ def markdown_to_html(md: str) -> tuple[str, list[dict]]:
     lines = md.splitlines()
     out, toc, para = [], [], []
     in_section = False
+    seen_title = False      # 第一個 # 是頁面標題；之後的 # 是大章節（每個資料庫一章）
+    part = ""
     i = 0
 
     def flush_para():
@@ -80,10 +82,20 @@ def markdown_to_html(md: str) -> tuple[str, list[dict]]:
             title = line[3:].strip()
             sid = f"s{len(toc)}"
             toc.append({"level": 2, "id": sid, "title": title})
-            out.append(f'<section class="sec" id="{sid}"><h2>{inline(title)}</h2>')
+            out.append(f'<section class="sec" id="{sid}" data-part="{part}"><h2>{inline(title)}</h2>')
             in_section = True
         elif line.startswith("# "):
-            flush_para()          # 頁面標題由外框負責
+            flush_para()
+            if not seen_title:            # 頁面標題由外框負責
+                seen_title = True
+            else:
+                if in_section:
+                    out.append("</section>")
+                title = line[2:].strip()
+                part = f"s{len(toc)}"
+                toc.append({"level": 1, "id": part, "title": title})
+                out.append(f'<section class="part-head" id="{part}" data-part="{part}"><h1>{inline(title)}</h1>')
+                in_section = True
         elif line.strip() == "---":
             flush_para()
         elif line.startswith("|"):
@@ -199,7 +211,7 @@ def build_cheatsheet():
     body = f"""
 <header class="top">
   <div class="top-in">
-    <div><b class="brand">PostgreSQL CheatSheet</b><span class="sub">shop 練習資料庫 · 更新於 {date.today():%Y-%m-%d}</span></div>
+    <div><b class="brand">資料庫 CheatSheet</b><span class="sub">{" · ".join(t["title"] for t in toc if t["level"] == 1)} · 更新於 {date.today():%Y-%m-%d}</span></div>
     <label class="search"><span class="sr-only">搜尋</span>
       <input id="q" type="search" placeholder="搜尋，例如 JSONB、視窗、NULL…" autocomplete="off"></label>
   </div>
@@ -213,7 +225,7 @@ def build_cheatsheet():
 </div>"""
     css = (Path(__file__).parent / "cheatsheet.css").read_text(encoding="utf-8")
     js = (Path(__file__).parent / "cheatsheet.js").read_text(encoding="utf-8")
-    (OUT / "cheatsheet.html").write_text(page("PostgreSQL CheatSheet", body, css, js), encoding="utf-8")
+    (OUT / "cheatsheet.html").write_text(page("資料庫 CheatSheet", body, css, js), encoding="utf-8")
 
 
 def build_question_bank():
@@ -243,18 +255,19 @@ def build_question_bank():
 
 def build_index(n_exercises, n_traps, n_steps):
     body = f"""
-<header class="top"><div class="top-in"><div><b class="brand">PostgreSQL 學習筆記</b>
+<header class="top"><div class="top-in"><div><b class="brand">資料庫學習筆記</b>
   <span class="sub">面試準備 · shop 練習資料庫</span></div></div></header>
 <main class="home">
-  <p class="lead">一個台灣電商「shop」的模擬資料庫（會員、訂單、明細、商品、分類，約 30 萬筆），
-    從 JOIN、視窗函數一路練到 JSONB、UPSERT 與各種索引。</p>
+  <p class="lead">以一個台灣電商「shop」的模擬資料（會員、訂單、明細、商品、分類，約 30 萬筆）為例，
+    練習 PostgreSQL 的 SQL 與索引，以及 Redis 的資料結構與快取、鎖、限流等實戰場景。</p>
   <div class="home-grid">
     <a class="home-card" href="cheatsheet.html">
       <b>CheatSheet</b>
-      <span>SQL 執行順序、JOIN、NULL、子查詢、CTE、視窗函數、DML、索引、交易，以及 JSONB / Array / UPSERT 等 PostgreSQL 進階語法。</span>
+      <span>PostgreSQL：SQL 執行順序、JOIN、NULL、視窗函數、索引、交易、JSONB / UPSERT。
+        Redis：資料結構、交易與 Lua、快取穿透 / 擊穿 / 雪崩、分散式鎖、持久化、叢集。</span>
     </a>
     <a class="home-card" href="question-bank.html">
-      <b>題庫</b>
+      <b>PostgreSQL 題庫</b>
       <span>練習題 {n_exercises} 題、陷阱題 {n_traps} 題、索引實驗 {n_steps} 步。附提示、答案、解說與正確答案的實際執行結果。</span>
     </a>
   </div>
@@ -272,7 +285,7 @@ def build_index(n_exercises, n_traps, n_steps):
 .home-card span { font-size: .9rem; color: var(--muted); }
 .foot { color: var(--muted); font-size: .8rem; margin-top: 32px; }
 """
-    (OUT / "index.html").write_text(page("PostgreSQL 學習筆記", body, css, ""), encoding="utf-8")
+    (OUT / "index.html").write_text(page("資料庫學習筆記", body, css, ""), encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,72 @@
+/* Redis 頁面：key 總覽表、redis-cli 風格輸出、實驗室的方塊與長條圖
+   共用的分頁、題目、陷阱題樣式沿用 postgres.css */
+
+.tabs.tabs-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 760px) { .tabs.tabs-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.stat-action { display: grid; gap: 6px; align-content: center; max-width: 260px; }
+.stat-action span { line-height: 1.4; }
+
+/* ---------- key 總覽 ---------- */
+.key-table { margin-top: 14px; }
+.key-table .result { max-height: none; }
+.key-table td.purpose { white-space: normal; min-width: 18em; color: var(--muted); }
+.type-badge { display: inline-block; font-size: .72rem; font-weight: 600; padding: 1px 8px; border-radius: 4px; white-space: nowrap; background: var(--accent-soft); color: var(--accent); }
+.type-badge.t-hash, .type-badge.t-hit { background: var(--fk-soft); color: var(--fk); }
+.type-badge.t-zset, .type-badge.t-geo, .type-badge.t-miss { background: var(--pk-soft); color: var(--pk); }
+.type-badge.t-stream, .type-badge.t-hyperloglog, .type-badge.t-bitmap { background: var(--code-bg); color: var(--ink); border: 1px solid var(--line); }
+.try {
+  font-size: .76rem; border: 1px dashed var(--line); background: var(--code-bg); color: var(--ink);
+  padding: 2px 8px; border-radius: 6px; cursor: pointer; text-align: left; white-space: nowrap;
+}
+.try:hover { border-color: var(--accent); color: var(--accent); }
+.try:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- redis-cli 輸出 ---------- */
+pre.cli {
+  margin: 0; font-family: var(--font-mono); font-size: .8rem; line-height: 1.55; white-space: pre;
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px;
+  overflow: auto; max-height: 460px;
+}
+.r-prompt { color: var(--accent); font-weight: 600; }
+.r-cmd { font-weight: 600; }
+.r-time { color: var(--muted); font-size: .72rem; }
+.r-str { color: var(--fk); }
+.r-int { color: var(--pk); }
+.r-nil, .r-idx { color: var(--muted); }
+.r-err { color: var(--danger); font-weight: 600; }
+.reply-diff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }
+.reply-diff > div { display: grid; gap: 4px; min-width: 0; }
+.reply-diff span { font-size: .8rem; color: var(--muted); }
+.reply-diff pre.cli { max-height: 220px; background: var(--surface); }
+@media (max-width: 760px) { .reply-diff { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- 實驗室 ---------- */
+.lab-controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; font-size: .9rem; }
+.lab-controls select, .lab-controls input[type="number"] {
+  font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); margin-left: 4px;
+}
+.lab-controls .check { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.squares { display: flex; flex-wrap: wrap; gap: 8px; }
+.square {
+  min-width: 92px; padding: 8px 10px; border-radius: 8px; font-size: .76rem; line-height: 1.45; text-align: center;
+  border: 1px solid var(--line); background: var(--surface); font-variant-numeric: tabular-nums;
+}
+.square b { font-size: .85rem; }
+.square.ok { background: var(--fk-soft); border-color: var(--fk); color: var(--ink); }
+.square.ok b { color: var(--fk); }
+.square.bad { background: var(--danger-soft); border-color: var(--danger); color: var(--ink); }
+.square.bad b { color: var(--danger); }
+.square.muted-sq { color: var(--muted); }
+.result tr.row-hit td { background: var(--fk-soft); }
+.result tr.row-miss td { background: var(--pk-soft); }
+.bad-text { color: var(--danger); }
+
+.bars { display: grid; gap: 10px; }
+.bar-row { display: grid; grid-template-columns: minmax(9em, 14em) minmax(0, 1fr) 6.5em; gap: 12px; align-items: center; font-size: .86rem; }
+.bar-row b { text-align: right; font-variant-numeric: tabular-nums; }
+.bar-track { height: 14px; background: var(--code-bg); border-radius: 7px; overflow: hidden; border: 1px solid var(--line); }
+.bar-track i { display: block; height: 100%; border-radius: 7px; }
+.bar-track i.slow { background: var(--danger); }
+.bar-track i.fast { background: var(--fk); }
+@media (max-width: 600px) { .bar-row { grid-template-columns: minmax(0, 1fr) 5.5em; } .bar-row .bar-track { grid-column: 1 / -1; grid-row: 2; } }

@@ -3,11 +3,12 @@
   const doc = document.getElementById("doc");
   const toc = document.getElementById("toc");
   const sections = [...doc.querySelectorAll(".sec")];
+  const partHeads = [...doc.querySelectorAll(".part-head")];
   enhanceCode(doc);
 
   // 目錄：標示目前讀到的章節
   const links = new Map([...toc.querySelectorAll("a")].map((a) => [a.getAttribute("href").slice(1), a]));
-  const headings = [...doc.querySelectorAll("h2, h3")].map((h) => (h.tagName === "H2" ? h.parentElement : h));
+  const headings = [...doc.querySelectorAll("h1, h2, h3")].map((h) => (h.tagName === "H3" ? h : h.parentElement));
   const observer = new IntersectionObserver((entries) => {
     for (const e of entries) {
       if (!e.isIntersecting) continue;
@@ -59,6 +60,12 @@
       }
       const ids = [s.id, ...[...s.querySelectorAll("h3")].map((h) => h.id)];
       ids.forEach((id) => { const a = links.get(id); if (a) a.hidden = !match; });
+    }
+    // 大章節：底下有任何一節符合才顯示
+    for (const p of partHeads) {
+      const any = sections.some((s) => s.dataset.part === p.id && !s.hidden);
+      p.hidden = !any;
+      const a = links.get(p.id); if (a) a.hidden = !any;
     }
     enhanceCodeKeepColors();
     hits.hidden = !q;

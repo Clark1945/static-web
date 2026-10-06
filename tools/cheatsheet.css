@@ -7,6 +7,8 @@
 .toc a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-radius: 6px; border-left: 2px solid transparent; }
 .toc a:hover { color: var(--ink); background: var(--surface); }
 .toc a.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); font-weight: 500; }
+.toc a.toc-1 { color: var(--ink); font-weight: 700; font-size: .92rem; margin-top: 14px; padding-top: 6px; border-top: 1px solid var(--line); border-radius: 0; }
+.toc a.toc-1:first-child { margin-top: 0; border-top: 0; }
 .toc a.toc-3 { padding-left: 24px; font-size: .8rem; }
 .toc a[hidden] { display: none; }
 .toc a:focus-visible { outline: 2px solid var(--accent); }
@@ -32,3 +34,10 @@ blockquote { margin: 12px 0; padding: 10px 14px; background: var(--warn-soft); b
   }
   .top-in { padding-inline: 16px; }
 }
+
+/* 大章節（每個資料庫一章） */
+.part-head { margin-top: 48px; padding: 18px 20px 6px; border-radius: 12px; background: var(--accent-soft); }
+.part-head:first-of-type { margin-top: 12px; }
+.part-head[hidden] { display: none; }
+.part-head h1 { margin: 0 0 6px; font-size: 1.6rem; color: var(--accent); }
+.part-head blockquote { background: var(--surface); }

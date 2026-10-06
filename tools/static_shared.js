@@ -36,6 +36,20 @@ function highlightSQL(text) {
   return out + esc(text.slice(last));
 }
 
+/** Redis 指令：每行第一個字是指令（上色），-- 之後是註解。 */
+function highlightRedis(text) {
+  return text.split("\n").map((line) => {
+    const c = line.indexOf("--");
+    const body = c >= 0 ? line.slice(0, c) : line;
+    const comment = c >= 0 ? `<span class="hl-cmt">${esc(line.slice(c))}</span>` : "";
+    const html = esc(body)
+      .replace(/^(\s*)([A-Za-z][A-Za-z.]*)/, '$1<span class="hl-kw">$2</span>')
+      .replace(/(&quot;[^&]*&quot;|'[^']*')/g, '<span class="hl-str">$1</span>')
+      .replace(/(\s)(-?\d+(?:\.\d+)?)(?=\s|$)/g, '$1<span class="hl-num">$2</span>');
+    return html + comment;
+  }).join("\n");
+}
+
 /** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
 function enhanceCode(root) {
   root.querySelectorAll("pre.code").forEach((pre) => {
@@ -43,7 +57,8 @@ function enhanceCode(root) {
     pre.dataset.ready = "1";
     const code = pre.querySelector("code") ?? pre;
     const raw = code.textContent;
-    if (pre.dataset.lang !== "text") code.innerHTML = highlightSQL(raw);
+    if (pre.dataset.lang === "redis") code.innerHTML = highlightRedis(raw);
+    else if (pre.dataset.lang !== "text") code.innerHTML = highlightSQL(raw);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "copy";

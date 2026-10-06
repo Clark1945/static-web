@@ -1,10 +1,13 @@
-# PostgreSQL SQL CheatSheet
+# 資料庫 CheatSheet
 
-範例都可以直接在 `shop` 資料庫執行。★ = 面試高頻考點。
-
-> 會修改資料的範例（第 10、11 節）請在 psql 或 DBeaver 裡練習；展示台是唯讀的。練壞了就重建資料庫：`docker compose down -v && docker compose up -d`
+面試導向的資料庫速查表，範例都可以直接在練習環境（`shop` 電商資料）執行。★ = 面試高頻考點。
+每個資料庫是一個大章節，左側目錄可以快速跳轉，上方可以搜尋。
 
 ---
+
+# PostgreSQL
+
+> 會修改資料的範例（第 10、11 節）可以在展示台的「寫入沙盒」練習（執行完自動 ROLLBACK），或在 psql、DBeaver 裡練習。練壞了就重建資料庫：`docker compose down -v && docker compose up -d`
 
 ## 0. ★ SQL 的「執行順序」
 
@@ -454,7 +457,7 @@ COMMIT;      -- 確認；出錯就 ROLLBACK 全部取消
 
 ---
 
-## 15. ★ PostgreSQL 進階
+## 15. ★ 進階語法：JSONB、Array、UPSERT、進階索引
 
 ### JSONB
 
@@ -562,3 +565,329 @@ BRIN 的前提：資料在磁碟上的順序要和欄位值一致（相關性高
 | `\timing` | 顯示每句 SQL 耗時 |
 | `\e` | 用編輯器寫長 SQL |
 | `\q` | 離開 |
+
+---
+
+# Redis
+
+> 範例的 key 都來自練習環境（`redis-lab` 容器，port 6380），可以直接貼到展示台的「指令主控台」執行。資料是從 PostgreSQL 轉進來的，練壞了按「重置資料」。
+
+## 1. ★ 基本觀念：Redis 為什麼這麼快
+
+| 觀念 | 說明 |
+|---|---|
+| 資料放在記憶體 | 讀寫是微秒等級；硬碟只用來做持久化備份 |
+| 單執行緒執行指令 | 一次只執行一個指令，不用加鎖、沒有切換成本；**每個指令天生是原子的** |
+| I/O 多工 | 用 epoll 同時處理上萬條連線；Redis 6 起網路讀寫可以開多執行緒（`io-threads`），執行指令仍是單執行緒 |
+| 高效的資料結構 | 依資料大小自動切換底層編碼（listpack、skiplist、intset…） |
+
+★ 單執行緒的代價：**一個慢指令會卡住所有人**。`KEYS *`、對大 key 做 `HGETALL` / `SMEMBERS` / `DEL`、跑很久的 Lua 腳本，都會讓整台 Redis 停住。
+
+Key 命名慣例：用冒號分層 `物件類型:id:欄位`，例如 `product:540`、`customer:1:recent_orders`、`cache:category-report:2`。
+
+## 2. 通用指令（所有型別都能用）
+
+| 指令 | 說明 |
+|---|---|
+| `EXISTS k`、`TYPE k` | 存在嗎、什麼型別 |
+| `DEL k`、`UNLINK k` | 刪除；UNLINK 在背景釋放記憶體，刪大 key 不會卡住 |
+| `EXPIRE k 60`、`PEXPIRE k 500` | 設定過期（秒 / 毫秒） |
+| `TTL k`、`PTTL k` | 剩幾秒；**-1 = 沒有過期時間，-2 = key 不存在** |
+| `PERSIST k` | 移除過期時間 |
+| `RENAME k k2`、`COPY k k2` | 改名、複製 |
+| `SCAN 0 MATCH product:* COUNT 100` | ★ 分批找 key（要拿回傳的游標一直掃到 0） |
+| `OBJECT ENCODING k`、`MEMORY USAGE k` | 底層編碼、佔多少記憶體 |
+| `DBSIZE`、`INFO memory`、`SLOWLOG GET 10` | key 數量、記憶體、慢指令紀錄 |
+
+★ 正式環境禁用 `KEYS *`：它會一次掃完所有 key，期間其他請求全部排隊。用 `SCAN`。
+
+## 3. String
+
+```redis
+SET k v                       -- 覆蓋整個值，也會清掉原本的過期時間
+SET k v EX 1800               -- 寫入同時設定 30 分鐘過期
+SET k v NX                    -- 不存在才寫入（分散式鎖）
+SET k v XX                    -- 存在才寫入
+SET k v KEEPTTL               -- 保留原本的過期時間（6.0+）
+GET k        MGET k1 k2       MSET k1 v1 k2 v2
+INCR k       INCRBY k 10      DECR k      INCRBYFLOAT k 1.5     -- 原子計數
+GETDEL k     GETEX k EX 60    APPEND k v  STRLEN k
+```
+
+用途：快取（JSON 字串）、計數器、Session、分散式鎖、限流。單一值最大 512 MB，但超過 10 KB 就算「大 key」了。
+
+## 4. Hash
+
+```redis
+HSET product:540 name 手機 price 29949 stock 11   -- 回傳新增的欄位數
+HGET product:540 price
+HMGET customer:1 name city                       -- 欄位不存在的位置回傳 nil
+HGETALL product:540                               -- 大 Hash 不要用，改用 HSCAN
+HINCRBY product:540 stock -2                      -- 原子增減
+HDEL k f    HEXISTS k f    HLEN k    HKEYS k    HVALS k
+HEXPIRE k 60 FIELDS 1 f                           -- 單一欄位過期（7.4+）
+```
+
+★ 物件快取用 Hash 還是 JSON String？Hash 可以只讀、只改部分欄位；JSON String 適合整包讀寫、結構有巢狀的資料。
+
+## 5. List
+
+```redis
+LPUSH k a b c     RPUSH k x          -- 從左 / 右放入
+LPOP k            RPOP k 2           -- 從左 / 右取出
+LRANGE k 0 9                          -- ★ 結尾包含在內：0 9 是 10 個；0 -1 是全部
+LTRIM k 0 9                           -- 只保留前 10 個
+LINDEX k 0     LLEN k     LREM k 0 v
+BLPOP k 5                             -- 沒有資料就等最多 5 秒（簡易佇列）
+LMOVE src dst LEFT RIGHT              -- 原子搬移（可靠佇列）
+```
+
+用途：最新 N 筆（`LPUSH` + `LTRIM`）、簡易訊息佇列。需要確認機制、多個消費者分工時改用 Stream。
+
+## 6. Set
+
+```redis
+SADD tag:特價 540 541       SREM k m      SCARD k       SISMEMBER k m
+SMEMBERS k                                  -- 大 Set 不要用，改用 SSCAN
+SINTER a b     SUNION a b     SDIFF a b     -- 交集、聯集、差集（A 有 B 沒有）
+SINTERCARD 2 a b                            -- 只要交集的數量（7.0+）
+SINTERSTORE dst a b                         -- 結果存起來，回傳個數
+SRANDMEMBER k 3     SPOP k                  -- 隨機取（抽獎）
+```
+
+用途：標籤、共同好友（交集）、是否按過讚、黑名單、抽獎。元素沒有順序、不重複。
+
+## 7. ★ Sorted Set（排行榜）
+
+```redis
+ZADD board 100 alice 90 bob             -- 分數 成員
+ZINCRBY board 10 alice                  -- 原子加分，回傳新分數
+ZSCORE board alice
+ZRANGE board 0 9 REV WITHSCORES         -- 前 10 名（舊寫法 ZREVRANGE board 0 9 WITHSCORES）
+ZREVRANK board alice                    -- ★ 名次從 0 開始
+ZRANK board alice                       -- 由低到高的名次
+ZCOUNT board 50 100                     -- 分數範圍內有幾個；(50 表示不含 50
+ZRANGE board 50 100 BYSCORE             -- 依分數範圍取
+ZREMRANGEBYSCORE board -inf 10          -- 刪掉分數範圍
+ZUNIONSTORE week 7 day1 day2 ...        -- 合併多個榜（日榜 → 週榜）
+```
+
+★ 同分時依成員名稱的字典順序排；加 REV 時整個反過來。想要「同分先達到的排前面」，把時間編進分數。
+
+底層：小的時候是 listpack，大了變成**跳表（skiplist）+ 雜湊表**，所以依分數範圍查詢是 O(log N)，用成員查分數是 O(1)。
+
+用途：排行榜、延遲佇列（分數 = 執行時間）、滑動視窗限流（分數 = 請求時間）、Geo。
+
+## 8. 特殊型別：Stream、HyperLogLog、Bitmap、Geo
+
+**Stream**（5.0+）：只能附加的日誌，像輕量版 Kafka
+
+```redis
+XADD orders:stream * order_id 80000 status paid     -- * = 自動產生 ID（毫秒-序號）
+XLEN orders:stream
+XRANGE orders:stream - + COUNT 10                   -- 最舊到最新
+XREVRANGE orders:stream + - COUNT 3                 -- 最新 3 筆
+XGROUP CREATE orders:stream g1 $                    -- 建立消費者群組
+XREADGROUP GROUP g1 worker-1 COUNT 10 STREAMS orders:stream >
+XACK orders:stream g1 <ID>                          -- 處理完要確認，沒確認的會留在 Pending
+```
+
+**HyperLogLog**：估算不重複數量，固定最多 12 KB，誤差約 0.81%
+
+```redis
+PFADD uv:2026-09-01 user1 user2
+PFCOUNT uv:2026-09-01                 -- 估計值
+PFCOUNT uv:day1 uv:day2               -- 多天合併後的不重複數
+PFMERGE uv:2026-09 uv:day1 uv:day2    -- 合併存成新的 key
+```
+
+**Bitmap**：一個 bit 一個人，精確，大小跟最大 id 成正比
+
+```redis
+SETBIT active:2026-09-01 500 1        -- 會員 500 這天有活動
+GETBIT active:2026-09-01 500
+BITCOUNT active:2026-09-01            -- 幾個人
+BITOP AND both active:day1 active:day2   -- 兩天都有（OR = 任一天）
+```
+
+**Geo**：底層是 Sorted Set
+
+```redis
+GEOADD store:locations 121.5654 25.0330 台北市     -- 經度 緯度 成員
+GEODIST store:locations 台北市 高雄市 km
+GEOSEARCH store:locations FROMMEMBER 台北市 BYRADIUS 60 km ASC WITHDIST
+GEOSEARCH store:locations FROMLONLAT 121.5 25.0 BYBOX 20 20 km
+```
+
+★ 統計 UV 怎麼選：量小用 Set（可以列出名單）、id 是連續整數用 Bitmap（精確又省）、量很大又允許誤差用 HyperLogLog。
+
+## 9. ★ 交易與 Lua 腳本
+
+```redis
+MULTI                        -- 開始；之後的指令回傳 QUEUED
+INCR stats:orders:total
+LPUSH customer:1:recent_orders 90001
+EXEC                         -- 一起執行；DISCARD 放棄
+
+WATCH stock                  -- 樂觀鎖：EXEC 前 stock 被別人改過，整個交易就不執行（回傳 nil）
+```
+
+★ Redis 交易**沒有 ROLLBACK**：
+- 排隊時就發現語法錯誤 → `EXEC` 回傳 EXECABORT，全部不執行
+- 執行時才出錯（例如型別錯誤）→ **只有那一句失敗，其他照樣生效**
+
+需要「判斷之後再修改」的原子操作，用 Lua 腳本：整個腳本執行期間不會插入其他指令。
+
+```redis
+EVAL "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0" 1 lock:order:1 my-token
+```
+
+注意：腳本要短，跑太久會卡住整台 Redis（預設 5 秒後才能用 SCRIPT KILL）。Redis 7 起建議用 `FUNCTION` 取代 EVAL。
+
+## 10. Pipeline
+
+每個指令都要等一次網路來回（RTT）。Pipeline 把很多指令一次送出、最後一次收回結果。
+
+| 寫入 1000 個 key（練習環境實測） | 耗時 |
+|---|---:|
+| 一個一個 SET | 約 200 ~ 500 ms |
+| Pipeline | 約 2 ms |
+| MSET | 約 1 ~ 2 ms |
+
+Pipeline **不是交易**：中間可能插入其他客戶端的指令。一次不要塞幾十萬個，要分批。
+
+## 11. ★ 實戰模式
+
+**Cache-Aside（旁路快取）**
+
+```redis
+讀：GET cache:x → 有就回傳；沒有 → 查資料庫 → SET cache:x <值> EX 60 → 回傳
+寫：先更新資料庫 → 再 DEL cache:x（刪除，不是更新快取）
+```
+
+| 問題 | 情境 | 解法 |
+|---|---|---|
+| ★ 快取穿透 | 查「根本不存在」的資料，每次都打到資料庫 | 快取空結果（短 TTL）、布隆過濾器 |
+| ★ 快取擊穿 | 一個熱門 key 過期的瞬間，大量請求同時查資料庫 | 互斥鎖只讓一個請求回填、熱門資料不過期 + 背景更新 |
+| ★ 快取雪崩 | 大量 key 同時過期，或 Redis 整台掛掉 | 過期時間加隨機值、多層快取、限流降級、高可用架構 |
+
+快取與資料庫的一致性：「先更新資料庫再刪快取」最常用；要求更高時用延遲雙刪，或監聽資料庫變更（Canal / Debezium）再刪快取。
+
+**分散式鎖**
+
+```redis
+加鎖：SET lock:order:1 <uuid> NX PX 30000      -- 一個指令完成「不存在才寫」+「過期時間」
+解鎖：Lua 比對 value 是自己的 uuid 才 DEL       -- 避免刪到別人的鎖
+```
+
+- ★ 不要用 `SETNX` + `EXPIRE` 兩個指令：中間當掉會留下永不過期的鎖；SETNX 失敗時接著的 EXPIRE 還會改到別人的鎖
+- 工作時間可能超過鎖的過期時間 → Redisson 的看門狗會自動續期
+- Java 實務直接用 Redisson 的 `RLock`
+
+**限流**
+
+| 演算法 | 做法 |
+|---|---|
+| 固定視窗 | `INCR` 計數，第一次時 `EXPIRE`（包在 Lua 裡）；缺點是視窗交界處可能兩倍流量 |
+| 滑動視窗 | Sorted Set 記每次請求時間，`ZREMRANGEBYSCORE` 刪掉視窗外的，`ZCARD` 計數 |
+| 令牌桶 | Lua 計算補充的令牌數；Spring Cloud Gateway 的 RequestRateLimiter 就是這個 |
+
+**庫存扣減（防超賣）**：`GET` → 判斷 → `SET` 會超賣；用 `DECR`（小於 0 再加回）或 Lua「判斷後扣減」。
+
+**其他常見用法**：計數器（`INCR`）、Session 共享（`SET … EX`）、冪等性（`SET request:<id> 1 NX EX 86400`，重複請求會失敗）、排行榜（Sorted Set）、最新動態（`LPUSH` + `LTRIM`）、延遲佇列（Sorted Set，分數 = 執行時間）。
+
+## 12. ★ 持久化
+
+| | RDB（快照） | AOF（指令日誌） |
+|---|---|---|
+| 做法 | 定期把整個資料庫存成二進位檔（`BGSAVE`，fork 子行程） | 把每個寫入指令附加到檔案 |
+| 遺失資料 | 上次快照之後的全部 | 依 `appendfsync`：`always` 不遺失、`everysec` 最多 1 秒、`no` 由作業系統決定 |
+| 檔案大小 / 重啟速度 | 小、快 | 大、慢（會定期 `BGREWRITEAOF` 壓縮） |
+
+Redis 4.0 起可以混合使用（AOF 檔開頭是 RDB 快照），兼顧重啟速度和資料安全。練習環境兩個都關了，因為資料都能從 PostgreSQL 重建。
+
+## 13. ★ 過期刪除與記憶體淘汰
+
+**過期的 key 怎麼刪**：惰性刪除（被存取時才檢查）＋ 定期刪除（每秒抽樣檢查一部分）。所以過期的 key 不一定馬上釋放記憶體。
+
+**記憶體滿了怎麼辦**（`maxmemory-policy`）：
+
+| 策略 | 說明 |
+|---|---|
+| `noeviction` | 預設，拒絕寫入（練習環境用這個） |
+| `allkeys-lru` | ★ 所有 key 裡淘汰最久沒用的，純快取最常用 |
+| `volatile-lru` | 只淘汰有設過期時間的 key |
+| `allkeys-lfu` / `volatile-lfu` | 淘汰使用頻率最低的（4.0+） |
+| `allkeys-random` / `volatile-random` | 隨機 |
+| `volatile-ttl` | 淘汰最快要過期的 |
+
+LRU 是近似演算法：每次隨機抽幾個 key（`maxmemory-samples`）挑最舊的，不是精確的 LRU。
+
+## 14. ★ 高可用：主從、哨兵、叢集
+
+| 架構 | 說明 |
+|---|---|
+| 主從複製 | 主節點寫、從節點讀；非同步複製，主節點掛掉可能遺失最後一點資料 |
+| Sentinel（哨兵） | 監控主節點，掛掉時自動把從節點升級成主節點（自動故障轉移） |
+| Cluster（叢集） | 資料分散到多個主節點：**16384 個 slot**，`CRC16(key) % 16384` 決定放哪個節點 |
+
+★ Cluster 的限制：一個指令用到的多個 key 必須在同一個 slot，否則報錯（CROSSSLOT）。用 hash tag 讓它們落在同一個 slot：`{order:1}:items`、`{order:1}:status` 只會用 `{}` 裡的內容計算。
+
+## 15. 底層編碼（面試加分題）
+
+| 型別 | 資料少的時候 | 資料多的時候 |
+|---|---|---|
+| String | int（整數）、embstr（≤ 44 bytes） | raw |
+| List | listpack | quicklist（多個 listpack 串起來） |
+| Hash | listpack | hashtable |
+| Set | intset（全是整數）、listpack | hashtable |
+| Sorted Set | listpack | skiplist + hashtable |
+
+用 `OBJECT ENCODING key` 查看。門檻由設定決定，例如 `hash-max-listpack-entries 128`。小資料用緊湊的 listpack 省記憶體，所以「拆成很多小 Hash」常比一個巨大的 Hash 省空間。
+
+## 16. Java / Spring Boot
+
+| 工具 | 說明 |
+|---|---|
+| Lettuce | Spring Boot 預設的客戶端，基於 Netty、執行緒安全，一條連線可以共用 |
+| Jedis | 傳統同步客戶端，要搭配連線池（展示台用的就是 Jedis） |
+| Redisson | 分散式鎖、看門狗、限流器、延遲佇列等進階功能 |
+| `RedisTemplate` | Spring Data Redis 的操作入口：`opsForValue()`、`opsForHash()`、`opsForZSet()`… |
+| `@Cacheable` / `@CacheEvict` | Spring Cache 註解，搭配 `RedisCacheManager` 自動做 Cache-Aside |
+
+★ 常見坑：
+- `RedisTemplate` 預設用 JDK 序列化，key 會變成 `\xac\xed\x00\x05t\x00…` 這種亂碼。設定 `StringRedisSerializer` 與 JSON 序列化器，或直接用 `StringRedisTemplate`
+- `@Cacheable` 預設沒有過期時間，要在 `RedisCacheConfiguration.entryTtl(...)` 設定
+- 同一個類別裡呼叫自己的 `@Cacheable` 方法不會經過代理，快取不會生效
+
+## 17. ★ 面試題速答
+
+| 題目 | 重點 |
+|---|---|
+| Redis 為什麼快 | 記憶體、單執行緒執行指令（無鎖）、I/O 多工、高效資料結構 |
+| Redis 是單執行緒嗎 | 執行指令是單執行緒；6.0 起網路 I/O 可以多執行緒；持久化、UNLINK 用背景執行緒 |
+| 五種基本型別與用途 | String 快取 / 計數、Hash 物件、List 佇列 / 最新列表、Set 標籤 / 去重、Sorted Set 排行榜 |
+| 穿透、擊穿、雪崩 | 不存在的資料、熱門 key 過期、大量 key 同時過期（見第 11 節） |
+| 怎麼保證快取一致性 | 先更新資料庫再刪快取；延遲雙刪；訂閱 binlog 刪快取 |
+| 分散式鎖怎麼做 | SET NX PX + 唯一 token + Lua 釋放；Redisson 看門狗；RedLock |
+| 交易有 ROLLBACK 嗎 | 沒有；執行時的錯誤不影響其他指令。要原子性用 Lua |
+| RDB 和 AOF | 快照 vs 指令日誌；混合持久化 |
+| 記憶體滿了會怎樣 | 依 maxmemory-policy；快取用 allkeys-lru |
+| 過期 key 怎麼刪 | 惰性刪除 + 定期刪除 |
+| 什麼是大 key、怎麼處理 | 單一 key 太大（String > 10 KB、集合 > 數千元素）；拆分、用 UNLINK 刪除、用 SCAN 類指令讀 |
+| 熱 key 怎麼處理 | 本地快取（Caffeine）多一層、key 加後綴分散到多個節點 |
+| Cluster 怎麼分片 | 16384 個 slot、CRC16；跨 slot 用 hash tag |
+| KEYS 和 SCAN | KEYS 一次掃完會阻塞；SCAN 分批、可能重複、要掃到游標為 0 |
+
+## 18. redis-cli 常用指令
+
+| 指令 | 作用 |
+|---|---|
+| `redis-cli -p 6380 --user learner --pass learner-lab` | 連到練習環境 |
+| `docker exec -it redis-lab redis-cli --user default --pass admin-lab` | 從容器裡用管理員身分連線 |
+| `--scan --pattern 'product:*'` | 安全地列出 key |
+| `--bigkeys`、`--memkeys` | 找出最大的 key |
+| `--latency` | 量測延遲 |
+| `MONITOR` | 即時看所有指令（很耗效能，只在開發環境用） |
+| `INFO`、`INFO memory`、`INFO stats` | 伺服器狀態 |
+| `CLIENT LIST` | 目前的連線 |
