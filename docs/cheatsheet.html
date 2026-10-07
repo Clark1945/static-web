@@ -114,6 +114,7 @@ pre.code:hover .copy, .copy:focus-visible { opacity: 1; }
 .db-tabs a[data-tab="redis"] { --db: #D82C20; }
 .db-tabs a[data-tab="mongodb"] { --db: #13AA52; }
 .db-tabs a[data-tab="cassandra"] { --db: #1287B1; }
+.db-tabs a[data-tab="neo4j"] { --db: #018BFF; }
 .db-tabs a:hover { color: var(--ink); }
 .db-tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--db); }
 .db-tabs a[aria-current="page"]::before { opacity: 1; }
@@ -125,6 +126,7 @@ pre.code:hover .copy, .copy:focus-visible { opacity: 1; }
   .db-tabs a[data-tab="redis"] { --db: #FF7B6E; }
   .db-tabs a[data-tab="mongodb"] { --db: #4FD18A; }
   .db-tabs a[data-tab="cassandra"] { --db: #5CC3E8; }
+  .db-tabs a[data-tab="neo4j"] { --db: #5AA9F5; }
 }
 
 @media (max-width: 900px) {
@@ -186,14 +188,14 @@ html { scroll-padding-top: 150px; }
 <header class="top">
   <div class="top-in">
     <div class="title-block"><h1 class="page-title">CheatSheet</h1>
-      <span class="sub">資料庫面試速查表 · 4 種資料庫 · 更新於 2026-10-07</span></div>
+      <span class="sub">資料庫面試速查表 · 5 種資料庫 · 更新於 2026-10-07</span></div>
     <label class="search"><span class="sr-only">搜尋</span>
       <input id="q" type="search" placeholder="搜尋所有資料庫，例如 JSONB、Lua、NULL…" autocomplete="off"></label>
   </div>
-  <nav class="db-tabs" id="dbtabs" aria-label="資料庫"><a href="#postgresql" data-tab="postgresql">PostgreSQL<span class="n" data-count="postgresql"></span></a><a href="#redis" data-tab="redis">Redis<span class="n" data-count="redis"></span></a><a href="#mongodb" data-tab="mongodb">MongoDB<span class="n" data-count="mongodb"></span></a><a href="#cassandra" data-tab="cassandra">Cassandra<span class="n" data-count="cassandra"></span></a></nav>
+  <nav class="db-tabs" id="dbtabs" aria-label="資料庫"><a href="#postgresql" data-tab="postgresql">PostgreSQL<span class="n" data-count="postgresql"></span></a><a href="#redis" data-tab="redis">Redis<span class="n" data-count="redis"></span></a><a href="#mongodb" data-tab="mongodb">MongoDB<span class="n" data-count="mongodb"></span></a><a href="#cassandra" data-tab="cassandra">Cassandra<span class="n" data-count="cassandra"></span></a><a href="#neo4j" data-tab="neo4j">Neo4j<span class="n" data-count="neo4j"></span></a></nav>
 </header>
 <div class="layout">
-  <nav class="toc" id="toc" aria-label="目錄"><a class="toc-2" href="#s1" data-part="postgresql">0. <span class="star" title="面試高頻">★</span> SQL 的「執行順序」</a><a class="toc-2" href="#s2" data-part="postgresql">1. 已經會的（速查）</a><a class="toc-2" href="#s3" data-part="postgresql">2. JOIN 全家</a><a class="toc-2" href="#s4" data-part="postgresql">3. <span class="star" title="面試高頻">★</span> NULL 的處理</a><a class="toc-2" href="#s5" data-part="postgresql">4. 子查詢</a><a class="toc-2" href="#s6" data-part="postgresql">5. CASE WHEN 與條件彙總</a><a class="toc-2" href="#s7" data-part="postgresql">6. 集合運算</a><a class="toc-2" href="#s8" data-part="postgresql">7. CTE（WITH）</a><a class="toc-2" href="#s9" data-part="postgresql">8. <span class="star" title="面試高頻">★</span> 視窗函數（Window Function）</a><a class="toc-2" href="#s10" data-part="postgresql">9. 常用函數（PostgreSQL）</a><a class="toc-2" href="#s11" data-part="postgresql">10. 新增、修改、刪除（DML）</a><a class="toc-2" href="#s12" data-part="postgresql">11. 建表與約束（DDL）</a><a class="toc-2" href="#s13" data-part="postgresql">12. <span class="star" title="面試高頻">★</span> 索引與 EXPLAIN</a><a class="toc-2" href="#s14" data-part="postgresql">13. <span class="star" title="面試高頻">★</span> 交易（Transaction）</a><a class="toc-2" href="#s15" data-part="postgresql">14. <span class="star" title="面試高頻">★</span> 面試經典題速答</a><a class="toc-2" href="#s16" data-part="postgresql">15. <span class="star" title="面試高頻">★</span> 進階語法：JSONB、Array、UPSERT、進階索引</a><a class="toc-3" href="#s17" data-part="postgresql">JSONB</a><a class="toc-3" href="#s18" data-part="postgresql">Array</a><a class="toc-3" href="#s19" data-part="postgresql">generate_series：產生連續的值</a><a class="toc-3" href="#s20" data-part="postgresql">RETURNING 與 UPSERT</a><a class="toc-3" href="#s21" data-part="postgresql">進階索引</a><a class="toc-2" href="#s22" data-part="postgresql">16. psql 常用指令</a><a class="toc-2" href="#s24" data-part="redis">1. <span class="star" title="面試高頻">★</span> 基本觀念：Redis 為什麼這麼快</a><a class="toc-2" href="#s25" data-part="redis">2. 通用指令（所有型別都能用）</a><a class="toc-2" href="#s26" data-part="redis">3. String</a><a class="toc-2" href="#s27" data-part="redis">4. Hash</a><a class="toc-2" href="#s28" data-part="redis">5. List</a><a class="toc-2" href="#s29" data-part="redis">6. Set</a><a class="toc-2" href="#s30" data-part="redis">7. <span class="star" title="面試高頻">★</span> Sorted Set（排行榜）</a><a class="toc-2" href="#s31" data-part="redis">8. 特殊型別：Stream、HyperLogLog、Bitmap、Geo</a><a class="toc-2" href="#s32" data-part="redis">9. <span class="star" title="面試高頻">★</span> 交易與 Lua 腳本</a><a class="toc-2" href="#s33" data-part="redis">10. Pipeline</a><a class="toc-2" href="#s34" data-part="redis">11. <span class="star" title="面試高頻">★</span> 實戰模式</a><a class="toc-2" href="#s35" data-part="redis">12. <span class="star" title="面試高頻">★</span> 持久化</a><a class="toc-2" href="#s36" data-part="redis">13. <span class="star" title="面試高頻">★</span> 過期刪除與記憶體淘汰</a><a class="toc-2" href="#s37" data-part="redis">14. <span class="star" title="面試高頻">★</span> 高可用：主從、哨兵、叢集</a><a class="toc-2" href="#s38" data-part="redis">15. 底層編碼（面試加分題）</a><a class="toc-2" href="#s39" data-part="redis">16. Java / Spring Boot</a><a class="toc-2" href="#s40" data-part="redis">17. <span class="star" title="面試高頻">★</span> 面試題速答</a><a class="toc-2" href="#s41" data-part="redis">18. redis-cli 常用指令</a><a class="toc-2" href="#s43" data-part="mongodb">1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</a><a class="toc-2" href="#s44" data-part="mongodb">2. 查詢：find</a><a class="toc-2" href="#s45" data-part="mongodb">3. 查詢運算子</a><a class="toc-2" href="#s46" data-part="mongodb">4. 陣列與內嵌文件</a><a class="toc-2" href="#s47" data-part="mongodb">5. <span class="star" title="面試高頻">★</span> 聚合管線</a><a class="toc-2" href="#s48" data-part="mongodb">6. 寫入</a><a class="toc-2" href="#s49" data-part="mongodb">7. <span class="star" title="面試高頻">★</span> Schema 設計：內嵌還是參照</a><a class="toc-2" href="#s50" data-part="mongodb">8. <span class="star" title="面試高頻">★</span> 索引</a><a class="toc-2" href="#s51" data-part="mongodb">9. <span class="star" title="面試高頻">★</span> 交易與一致性</a><a class="toc-2" href="#s52" data-part="mongodb">10. <span class="star" title="面試高頻">★</span> 副本集與分片</a><a class="toc-2" href="#s53" data-part="mongodb">11. 常見陷阱</a><a class="toc-2" href="#s54" data-part="mongodb">12. Java / Spring Data MongoDB</a><a class="toc-2" href="#s55" data-part="mongodb">13. <span class="star" title="面試高頻">★</span> 面試題速答</a><a class="toc-2" href="#s56" data-part="mongodb">14. mongosh 常用指令</a><a class="toc-2" href="#s58" data-part="cassandra">1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</a><a class="toc-2" href="#s59" data-part="cassandra">2. <span class="star" title="面試高頻">★</span> 主鍵：分區鍵與叢集鍵</a><a class="toc-2" href="#s60" data-part="cassandra">3. <span class="star" title="面試高頻">★</span> 查詢先行的資料模型</a><a class="toc-2" href="#s61" data-part="cassandra">4. 查詢：SELECT 的規則</a><a class="toc-2" href="#s62" data-part="cassandra">5. 寫入：INSERT、UPDATE、DELETE</a><a class="toc-2" href="#s63" data-part="cassandra">6. 資料型別</a><a class="toc-2" href="#s64" data-part="cassandra">7. <span class="star" title="面試高頻">★</span> 墓碑與 compaction</a><a class="toc-2" href="#s65" data-part="cassandra">8. <span class="star" title="面試高頻">★</span> 複寫與一致性等級</a><a class="toc-2" href="#s66" data-part="cassandra">9. <span class="star" title="面試高頻">★</span> 輕量交易（LWT）與 BATCH</a><a class="toc-2" href="#s67" data-part="cassandra">10. 索引：SAI、二級索引、物化視圖</a><a class="toc-2" href="#s68" data-part="cassandra">11. 常見陷阱</a><a class="toc-2" href="#s69" data-part="cassandra">12. Java / Spring Data Cassandra</a><a class="toc-2" href="#s70" data-part="cassandra">13. <span class="star" title="面試高頻">★</span> 面試題速答</a><a class="toc-2" href="#s71" data-part="cassandra">14. cqlsh 與 nodetool 常用指令</a></nav>
+  <nav class="toc" id="toc" aria-label="目錄"><a class="toc-2" href="#s1" data-part="postgresql">0. <span class="star" title="面試高頻">★</span> SQL 的「執行順序」</a><a class="toc-2" href="#s2" data-part="postgresql">1. 已經會的（速查）</a><a class="toc-2" href="#s3" data-part="postgresql">2. JOIN 全家</a><a class="toc-2" href="#s4" data-part="postgresql">3. <span class="star" title="面試高頻">★</span> NULL 的處理</a><a class="toc-2" href="#s5" data-part="postgresql">4. 子查詢</a><a class="toc-2" href="#s6" data-part="postgresql">5. CASE WHEN 與條件彙總</a><a class="toc-2" href="#s7" data-part="postgresql">6. 集合運算</a><a class="toc-2" href="#s8" data-part="postgresql">7. CTE（WITH）</a><a class="toc-2" href="#s9" data-part="postgresql">8. <span class="star" title="面試高頻">★</span> 視窗函數（Window Function）</a><a class="toc-2" href="#s10" data-part="postgresql">9. 常用函數（PostgreSQL）</a><a class="toc-2" href="#s11" data-part="postgresql">10. 新增、修改、刪除（DML）</a><a class="toc-2" href="#s12" data-part="postgresql">11. 建表與約束（DDL）</a><a class="toc-2" href="#s13" data-part="postgresql">12. <span class="star" title="面試高頻">★</span> 索引與 EXPLAIN</a><a class="toc-2" href="#s14" data-part="postgresql">13. <span class="star" title="面試高頻">★</span> 交易（Transaction）</a><a class="toc-2" href="#s15" data-part="postgresql">14. <span class="star" title="面試高頻">★</span> 面試經典題速答</a><a class="toc-2" href="#s16" data-part="postgresql">15. <span class="star" title="面試高頻">★</span> 進階語法：JSONB、Array、UPSERT、進階索引</a><a class="toc-3" href="#s17" data-part="postgresql">JSONB</a><a class="toc-3" href="#s18" data-part="postgresql">Array</a><a class="toc-3" href="#s19" data-part="postgresql">generate_series：產生連續的值</a><a class="toc-3" href="#s20" data-part="postgresql">RETURNING 與 UPSERT</a><a class="toc-3" href="#s21" data-part="postgresql">進階索引</a><a class="toc-3" href="#s22" data-part="postgresql"><span class="star" title="面試高頻">★</span> Partial Index（部分索引）</a><a class="toc-3" href="#s23" data-part="postgresql"><span class="star" title="面試高頻">★</span> Expression Index（運算式索引）</a><a class="toc-3" href="#s24" data-part="postgresql"><span class="star" title="面試高頻">★</span> GIN（Generalized Inverted Index，倒排索引）</a><a class="toc-3" href="#s25" data-part="postgresql">GiST（Generalized Search Tree）</a><a class="toc-3" href="#s26" data-part="postgresql"><span class="star" title="面試高頻">★</span> BRIN（Block Range Index）</a><a class="toc-3" href="#s27" data-part="postgresql">怎麼選索引</a><a class="toc-2" href="#s28" data-part="postgresql">16. psql 常用指令</a><a class="toc-2" href="#s30" data-part="redis">1. <span class="star" title="面試高頻">★</span> 基本觀念：Redis 為什麼這麼快</a><a class="toc-2" href="#s31" data-part="redis">2. 通用指令（所有型別都能用）</a><a class="toc-2" href="#s32" data-part="redis">3. String</a><a class="toc-2" href="#s33" data-part="redis">4. Hash</a><a class="toc-2" href="#s34" data-part="redis">5. List</a><a class="toc-2" href="#s35" data-part="redis">6. Set</a><a class="toc-2" href="#s36" data-part="redis">7. <span class="star" title="面試高頻">★</span> Sorted Set（排行榜）</a><a class="toc-2" href="#s37" data-part="redis">8. 特殊型別：Stream、HyperLogLog、Bitmap、Geo</a><a class="toc-2" href="#s38" data-part="redis">9. <span class="star" title="面試高頻">★</span> 交易與 Lua 腳本</a><a class="toc-2" href="#s39" data-part="redis">10. Pipeline</a><a class="toc-2" href="#s40" data-part="redis">11. <span class="star" title="面試高頻">★</span> 實戰模式</a><a class="toc-2" href="#s41" data-part="redis">12. <span class="star" title="面試高頻">★</span> 持久化</a><a class="toc-2" href="#s42" data-part="redis">13. <span class="star" title="面試高頻">★</span> 過期刪除與記憶體淘汰</a><a class="toc-2" href="#s43" data-part="redis">14. <span class="star" title="面試高頻">★</span> 高可用：主從、哨兵、叢集</a><a class="toc-2" href="#s44" data-part="redis">15. 底層編碼（面試加分題）</a><a class="toc-2" href="#s45" data-part="redis">16. Java / Spring Boot</a><a class="toc-2" href="#s46" data-part="redis">17. <span class="star" title="面試高頻">★</span> 面試題速答</a><a class="toc-2" href="#s47" data-part="redis">18. redis-cli 常用指令</a><a class="toc-2" href="#s49" data-part="mongodb">1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</a><a class="toc-2" href="#s50" data-part="mongodb">2. 查詢：find</a><a class="toc-2" href="#s51" data-part="mongodb">3. 查詢運算子</a><a class="toc-2" href="#s52" data-part="mongodb">4. 陣列與內嵌文件</a><a class="toc-2" href="#s53" data-part="mongodb">5. <span class="star" title="面試高頻">★</span> 聚合管線</a><a class="toc-2" href="#s54" data-part="mongodb">6. 寫入</a><a class="toc-2" href="#s55" data-part="mongodb">7. <span class="star" title="面試高頻">★</span> Schema 設計：內嵌還是參照</a><a class="toc-2" href="#s56" data-part="mongodb">8. <span class="star" title="面試高頻">★</span> 索引</a><a class="toc-2" href="#s57" data-part="mongodb">9. <span class="star" title="面試高頻">★</span> 交易與一致性</a><a class="toc-2" href="#s58" data-part="mongodb">10. <span class="star" title="面試高頻">★</span> 副本集與分片</a><a class="toc-2" href="#s59" data-part="mongodb">11. 常見陷阱</a><a class="toc-2" href="#s60" data-part="mongodb">12. Java / Spring Data MongoDB</a><a class="toc-2" href="#s61" data-part="mongodb">13. <span class="star" title="面試高頻">★</span> 面試題速答</a><a class="toc-2" href="#s62" data-part="mongodb">14. mongosh 常用指令</a><a class="toc-2" href="#s64" data-part="cassandra">1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</a><a class="toc-2" href="#s65" data-part="cassandra">2. <span class="star" title="面試高頻">★</span> 主鍵：分區鍵與叢集鍵</a><a class="toc-2" href="#s66" data-part="cassandra">3. <span class="star" title="面試高頻">★</span> 查詢先行的資料模型</a><a class="toc-2" href="#s67" data-part="cassandra">4. 查詢：SELECT 的規則</a><a class="toc-2" href="#s68" data-part="cassandra">5. 寫入：INSERT、UPDATE、DELETE</a><a class="toc-2" href="#s69" data-part="cassandra">6. 資料型別</a><a class="toc-2" href="#s70" data-part="cassandra">7. <span class="star" title="面試高頻">★</span> 墓碑與 compaction</a><a class="toc-2" href="#s71" data-part="cassandra">8. <span class="star" title="面試高頻">★</span> 複寫與一致性等級</a><a class="toc-2" href="#s72" data-part="cassandra">9. <span class="star" title="面試高頻">★</span> 輕量交易（LWT）與 BATCH</a><a class="toc-2" href="#s73" data-part="cassandra">10. 索引：SAI、二級索引、物化視圖</a><a class="toc-2" href="#s74" data-part="cassandra">11. 常見陷阱</a><a class="toc-2" href="#s75" data-part="cassandra">12. Java / Spring Data Cassandra</a><a class="toc-2" href="#s76" data-part="cassandra">13. <span class="star" title="面試高頻">★</span> 面試題速答</a><a class="toc-2" href="#s77" data-part="cassandra">14. cqlsh 與 nodetool 常用指令</a><a class="toc-2" href="#s79" data-part="neo4j">1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</a><a class="toc-2" href="#s80" data-part="neo4j">2. 圖樣語法</a><a class="toc-2" href="#s81" data-part="neo4j">3. 查詢：MATCH、WHERE、RETURN、WITH</a><a class="toc-2" href="#s82" data-part="neo4j">4. 聚合</a><a class="toc-2" href="#s83" data-part="neo4j">5. <span class="star" title="面試高頻">★</span> 路徑與走訪</a><a class="toc-2" href="#s84" data-part="neo4j">6. 寫入：CREATE、MERGE、SET、DELETE</a><a class="toc-2" href="#s85" data-part="neo4j">7. <span class="star" title="面試高頻">★</span> 資料模型設計</a><a class="toc-2" href="#s86" data-part="neo4j">8. 索引、約束與 PROFILE</a><a class="toc-2" href="#s87" data-part="neo4j">9. 交易與叢集</a><a class="toc-2" href="#s88" data-part="neo4j">10. 常見陷阱</a><a class="toc-2" href="#s89" data-part="neo4j">11. Java / Spring Data Neo4j</a><a class="toc-2" href="#s90" data-part="neo4j">12. <span class="star" title="面試高頻">★</span> 面試題速答</a><a class="toc-2" href="#s91" data-part="neo4j">13. 工具與指令</a></nav>
   <main class="doc" id="doc">
     <p class="hit-count" id="hits" hidden></p>
     <p>面試導向的資料庫速查表，範例都可以直接在練習環境（<code>shop</code> 電商資料）執行。<span class="star" title="面試高頻">★</span> = 面試高頻考點。 上方分頁切換資料庫，左側目錄跳到章節；搜尋會找遍所有資料庫，分頁上會顯示各自找到幾節。</p>
@@ -492,23 +494,90 @@ INSERT INTO orders_archive SELECT * FROM moved;</code></pre>
 <h3 id="s21">進階索引</h3>
 <div class="table-wrap"><table><thead><tr><th>索引</th><th>寫法</th><th>適用情境</th></tr></thead><tbody><tr><td>B-tree（預設）</td><td><code>CREATE INDEX … (col)</code></td><td>=、&lt;、&gt;、BETWEEN、ORDER BY、前綴 LIKE &#x27;abc%&#x27;</td></tr><tr><td>複合索引</td><td><code>(customer_id, order_date)</code></td><td>等值條件放前面、排序欄位放後面（最左前綴）</td></tr><tr><td><span class="star" title="面試高頻">★</span> Partial Index</td><td><code>(order_date) WHERE status = &#x27;pending&#x27;</code></td><td>只查一小部分資料；索引小很多</td></tr><tr><td><span class="star" title="面試高頻">★</span> Expression Index</td><td><code>(lower(email))</code></td><td>查詢條件對欄位做了運算；函數必須 IMMUTABLE</td></tr><tr><td>覆蓋索引</td><td><code>(a, b) INCLUDE (c)</code></td><td>讓查詢變成 Index Only Scan</td></tr><tr><td>GIN</td><td><code>USING gin (specs)</code></td><td>JSONB 的 @&gt;、?；陣列的 @&gt;、&amp;&amp;；全文檢索</td></tr><tr><td>BRIN</td><td><code>USING brin (event_time)</code></td><td>依時間附加寫入的超大表（log、IoT）；只有幾十 KB</td></tr><tr><td>Hash</td><td><code>USING hash (col)</code></td><td>只有 = 查詢，實務上很少用</td></tr></tbody></table></div>
 <p>BRIN 的前提：資料在磁碟上的順序要和欄位值一致（相關性高）。隨機寫入的欄位建 BRIN 完全沒用。</p>
+<h3 id="s22"><span class="star" title="面試高頻">★</span> Partial Index（部分索引）</h3>
+<p>只替「符合條件的資料列」建索引。適合「大部分資料永遠不會用這個條件查」的情況。</p>
+<pre class="code" data-lang="sql"><code>-- 客服只查待處理的訂單：pending 只佔 3%
+CREATE INDEX idx_orders_pending ON orders (order_date) WHERE status = &#x27;pending&#x27;;
+
+SELECT id, customer_id FROM orders
+WHERE status = &#x27;pending&#x27;            -- 條件要「蘊含」索引的 WHERE，才用得到
+ORDER BY order_date DESC LIMIT 20;  -- 索引依 order_date 排序：Index Scan Backward，不用排序</code></pre>
+<p>實測（索引實驗室的 perf.orders_big，200 萬筆，pending 約 6 萬筆）：</p>
+<div class="table-wrap"><table><thead><tr><th>索引</th><th>大小</th><th>「最新 20 筆 pending」</th></tr></thead><tbody><tr><td><code>(status)</code> 完整索引</td><td class=num>13 MB</td><td>找出 6 萬筆再排序</td></tr><tr><td><code>(order_date) WHERE status = &#x27;pending&#x27;</code></td><td class=num>1.3 MB</td><td>Index Scan Backward，0.1 ms</td></tr></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>常見用途</th><th>寫法</th></tr></thead><tbody><tr><td>軟刪除：只索引還沒刪的資料</td><td><code>CREATE INDEX … (email) WHERE deleted_at IS NULL</code></td></tr><tr><td>工作佇列：只索引未處理的工作</td><td><code>CREATE INDEX … (created_at) WHERE done = false</code></td></tr><tr><td><span class="star" title="面試高頻">★</span> 條件式唯一：例如每位會員只能有一個預設地址</td><td><code>CREATE UNIQUE INDEX … (customer_id) WHERE is_default</code></td></tr><tr><td>排除大量的 NULL</td><td><code>CREATE INDEX … (birth_date) WHERE birth_date IS NOT NULL</code></td></tr></tbody></table></div>
+<ul><li>好處：索引小（更容易整個放進記憶體）、寫入時不符合條件的資料列不用維護索引</li><li><span class="star" title="面試高頻">★</span> 查詢的 WHERE 必須讓優化器「證明」符合索引條件：<code>status = &#x27;pending&#x27;</code> 可以；<code>status IN (&#x27;pending&#x27;, &#x27;paid&#x27;)</code>、<code>status = $1</code>（參數）都不行</li><li><span class="star" title="面試高頻">★</span> Java / JDBC 的坑：用 PreparedStatement 帶參數 <code>WHERE status = ?</code> 時，PostgreSQL 執行幾次之後可能改用「通用計畫」（generic plan），通用計畫不知道參數值，就<strong>用不到</strong>部分索引（實測：改走完整的 status 索引 + 排序）。固定的條件直接寫在 SQL 裡（<code>WHERE status = &#x27;pending&#x27;</code>），不要當參數</li><li>條件式唯一：表格上的 <code>UNIQUE</code> 約束不能加 WHERE，要用 <code>CREATE UNIQUE INDEX … WHERE …</code>（或 EXCLUDE 約束）</li><li>面試說法：「只有一小部分資料會被這樣查，而且查詢條件是固定的，就用部分索引；索引小、寫入成本低。」</li></ul>
+<blockquote>以下實測都在索引實驗室的 perf 大表（各 200 萬筆）上，在交易裡建索引、量完就 ROLLBACK。</blockquote>
+<h3 id="s23"><span class="star" title="面試高頻">★</span> Expression Index（運算式索引）</h3>
+<p>索引存的是「運算之後的值」。查詢條件對欄位做了運算（函式、型別轉換、時區換算）時，一般索引用不到，就建運算式索引。</p>
+<pre class="code" data-lang="sql"><code>-- 依「台灣時間的日期」查訂單：order_date 是 timestamptz
+CREATE INDEX idx_orders_tw_day ON orders (((order_date AT TIME ZONE &#x27;Asia/Taipei&#x27;)::date));
+SELECT count(*) FROM orders
+WHERE (order_date AT TIME ZONE &#x27;Asia/Taipei&#x27;)::date = &#x27;2025-06-01&#x27;;   -- 運算式要「一模一樣」
+
+CREATE INDEX idx_customers_email_lower ON customers (lower(email));     -- 不分大小寫的 email
+SELECT * FROM customers WHERE lower(email) = lower(&#x27;User04242@Example.com&#x27;);</code></pre>
+<div class="table-wrap"><table><thead><tr><th></th><th>沒有索引</th><th>運算式索引</th></tr></thead><tbody><tr><td>計畫</td><td>Seq Scan，濾掉 199.8 萬筆</td><td>Bitmap Index Scan</td></tr><tr><td>時間</td><td>488 ms</td><td>5 ms</td></tr></tbody></table></div>
+<ul><li><span class="star" title="面試高頻">★</span> 查詢的運算式要跟索引<strong>完全一樣</strong>：建的是 <code>(order_date AT TIME ZONE &#x27;Asia/Taipei&#x27;)::date</code>，查詢寫成 <code>order_date::date</code> 就用不到（實測：Seq Scan）</li><li><span class="star" title="面試高頻">★</span> 只能用 <strong>IMMUTABLE</strong> 函式（輸入一樣、結果永遠一樣）：<code>now()</code> 不行；<code>timestamptz::date</code> 依賴 session 的時區設定也不行，所以要明確寫 <code>AT TIME ZONE</code></li><li>也常用在 JSONB 的單一鍵：<code>CREATE INDEX … ((meta-&gt;&gt;&#x27;coupon&#x27;))</code>，搭配 <code>WHERE meta-&gt;&gt;&#x27;coupon&#x27; = &#x27;FALL10&#x27;</code></li><li>代價：每次寫入都要算一次運算式；索引大小跟一般 B-tree 差不多（這裡 14 MB）</li><li>同義的寫法：與其對欄位做運算，不如把運算移到「值」那一邊，例如 <code>WHERE order_date &gt;= &#x27;2025-06-01 00:00+08&#x27; AND order_date &lt; &#x27;2025-06-02 00:00+08&#x27;</code>，一般的 order_date 索引就能用</li></ul>
+<h3 id="s24"><span class="star" title="面試高頻">★</span> GIN（Generalized Inverted Index，倒排索引）</h3>
+<p>把一個值「拆開」來索引：JSONB 的每個鍵值、陣列的每個元素、文章的每個詞，記錄它們出現在哪些資料列。適合「一欄裡有很多值，要查包含某個值的列」。</p>
+<pre class="code" data-lang="sql"><code>CREATE INDEX idx_events_meta ON order_events USING gin (meta);                   -- 支援 @&gt; ? ?| ?&amp;
+CREATE INDEX idx_events_meta_path ON order_events USING gin (meta jsonb_path_ops); -- 只支援 @&gt;，但小一半
+SELECT count(*) FROM order_events WHERE meta @&gt; &#x27;{&quot;coupon&quot;: &quot;VIP2026&quot;}&#x27;;           -- ★ 要寫 @&gt;
+
+CREATE INDEX idx_products_tags ON products USING gin (tags);                     -- text[]：@&gt; &amp;&amp; &lt;@
+SELECT * FROM products WHERE tags @&gt; ARRAY[&#x27;熱銷&#x27;];
+
+CREATE EXTENSION pg_trgm;                                                        -- 三字元組：LIKE &#x27;%…%&#x27;
+CREATE INDEX idx_customers_email_trgm ON customers USING gin (email gin_trgm_ops);
+SELECT * FROM customers WHERE email LIKE &#x27;%04242%&#x27;;
+
+CREATE INDEX idx_docs_fts ON docs USING gin (to_tsvector(&#x27;simple&#x27;, body));       -- 全文檢索</code></pre>
+<div class="table-wrap"><table><thead><tr><th>JSONB <code>meta @&gt; &#x27;{&quot;coupon&quot;: &quot;VIP2026&quot;}&#x27;</code></th><th>時間</th><th>索引大小</th></tr></thead><tbody><tr><td>沒有索引（Seq Scan）</td><td>524 ms</td><td>—</td></tr><tr><td><code>gin (meta)</code></td><td>—</td><td>8.7 MB</td></tr><tr><td><code>gin (meta jsonb_path_ops)</code>（優化器選了這個）</td><td>6.8 ms</td><td>4.5 MB</td></tr></tbody></table></div>
+<ul><li><span class="star" title="面試高頻">★</span> <code>meta-&gt;&gt;&#x27;coupon&#x27; = &#x27;VIP2026&#x27;</code> <strong>用不到</strong> GIN（<code>-&gt;&gt;</code> 加 <code>=</code> 不是 GIN 支援的運算子），要寫成 <code>meta @&gt; &#x27;{&quot;coupon&quot;: &quot;VIP2026&quot;}&#x27;</code>，或另外建運算式 B-tree</li><li><code>jsonb_ops</code>（預設）：支援 <code>@&gt;</code>、<code>?</code>（有沒有這個鍵）、<code>?|</code>、<code>?&amp;</code>；<code>jsonb_path_ops</code>：只支援 <code>@&gt;</code>，但更小、更快</li><li>pg_trgm + GIN 讓 <code>LIKE &#x27;%中間%&#x27;</code>、<code>ILIKE</code> 也能用索引（實測 2.7 ms → 0.04 ms，2 萬筆）；B-tree 只能處理 <code>LIKE &#x27;abc%&#x27;</code>（前綴）</li><li>代價：寫入比較慢（一筆資料要更新很多個索引項目），PostgreSQL 用 pending list 延後合併（<code>fastupdate</code>）來緩和</li><li>跟 Elasticsearch 的核心一樣是倒排索引；Elasticsearch 另外有分詞、相關性分數、分散式</li></ul>
+<h3 id="s25">GiST（Generalized Search Tree）</h3>
+<p>一種「可以自訂比較方式」的平衡樹，用來索引<strong>會重疊、有遠近</strong>的資料：範圍（tstzrange）、幾何（point、polygon、PostGIS）、全文檢索。B-tree 只懂「大小順序」，GiST 懂「重疊 <code>&amp;&amp;</code>」「包含 <code>@&gt;</code>」「距離 <code>&lt;-&gt;</code>」。</p>
+<pre class="code" data-lang="sql"><code>-- ★ 排除約束：同一間房間的預約時段不能重疊（UNIQUE 做不到「重疊」的檢查）
+CREATE EXTENSION btree_gist;                          -- 讓 GiST 也能處理 room 的 =
+CREATE TABLE bookings (
+  room   int,
+  during tstzrange,
+  EXCLUDE USING gist (room WITH =, during WITH &amp;&amp;)
+);
+INSERT INTO bookings VALUES (101, &#x27;[2026-10-07 14:00, 2026-10-07 16:00)&#x27;);
+INSERT INTO bookings VALUES (101, &#x27;[2026-10-07 15:00, 2026-10-07 17:00)&#x27;);  -- ✗ conflicting key value violates exclusion constraint
+INSERT INTO bookings VALUES (101, &#x27;[2026-10-07 16:00, 2026-10-07 18:00)&#x27;);  -- ✓ [) 半開區間，16:00 剛好接上
+
+-- 最近鄰（KNN）：離台北車站最近的 5 家店
+CREATE INDEX idx_stores_loc ON stores USING gist (loc);
+SELECT id FROM stores ORDER BY loc &lt;-&gt; point(121.5, 25.03) LIMIT 5;</code></pre>
+<div class="table-wrap"><table><thead><tr><th>最近的 5 家店（20 萬家）</th><th>計畫</th><th>時間</th></tr></thead><tbody><tr><td>沒有索引</td><td>Seq Scan 20 萬筆 + top-N 排序</td><td>27 ms</td></tr><tr><td>GiST</td><td>Index Scan，依距離直接讀出前 5 筆</td><td>0.15 ms</td></tr></tbody></table></div>
+<ul><li><span class="star" title="面試高頻">★</span> 排除約束（EXCLUDE）是 GiST 最常被問的用途：會議室 / 飯店訂房不重疊、同一位員工的排班不重疊、價格區間不重疊</li><li>KNN 搜尋：<code>ORDER BY 欄位 &lt;-&gt; 目標 LIMIT n</code>，索引可以直接「由近到遠」讀出，不用算完全部距離再排序</li><li>全文檢索也可以用 GiST：比 GIN 小、更新快，但查詢比較慢（會有誤判要重新檢查）；以查詢為主時選 GIN</li><li>PostGIS 的空間索引就是 GiST；pgvector 的向量索引則是 HNSW / IVFFlat（另外的索引類型）</li></ul>
+<h3 id="s26"><span class="star" title="面試高頻">★</span> BRIN（Block Range Index）</h3>
+<p>不記錄每一筆資料，只記錄「每一段磁碟區塊（預設 128 個 page）裡的最小值和最大值」。查詢時跳過範圍不符的區塊，再讀剩下的區塊逐筆檢查。</p>
+<pre class="code" data-lang="sql"><code>CREATE INDEX idx_events_time_brin ON order_events USING brin (event_time);
+SELECT count(*) FROM order_events
+WHERE event_time &gt;= &#x27;2025-06-01&#x27; AND event_time &lt; &#x27;2025-06-02&#x27;;</code></pre>
+<div class="table-wrap"><table><thead><tr><th>order_events.event_time（依時間寫入）</th><th>時間</th><th>索引大小</th></tr></thead><tbody><tr><td>沒有索引（Seq Scan）</td><td>108 ms</td><td>—</td></tr><tr><td>BRIN</td><td>1.5 ms（Heap Blocks: lossy=128，多讀了 8,527 筆再過濾）</td><td><strong>24 kB</strong></td></tr><tr><td>B-tree</td><td>0.12 ms（Index Only Scan：count 不必讀資料表）</td><td>43 MB</td></tr></tbody></table></div>
+<ul><li>BRIN 比 B-tree 慢一點（要讀整段區塊再過濾），但索引小了 1,800 倍；資料量越大、記憶體越吃緊，這個取捨越划算</li><li><span class="star" title="面試高頻">★</span> 前提：資料在磁碟上的順序要跟欄位值一致（相關性高）。依時間附加寫入的 log、IoT、交易紀錄最適合；隨機寫入的欄位建 BRIN 完全沒用（實驗室的 orders_big：優化器直接放棄用它）</li><li>大量 UPDATE / DELETE 之後順序會亂掉，效果變差</li><li>「lossy」：BRIN 只能說「這一段區塊可能有」，所以一定要重新檢查（Rows Removed by Index Recheck）</li><li>適合：幾億筆的時間序列、只追加的資料；以極小的索引換取「大致定位」。TimescaleDB 也大量利用這個特性</li></ul>
+<h3 id="s27">怎麼選索引</h3>
+<div class="table-wrap"><table><thead><tr><th>查詢長這樣</th><th>用</th></tr></thead><tbody><tr><td><code>=</code>、<code>&lt;</code>、<code>&gt;</code>、<code>BETWEEN</code>、<code>ORDER BY</code>、<code>LIKE &#x27;abc%&#x27;</code></td><td>B-tree（預設）</td></tr><tr><td>只查一小部分資料、條件固定（<code>WHERE status = &#x27;pending&#x27;</code>）</td><td>Partial Index</td></tr><tr><td>條件對欄位做了運算（<code>lower(email)</code>、時區換算）</td><td>Expression Index</td></tr><tr><td>JSONB <code>@&gt;</code> / <code>?</code>、陣列 <code>@&gt;</code> <code>&amp;&amp;</code>、全文檢索、<code>LIKE &#x27;%…%&#x27;</code>（pg_trgm）</td><td>GIN</td></tr><tr><td>範圍重疊、排除約束、幾何、最近鄰（<code>&lt;-&gt;</code>）</td><td>GiST</td></tr><tr><td>超大、依時間附加寫入的表，查時間範圍</td><td>BRIN</td></tr><tr><td>只有 <code>=</code>，而且值很長</td><td>Hash（實務上很少用）</td></tr><tr><td>向量相似度（AI 語意搜尋）</td><td>pgvector 的 HNSW / IVFFlat</td></tr></tbody></table></div>
 </section>
-<section class="sec" id="s22" data-part="postgresql"><h2>16. psql 常用指令</h2>
+<section class="sec" id="s28" data-part="postgresql"><h2>16. psql 常用指令</h2>
 <div class="table-wrap"><table><thead><tr><th>指令</th><th>作用</th></tr></thead><tbody><tr><td><code>\l</code></td><td>列出資料庫</td></tr><tr><td><code>\dt</code></td><td>列出資料表</td></tr><tr><td><code>\d 表名</code></td><td>看表結構、索引、外鍵</td></tr><tr><td><code>\di</code></td><td>列出索引</td></tr><tr><td><code>\x</code></td><td>切換直式顯示（欄位很多時好用）</td></tr><tr><td><code>\timing</code></td><td>顯示每句 SQL 耗時</td></tr><tr><td><code>\e</code></td><td>用編輯器寫長 SQL</td></tr><tr><td><code>\q</code></td><td>離開</td></tr></tbody></table></div>
 </section>
 <section class="part-head" id="redis" data-part="redis"><h1>Redis</h1>
 <blockquote>範例的 key 都來自練習環境（<code>redis-lab</code> 容器，port 6380），可以直接貼到展示台的「指令主控台」執行。資料是從 PostgreSQL 轉進來的，練壞了按「重置資料」。</blockquote>
 </section>
-<section class="sec" id="s24" data-part="redis"><h2>1. <span class="star" title="面試高頻">★</span> 基本觀念：Redis 為什麼這麼快</h2>
+<section class="sec" id="s30" data-part="redis"><h2>1. <span class="star" title="面試高頻">★</span> 基本觀念：Redis 為什麼這麼快</h2>
 <div class="table-wrap"><table><thead><tr><th>觀念</th><th>說明</th></tr></thead><tbody><tr><td>資料放在記憶體</td><td>讀寫是微秒等級；硬碟只用來做持久化備份</td></tr><tr><td>單執行緒執行指令</td><td>一次只執行一個指令，不用加鎖、沒有切換成本；<strong>每個指令天生是原子的</strong></td></tr><tr><td>I/O 多工</td><td>用 epoll 同時處理上萬條連線；Redis 6 起網路讀寫可以開多執行緒（<code>io-threads</code>），執行指令仍是單執行緒</td></tr><tr><td>高效的資料結構</td><td>依資料大小自動切換底層編碼（listpack、skiplist、intset…）</td></tr></tbody></table></div>
 <p><span class="star" title="面試高頻">★</span> 單執行緒的代價：<strong>一個慢指令會卡住所有人</strong>。<code>KEYS *</code>、對大 key 做 <code>HGETALL</code> / <code>SMEMBERS</code> / <code>DEL</code>、跑很久的 Lua 腳本，都會讓整台 Redis 停住。</p>
 <p>Key 命名慣例：用冒號分層 <code>物件類型:id:欄位</code>，例如 <code>product:540</code>、<code>customer:1:recent_orders</code>、<code>cache:category-report:2</code>。</p>
 </section>
-<section class="sec" id="s25" data-part="redis"><h2>2. 通用指令（所有型別都能用）</h2>
+<section class="sec" id="s31" data-part="redis"><h2>2. 通用指令（所有型別都能用）</h2>
 <div class="table-wrap"><table><thead><tr><th>指令</th><th>說明</th></tr></thead><tbody><tr><td><code>EXISTS k</code>、<code>TYPE k</code></td><td>存在嗎、什麼型別</td></tr><tr><td><code>DEL k</code>、<code>UNLINK k</code></td><td>刪除；UNLINK 在背景釋放記憶體，刪大 key 不會卡住</td></tr><tr><td><code>EXPIRE k 60</code>、<code>PEXPIRE k 500</code></td><td>設定過期（秒 / 毫秒）</td></tr><tr><td><code>TTL k</code>、<code>PTTL k</code></td><td>剩幾秒；<strong>-1 = 沒有過期時間，-2 = key 不存在</strong></td></tr><tr><td><code>PERSIST k</code></td><td>移除過期時間</td></tr><tr><td><code>RENAME k k2</code>、<code>COPY k k2</code></td><td>改名、複製</td></tr><tr><td><code>SCAN 0 MATCH product:* COUNT 100</code></td><td><span class="star" title="面試高頻">★</span> 分批找 key（要拿回傳的游標一直掃到 0）</td></tr><tr><td><code>OBJECT ENCODING k</code>、<code>MEMORY USAGE k</code></td><td>底層編碼、佔多少記憶體</td></tr><tr><td><code>DBSIZE</code>、<code>INFO memory</code>、<code>SLOWLOG GET 10</code></td><td>key 數量、記憶體、慢指令紀錄</td></tr></tbody></table></div>
 <p><span class="star" title="面試高頻">★</span> 正式環境禁用 <code>KEYS *</code>：它會一次掃完所有 key，期間其他請求全部排隊。用 <code>SCAN</code>。</p>
 </section>
-<section class="sec" id="s26" data-part="redis"><h2>3. String</h2>
+<section class="sec" id="s32" data-part="redis"><h2>3. String</h2>
 <pre class="code" data-lang="redis"><code>SET k v                       -- 覆蓋整個值，也會清掉原本的過期時間
 SET k v EX 1800               -- 寫入同時設定 30 分鐘過期
 SET k v NX                    -- 不存在才寫入（分散式鎖）
@@ -519,7 +588,7 @@ INCR k       INCRBY k 10      DECR k      INCRBYFLOAT k 1.5     -- 原子計數
 GETDEL k     GETEX k EX 60    APPEND k v  STRLEN k</code></pre>
 <p>用途：快取（JSON 字串）、計數器、Session、分散式鎖、限流。單一值最大 512 MB，但超過 10 KB 就算「大 key」了。</p>
 </section>
-<section class="sec" id="s27" data-part="redis"><h2>4. Hash</h2>
+<section class="sec" id="s33" data-part="redis"><h2>4. Hash</h2>
 <pre class="code" data-lang="redis"><code>HSET product:540 name 手機 price 29949 stock 11   -- 回傳新增的欄位數
 HGET product:540 price
 HMGET customer:1 name city                       -- 欄位不存在的位置回傳 nil
@@ -529,7 +598,7 @@ HDEL k f    HEXISTS k f    HLEN k    HKEYS k    HVALS k
 HEXPIRE k 60 FIELDS 1 f                           -- 單一欄位過期（7.4+）</code></pre>
 <p><span class="star" title="面試高頻">★</span> 物件快取用 Hash 還是 JSON String？Hash 可以只讀、只改部分欄位；JSON String 適合整包讀寫、結構有巢狀的資料。</p>
 </section>
-<section class="sec" id="s28" data-part="redis"><h2>5. List</h2>
+<section class="sec" id="s34" data-part="redis"><h2>5. List</h2>
 <pre class="code" data-lang="redis"><code>LPUSH k a b c     RPUSH k x          -- 從左 / 右放入
 LPOP k            RPOP k 2           -- 從左 / 右取出
 LRANGE k 0 9                          -- ★ 結尾包含在內：0 9 是 10 個；0 -1 是全部
@@ -539,7 +608,7 @@ BLPOP k 5                             -- 沒有資料就等最多 5 秒（簡易
 LMOVE src dst LEFT RIGHT              -- 原子搬移（可靠佇列）</code></pre>
 <p>用途：最新 N 筆（<code>LPUSH</code> + <code>LTRIM</code>）、簡易訊息佇列。需要確認機制、多個消費者分工時改用 Stream。</p>
 </section>
-<section class="sec" id="s29" data-part="redis"><h2>6. Set</h2>
+<section class="sec" id="s35" data-part="redis"><h2>6. Set</h2>
 <pre class="code" data-lang="redis"><code>SADD tag:特價 540 541       SREM k m      SCARD k       SISMEMBER k m
 SMEMBERS k                                  -- 大 Set 不要用，改用 SSCAN
 SINTER a b     SUNION a b     SDIFF a b     -- 交集、聯集、差集（A 有 B 沒有）
@@ -548,7 +617,7 @@ SINTERSTORE dst a b                         -- 結果存起來，回傳個數
 SRANDMEMBER k 3     SPOP k                  -- 隨機取（抽獎）</code></pre>
 <p>用途：標籤、共同好友（交集）、是否按過讚、黑名單、抽獎。元素沒有順序、不重複。</p>
 </section>
-<section class="sec" id="s30" data-part="redis"><h2>7. <span class="star" title="面試高頻">★</span> Sorted Set（排行榜）</h2>
+<section class="sec" id="s36" data-part="redis"><h2>7. <span class="star" title="面試高頻">★</span> Sorted Set（排行榜）</h2>
 <pre class="code" data-lang="redis"><code>ZADD board 100 alice 90 bob             -- 分數 成員
 ZINCRBY board 10 alice                  -- 原子加分，回傳新分數
 ZSCORE board alice
@@ -563,7 +632,7 @@ ZUNIONSTORE week 7 day1 day2 ...        -- 合併多個榜（日榜 → 週榜�
 <p>底層：小的時候是 listpack，大了變成<strong>跳表（skiplist）+ 雜湊表</strong>，所以依分數範圍查詢是 O(log N)，用成員查分數是 O(1)。</p>
 <p>用途：排行榜、延遲佇列（分數 = 執行時間）、滑動視窗限流（分數 = 請求時間）、Geo。</p>
 </section>
-<section class="sec" id="s31" data-part="redis"><h2>8. 特殊型別：Stream、HyperLogLog、Bitmap、Geo</h2>
+<section class="sec" id="s37" data-part="redis"><h2>8. 特殊型別：Stream、HyperLogLog、Bitmap、Geo</h2>
 <p><strong>Stream</strong>（5.0+）：只能附加的日誌，像輕量版 Kafka</p>
 <pre class="code" data-lang="redis"><code>XADD orders:stream * order_id 80000 status paid     -- * = 自動產生 ID（毫秒-序號）
 XLEN orders:stream
@@ -589,7 +658,7 @@ GEOSEARCH store:locations FROMMEMBER 台北市 BYRADIUS 60 km ASC WITHDIST
 GEOSEARCH store:locations FROMLONLAT 121.5 25.0 BYBOX 20 20 km</code></pre>
 <p><span class="star" title="面試高頻">★</span> 統計 UV 怎麼選：量小用 Set（可以列出名單）、id 是連續整數用 Bitmap（精確又省）、量很大又允許誤差用 HyperLogLog。</p>
 </section>
-<section class="sec" id="s32" data-part="redis"><h2>9. <span class="star" title="面試高頻">★</span> 交易與 Lua 腳本</h2>
+<section class="sec" id="s38" data-part="redis"><h2>9. <span class="star" title="面試高頻">★</span> 交易與 Lua 腳本</h2>
 <pre class="code" data-lang="redis"><code>MULTI                        -- 開始；之後的指令回傳 QUEUED
 INCR stats:orders:total
 LPUSH customer:1:recent_orders 90001
@@ -602,12 +671,12 @@ WATCH stock                  -- 樂觀鎖：EXEC 前 stock 被別人改過，整
 <pre class="code" data-lang="redis"><code>EVAL &quot;if redis.call(&#x27;GET&#x27;, KEYS[1]) == ARGV[1] then return redis.call(&#x27;DEL&#x27;, KEYS[1]) end return 0&quot; 1 lock:order:1 my-token</code></pre>
 <p>注意：腳本要短，跑太久會卡住整台 Redis（預設 5 秒後才能用 SCRIPT KILL）。Redis 7 起建議用 <code>FUNCTION</code> 取代 EVAL。</p>
 </section>
-<section class="sec" id="s33" data-part="redis"><h2>10. Pipeline</h2>
+<section class="sec" id="s39" data-part="redis"><h2>10. Pipeline</h2>
 <p>每個指令都要等一次網路來回（RTT）。Pipeline 把很多指令一次送出、最後一次收回結果。</p>
 <div class="table-wrap"><table><thead><tr><th>寫入 1000 個 key（練習環境實測）</th><th>耗時</th></tr></thead><tbody><tr><td>一個一個 SET</td><td class=num>約 200 ~ 500 ms</td></tr><tr><td>Pipeline</td><td class=num>約 2 ms</td></tr><tr><td>MSET</td><td class=num>約 1 ~ 2 ms</td></tr></tbody></table></div>
 <p>Pipeline <strong>不是交易</strong>：中間可能插入其他客戶端的指令。一次不要塞幾十萬個，要分批。</p>
 </section>
-<section class="sec" id="s34" data-part="redis"><h2>11. <span class="star" title="面試高頻">★</span> 實戰模式</h2>
+<section class="sec" id="s40" data-part="redis"><h2>11. <span class="star" title="面試高頻">★</span> 實戰模式</h2>
 <p><strong>Cache-Aside（旁路快取）</strong></p>
 <pre class="code" data-lang="redis"><code>讀：GET cache:x → 有就回傳；沒有 → 查資料庫 → SET cache:x &lt;值&gt; EX 60 → 回傳
 寫：先更新資料庫 → 再 DEL cache:x（刪除，不是更新快取）</code></pre>
@@ -622,43 +691,43 @@ WATCH stock                  -- 樂觀鎖：EXEC 前 stock 被別人改過，整
 <p><strong>庫存扣減（防超賣）</strong>：<code>GET</code> → 判斷 → <code>SET</code> 會超賣；用 <code>DECR</code>（小於 0 再加回）或 Lua「判斷後扣減」。</p>
 <p><strong>其他常見用法</strong>：計數器（<code>INCR</code>）、Session 共享（<code>SET … EX</code>）、冪等性（<code>SET request:&lt;id&gt; 1 NX EX 86400</code>，重複請求會失敗）、排行榜（Sorted Set）、最新動態（<code>LPUSH</code> + <code>LTRIM</code>）、延遲佇列（Sorted Set，分數 = 執行時間）。</p>
 </section>
-<section class="sec" id="s35" data-part="redis"><h2>12. <span class="star" title="面試高頻">★</span> 持久化</h2>
+<section class="sec" id="s41" data-part="redis"><h2>12. <span class="star" title="面試高頻">★</span> 持久化</h2>
 <div class="table-wrap"><table><thead><tr><th></th><th>RDB（快照）</th><th>AOF（指令日誌）</th></tr></thead><tbody><tr><td>做法</td><td>定期把整個資料庫存成二進位檔（<code>BGSAVE</code>，fork 子行程）</td><td>把每個寫入指令附加到檔案</td></tr><tr><td>遺失資料</td><td>上次快照之後的全部</td><td>依 <code>appendfsync</code>：<code>always</code> 不遺失、<code>everysec</code> 最多 1 秒、<code>no</code> 由作業系統決定</td></tr><tr><td>檔案大小 / 重啟速度</td><td>小、快</td><td>大、慢（會定期 <code>BGREWRITEAOF</code> 壓縮）</td></tr></tbody></table></div>
 <p>Redis 4.0 起可以混合使用（AOF 檔開頭是 RDB 快照），兼顧重啟速度和資料安全。練習環境兩個都關了，因為資料都能從 PostgreSQL 重建。</p>
 </section>
-<section class="sec" id="s36" data-part="redis"><h2>13. <span class="star" title="面試高頻">★</span> 過期刪除與記憶體淘汰</h2>
+<section class="sec" id="s42" data-part="redis"><h2>13. <span class="star" title="面試高頻">★</span> 過期刪除與記憶體淘汰</h2>
 <p><strong>過期的 key 怎麼刪</strong>：惰性刪除（被存取時才檢查）＋ 定期刪除（每秒抽樣檢查一部分）。所以過期的 key 不一定馬上釋放記憶體。</p>
 <p><strong>記憶體滿了怎麼辦</strong>（<code>maxmemory-policy</code>）：</p>
 <div class="table-wrap"><table><thead><tr><th>策略</th><th>說明</th></tr></thead><tbody><tr><td><code>noeviction</code></td><td>預設，拒絕寫入（練習環境用這個）</td></tr><tr><td><code>allkeys-lru</code></td><td><span class="star" title="面試高頻">★</span> 所有 key 裡淘汰最久沒用的，純快取最常用</td></tr><tr><td><code>volatile-lru</code></td><td>只淘汰有設過期時間的 key</td></tr><tr><td><code>allkeys-lfu</code> / <code>volatile-lfu</code></td><td>淘汰使用頻率最低的（4.0+）</td></tr><tr><td><code>allkeys-random</code> / <code>volatile-random</code></td><td>隨機</td></tr><tr><td><code>volatile-ttl</code></td><td>淘汰最快要過期的</td></tr></tbody></table></div>
 <p>LRU 是近似演算法：每次隨機抽幾個 key（<code>maxmemory-samples</code>）挑最舊的，不是精確的 LRU。</p>
 </section>
-<section class="sec" id="s37" data-part="redis"><h2>14. <span class="star" title="面試高頻">★</span> 高可用：主從、哨兵、叢集</h2>
+<section class="sec" id="s43" data-part="redis"><h2>14. <span class="star" title="面試高頻">★</span> 高可用：主從、哨兵、叢集</h2>
 <div class="table-wrap"><table><thead><tr><th>架構</th><th>說明</th></tr></thead><tbody><tr><td>主從複製</td><td>主節點寫、從節點讀；非同步複製，主節點掛掉可能遺失最後一點資料</td></tr><tr><td>Sentinel（哨兵）</td><td>監控主節點，掛掉時自動把從節點升級成主節點（自動故障轉移）</td></tr><tr><td>Cluster（叢集）</td><td>資料分散到多個主節點：<strong>16384 個 slot</strong>，<code>CRC16(key) % 16384</code> 決定放哪個節點</td></tr></tbody></table></div>
 <p><span class="star" title="面試高頻">★</span> Cluster 的限制：一個指令用到的多個 key 必須在同一個 slot，否則報錯（CROSSSLOT）。用 hash tag 讓它們落在同一個 slot：<code>{order:1}:items</code>、<code>{order:1}:status</code> 只會用 <code>{}</code> 裡的內容計算。</p>
 </section>
-<section class="sec" id="s38" data-part="redis"><h2>15. 底層編碼（面試加分題）</h2>
+<section class="sec" id="s44" data-part="redis"><h2>15. 底層編碼（面試加分題）</h2>
 <div class="table-wrap"><table><thead><tr><th>型別</th><th>資料少的時候</th><th>資料多的時候</th></tr></thead><tbody><tr><td>String</td><td>int（整數）、embstr（≤ 44 bytes）</td><td>raw</td></tr><tr><td>List</td><td>listpack</td><td>quicklist（多個 listpack 串起來）</td></tr><tr><td>Hash</td><td>listpack</td><td>hashtable</td></tr><tr><td>Set</td><td>intset（全是整數）、listpack</td><td>hashtable</td></tr><tr><td>Sorted Set</td><td>listpack</td><td>skiplist + hashtable</td></tr></tbody></table></div>
 <p>用 <code>OBJECT ENCODING key</code> 查看。門檻由設定決定，例如 <code>hash-max-listpack-entries 128</code>。小資料用緊湊的 listpack 省記憶體，所以「拆成很多小 Hash」常比一個巨大的 Hash 省空間。</p>
 </section>
-<section class="sec" id="s39" data-part="redis"><h2>16. Java / Spring Boot</h2>
+<section class="sec" id="s45" data-part="redis"><h2>16. Java / Spring Boot</h2>
 <div class="table-wrap"><table><thead><tr><th>工具</th><th>說明</th></tr></thead><tbody><tr><td>Lettuce</td><td>Spring Boot 預設的客戶端，基於 Netty、執行緒安全，一條連線可以共用</td></tr><tr><td>Jedis</td><td>傳統同步客戶端，要搭配連線池（展示台用的就是 Jedis）</td></tr><tr><td>Redisson</td><td>分散式鎖、看門狗、限流器、延遲佇列等進階功能</td></tr><tr><td><code>RedisTemplate</code></td><td>Spring Data Redis 的操作入口：<code>opsForValue()</code>、<code>opsForHash()</code>、<code>opsForZSet()</code>…</td></tr><tr><td><code>@Cacheable</code> / <code>@CacheEvict</code></td><td>Spring Cache 註解，搭配 <code>RedisCacheManager</code> 自動做 Cache-Aside</td></tr></tbody></table></div>
 <p><span class="star" title="面試高頻">★</span> 常見坑：</p>
 <ul><li><code>RedisTemplate</code> 預設用 JDK 序列化，key 會變成 <code>\xac\xed\x00\x05t\x00…</code> 這種亂碼。設定 <code>StringRedisSerializer</code> 與 JSON 序列化器，或直接用 <code>StringRedisTemplate</code></li><li><code>@Cacheable</code> 預設沒有過期時間，要在 <code>RedisCacheConfiguration.entryTtl(...)</code> 設定</li><li>同一個類別裡呼叫自己的 <code>@Cacheable</code> 方法不會經過代理，快取不會生效</li></ul>
 </section>
-<section class="sec" id="s40" data-part="redis"><h2>17. <span class="star" title="面試高頻">★</span> 面試題速答</h2>
+<section class="sec" id="s46" data-part="redis"><h2>17. <span class="star" title="面試高頻">★</span> 面試題速答</h2>
 <div class="table-wrap"><table><thead><tr><th>題目</th><th>重點</th></tr></thead><tbody><tr><td>Redis 為什麼快</td><td>記憶體、單執行緒執行指令（無鎖）、I/O 多工、高效資料結構</td></tr><tr><td>Redis 是單執行緒嗎</td><td>執行指令是單執行緒；6.0 起網路 I/O 可以多執行緒；持久化、UNLINK 用背景執行緒</td></tr><tr><td>五種基本型別與用途</td><td>String 快取 / 計數、Hash 物件、List 佇列 / 最新列表、Set 標籤 / 去重、Sorted Set 排行榜</td></tr><tr><td>穿透、擊穿、雪崩</td><td>不存在的資料、熱門 key 過期、大量 key 同時過期（見第 11 節）</td></tr><tr><td>怎麼保證快取一致性</td><td>先更新資料庫再刪快取；延遲雙刪；訂閱 binlog 刪快取</td></tr><tr><td>分散式鎖怎麼做</td><td>SET NX PX + 唯一 token + Lua 釋放；Redisson 看門狗；RedLock</td></tr><tr><td>交易有 ROLLBACK 嗎</td><td>沒有；執行時的錯誤不影響其他指令。要原子性用 Lua</td></tr><tr><td>RDB 和 AOF</td><td>快照 vs 指令日誌；混合持久化</td></tr><tr><td>記憶體滿了會怎樣</td><td>依 maxmemory-policy；快取用 allkeys-lru</td></tr><tr><td>過期 key 怎麼刪</td><td>惰性刪除 + 定期刪除</td></tr><tr><td>什麼是大 key、怎麼處理</td><td>單一 key 太大（String &gt; 10 KB、集合 &gt; 數千元素）；拆分、用 UNLINK 刪除、用 SCAN 類指令讀</td></tr><tr><td>熱 key 怎麼處理</td><td>本地快取（Caffeine）多一層、key 加後綴分散到多個節點</td></tr><tr><td>Cluster 怎麼分片</td><td>16384 個 slot、CRC16；跨 slot 用 hash tag</td></tr><tr><td>KEYS 和 SCAN</td><td>KEYS 一次掃完會阻塞；SCAN 分批、可能重複、要掃到游標為 0</td></tr></tbody></table></div>
 </section>
-<section class="sec" id="s41" data-part="redis"><h2>18. redis-cli 常用指令</h2>
+<section class="sec" id="s47" data-part="redis"><h2>18. redis-cli 常用指令</h2>
 <div class="table-wrap"><table><thead><tr><th>指令</th><th>作用</th></tr></thead><tbody><tr><td><code>redis-cli -p 6380 --user learner --pass learner-lab</code></td><td>連到練習環境</td></tr><tr><td><code>docker exec -it redis-lab redis-cli --user default --pass admin-lab</code></td><td>從容器裡用管理員身分連線</td></tr><tr><td><code>--scan --pattern &#x27;product:*&#x27;</code></td><td>安全地列出 key</td></tr><tr><td><code>--bigkeys</code>、<code>--memkeys</code></td><td>找出最大的 key</td></tr><tr><td><code>--latency</code></td><td>量測延遲</td></tr><tr><td><code>MONITOR</code></td><td>即時看所有指令（很耗效能，只在開發環境用）</td></tr><tr><td><code>INFO</code>、<code>INFO memory</code>、<code>INFO stats</code></td><td>伺服器狀態</td></tr><tr><td><code>CLIENT LIST</code></td><td>目前的連線</td></tr></tbody></table></div>
 </section>
 <section class="part-head" id="mongodb" data-part="mongodb"><h1>MongoDB</h1>
 <blockquote>範例都來自練習環境（<code>mongo-lab</code> 容器，port 27018，<code>shop</code> 資料庫），可以直接貼到展示台的「指令主控台」執行。資料是從 PostgreSQL 轉進來的，練壞了按「重置資料」。</blockquote>
 </section>
-<section class="sec" id="s43" data-part="mongodb"><h2>1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</h2>
+<section class="sec" id="s49" data-part="mongodb"><h2>1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</h2>
 <div class="table-wrap"><table><thead><tr><th>SQL</th><th>MongoDB</th></tr></thead><tbody><tr><td>database</td><td>database</td></tr><tr><td>table</td><td>collection（集合）</td></tr><tr><td>row</td><td>document（文件，BSON 格式）</td></tr><tr><td>column</td><td>field（欄位，每份文件可以不一樣）</td></tr><tr><td>primary key</td><td><code>_id</code>（每份文件都有，預設是 ObjectId）</td></tr><tr><td>JOIN</td><td>內嵌文件，或 <code>$lookup</code></td></tr><tr><td>GROUP BY</td><td>聚合管線的 <code>$group</code></td></tr><tr><td>index</td><td>index（概念幾乎一樣）</td></tr></tbody></table></div>
 <ul><li><strong>BSON</strong>：二進位的 JSON，多了 Date、ObjectId、Decimal128、Int32 / Int64 等型別</li><li><strong>ObjectId</strong>：12 bytes，前 4 bytes 是建立時間，所以大致依時間遞增，可以用 <code>ObjectId(…).getTimestamp()</code> 取出</li><li><strong>單一文件上限 16 MB</strong></li><li><strong>彈性 schema</strong>：同一個集合裡的文件欄位可以不同；需要時可以用 JSON Schema 驗證（<code>$jsonSchema</code>）</li><li>錢不要用 double：用 <code>Decimal128</code>（<code>NumberDecimal(&quot;19.99&quot;)</code>）或存成「分」的整數</li></ul>
 </section>
-<section class="sec" id="s44" data-part="mongodb"><h2>2. 查詢：find</h2>
+<section class="sec" id="s50" data-part="mongodb"><h2>2. 查詢：find</h2>
 <pre class="code" data-lang="mongo"><code>db.orders.find({ status: &quot;paid&quot; })                          // 條件
 db.orders.find({ status: &quot;paid&quot; }, { total: 1, _id: 0 })    // 投影：1 要、0 不要
 db.orders.find({}).sort({ orderDate: -1 }).skip(20).limit(10)   // 排序、分頁
@@ -668,7 +737,7 @@ db.orders.estimatedDocumentCount()                          // 讀統計值，�
 db.orders.distinct(&quot;shipping.city&quot;)                         // 不重複值</code></pre>
 <ul><li><span class="star" title="面試高頻">★</span> find 的 <code>sort</code>、<code>skip</code>、<code>limit</code> 不管怎麼串，都固定依「sort → skip → limit」執行</li><li>投影裡除了 <code>_id</code>，不能混用 1 和 0</li><li>大量分頁別用很大的 <code>skip</code>（要先掃過前面所有資料），改用「上一頁最後一筆的值」當條件：<code>{ orderDate: { $lt: 上一頁最後的時間 } }</code></li></ul>
 </section>
-<section class="sec" id="s45" data-part="mongodb"><h2>3. 查詢運算子</h2>
+<section class="sec" id="s51" data-part="mongodb"><h2>3. 查詢運算子</h2>
 <div class="table-wrap"><table><thead><tr><th>類別</th><th>運算子</th></tr></thead><tbody><tr><td>比較</td><td><code>$eq</code> <code>$ne</code> <code>$gt</code> <code>$gte</code> <code>$lt</code> <code>$lte</code> <code>$in</code> <code>$nin</code></td></tr><tr><td>邏輯</td><td><code>$and</code> <code>$or</code> <code>$nor</code> <code>$not</code>（同一個物件裡的多個條件本來就是 AND）</td></tr><tr><td>欄位</td><td><code>$exists</code>（欄位存不存在）、<code>$type</code>（型別）</td></tr><tr><td>陣列</td><td><code>$all</code> <code>$elemMatch</code> <code>$size</code></td></tr><tr><td>其他</td><td><code>$regex</code>（或直接寫 <code>/^Apple/</code>）、<code>$expr</code>（在條件裡用聚合運算式，例如比較兩個欄位）</td></tr></tbody></table></div>
 <pre class="code" data-lang="mongo"><code>db.products.find({ price: { $gte: 1000, $lte: 2000 } })
 db.orders.find({ status: { $in: [&quot;cancelled&quot;, &quot;returned&quot;] } })
@@ -678,7 +747,7 @@ db.products.find({ $expr: { $gt: [&quot;$price&quot;, { $multiply: [&quot;$cost&
 <p><span class="star" title="面試高頻">★</span> 型別要一樣：<code>{ _id: &quot;540&quot; }</code>（字串）查不到 <code>_id: 540</code>（數字），不會自動轉型，也不會報錯。</p>
 <p><span class="star" title="面試高頻">★</span> <code>{ city: null }</code> 會同時找到「值是 null」和「沒有這個欄位」的文件。只要沒有欄位的用 <code>{ $exists: false }</code>。</p>
 </section>
-<section class="sec" id="s46" data-part="mongodb"><h2>4. 陣列與內嵌文件</h2>
+<section class="sec" id="s52" data-part="mongodb"><h2>4. 陣列與內嵌文件</h2>
 <pre class="code" data-lang="mongo"><code>db.orders.find({ &quot;shipping.city&quot;: &quot;台北市&quot; })                // 內嵌欄位用點號（要加引號）
 db.orders.find({ &quot;items.productId&quot;: 540 })                  // 點號也能穿過陣列
 db.products.find({ tags: &quot;特價&quot; })                           // ★ 陣列裡「任一元素」等於
@@ -688,7 +757,7 @@ db.products.find({ tags: { $size: 3 } })                     // 剛好 3 個元�
 db.orders.find({ items: { $elemMatch: { qty: { $gte: 3 }, unitPrice: { $gte: 10000 } } } })</code></pre>
 <p><span class="star" title="面試高頻">★</span> <code>$elemMatch</code> 是面試常考題：<code>{ &quot;items.qty&quot;: { $gte: 3 }, &quot;items.unitPrice&quot;: { $gte: 10000 } }</code> 的兩個條件可以由「不同的元素」分別滿足；要求同一個元素同時符合，一定要用 <code>$elemMatch</code>。</p>
 </section>
-<section class="sec" id="s47" data-part="mongodb"><h2>5. <span class="star" title="面試高頻">★</span> 聚合管線</h2>
+<section class="sec" id="s53" data-part="mongodb"><h2>5. <span class="star" title="面試高頻">★</span> 聚合管線</h2>
 <p>文件依序流過每一個 stage，前一個的輸出是下一個的輸入。</p>
 <div class="table-wrap"><table><thead><tr><th>Stage</th><th>作用</th><th>對照 SQL</th></tr></thead><tbody><tr><td><code>$match</code></td><td>篩選（放越前面越好，開頭的可以用索引）</td><td>WHERE</td></tr><tr><td><code>$project</code> / <code>$addFields</code> / <code>$set</code> / <code>$unset</code></td><td>選欄位、新增或計算欄位</td><td>SELECT</td></tr><tr><td><code>$group</code></td><td>分組彙總：<code>$sum</code> <code>$avg</code> <code>$min</code> <code>$max</code> <code>$first</code> <code>$push</code> <code>$addToSet</code></td><td>GROUP BY</td></tr><tr><td><code>$sort</code> / <code>$limit</code> / <code>$skip</code></td><td>排序、筆數</td><td>ORDER BY / LIMIT</td></tr><tr><td><code>$unwind</code></td><td>把陣列攤平成多份文件</td><td>unnest / JOIN 明細表</td></tr><tr><td><code>$lookup</code></td><td>關聯另一個集合，結果是陣列</td><td>LEFT JOIN</td></tr><tr><td><code>$bucket</code> / <code>$bucketAuto</code></td><td>分級統計</td><td>CASE WHEN + GROUP BY</td></tr><tr><td><code>$facet</code></td><td>同一份輸入跑多組管線（例如一次算總數與分頁）</td><td>多個查詢</td></tr><tr><td><code>$count</code></td><td>計數</td><td>count(*)</td></tr><tr><td><code>$out</code> / <code>$merge</code></td><td>結果寫進集合</td><td>INSERT INTO … SELECT</td></tr></tbody></table></div>
 <pre class="code" data-lang="mongo"><code>db.orders.aggregate([
@@ -709,7 +778,7 @@ db.orders.aggregate([
 ])</code></pre>
 <ul><li><span class="star" title="面試高頻">★</span> 管線是照 stage 的順序執行的：<code>[{ $limit: 3 }, { $sort: … }]</code> 真的是先取 3 筆再排序</li><li><code>$lookup</code> 的 <code>foreignField</code> 要有索引，不然每一筆都要掃整個集合</li><li>每個 stage 記憶體上限 100 MB，超過要 <code>allowDiskUse</code>（6.0 起預設允許）</li><li><span class="star" title="面試高頻">★</span> 日期一律以 UTC 儲存：篩選寫 <code>ISODate(&quot;2026-09-01T00:00:00+08:00&quot;)</code>，<code>$dateToString</code>、<code>$dateTrunc</code> 要給 <code>timezone: &quot;Asia/Taipei&quot;</code></li></ul>
 </section>
-<section class="sec" id="s48" data-part="mongodb"><h2>6. 寫入</h2>
+<section class="sec" id="s54" data-part="mongodb"><h2>6. 寫入</h2>
 <pre class="code" data-lang="mongo"><code>db.customers.insertOne({ name: &quot;王小明&quot;, email: &quot;a@b.com&quot; })
 db.customers.insertMany([{ … }, { … }])
 db.products.updateOne({ _id: 540 }, { $set: { stock: 20 } })
@@ -720,14 +789,14 @@ db.orders.deleteMany({ status: &quot;cancelled&quot; })</code></pre>
 <div class="table-wrap"><table><thead><tr><th>運算子</th><th>作用</th></tr></thead><tbody><tr><td><code>$set</code> / <code>$unset</code></td><td>設定 / 移除欄位</td></tr><tr><td><code>$inc</code> / <code>$mul</code></td><td>加 / 乘（原子操作）</td></tr><tr><td><code>$min</code> / <code>$max</code></td><td>比原本小 / 大才更新</td></tr><tr><td><code>$rename</code></td><td>改欄位名稱</td></tr><tr><td><code>$setOnInsert</code></td><td>只在 upsert「新增」時才設定</td></tr><tr><td><code>$push</code> / <code>$addToSet</code></td><td>加入陣列 / 不重複才加入（<code>$each</code> 一次多個、<code>$slice</code> 限制長度）</td></tr><tr><td><code>$pull</code> / <code>$pop</code></td><td>依條件移除 / 移除頭或尾</td></tr><tr><td><code>$[]</code> / <code>$[elem]</code></td><td>更新陣列的全部元素 / 符合 arrayFilters 的元素</td></tr></tbody></table></div>
 <ul><li><span class="star" title="面試高頻">★</span> <code>replaceOne</code> 會用新文件「整份取代」舊文件，只想改部分欄位一定要用 <code>$set</code></li><li><code>updateOne</code> / <code>deleteOne</code> 只處理第一份符合的文件，全部處理用 <code>updateMany</code> / <code>deleteMany</code></li><li>upsert 要搭配條件欄位的唯一索引，不然高並發下可能新增出重複的文件</li></ul>
 </section>
-<section class="sec" id="s49" data-part="mongodb"><h2>7. <span class="star" title="面試高頻">★</span> Schema 設計：內嵌還是參照</h2>
+<section class="sec" id="s55" data-part="mongodb"><h2>7. <span class="star" title="面試高頻">★</span> Schema 設計：內嵌還是參照</h2>
 <p><strong>核心原則：一起讀取的資料就一起存放。</strong></p>
 <div class="table-wrap"><table><thead><tr><th>內嵌（Embedding）</th><th>參照（Referencing）</th></tr></thead><tbody><tr><td>一次讀取就拿到全部，不用 JOIN</td><td>資料不重複，可以單獨查詢與更新</td></tr><tr><td>單一文件的更新是原子的，不需要交易</td><td>讀取時要 <code>$lookup</code>，或在程式裡查兩次</td></tr><tr><td>適合一對少量、總是一起讀（訂單明細、地址、規格）</td><td>適合一對很多、數量會無限增長、多對多、常被單獨更新的資料</td></tr></tbody></table></div>
 <p>常見設計模式：</p>
 <div class="table-wrap"><table><thead><tr><th>模式</th><th>說明</th></tr></thead><tbody><tr><td>Extended Reference</td><td>參照之外，再複製幾個常用欄位（例如訂單裡存商品名稱），省掉 <code>$lookup</code></td></tr><tr><td>Subset</td><td>只內嵌最常用的一部分（例如商品文件只放最新 10 則評論，其他評論放另一個集合）</td></tr><tr><td>Computed</td><td>事先算好放進文件（例如訂單的 <code>total</code>），讀的時候不用再算</td></tr><tr><td>Bucket</td><td>時間序列資料依時間分桶，一份文件存一小時的資料（MongoDB 5.0 起有原生的 Time Series 集合）</td></tr><tr><td>Tree</td><td>樹狀結構存 <code>parentId</code>、<code>ancestors</code> 陣列或路徑字串（練習環境的 categories）</td></tr></tbody></table></div>
 <p><span class="star" title="面試高頻">★</span> 反模式：陣列無限增長（例如把一位會員的所有訂單都塞進會員文件）會碰到 16 MB 上限，更新也會越來越慢。</p>
 </section>
-<section class="sec" id="s50" data-part="mongodb"><h2>8. <span class="star" title="面試高頻">★</span> 索引</h2>
+<section class="sec" id="s56" data-part="mongodb"><h2>8. <span class="star" title="面試高頻">★</span> 索引</h2>
 <pre class="code" data-lang="mongo"><code>db.orders.createIndex({ customerId: 1, orderDate: -1 })
 db.customers.createIndex({ email: 1 }, { unique: true })
 db.orders.createIndex({ orderDate: 1 }, { partialFilterExpression: { status: &quot;pending&quot; } })
@@ -740,7 +809,7 @@ db.orders.find({ customerId: 4242 }).explain(&quot;executionStats&quot;)</code><
 <p><strong>explain 怎麼看</strong></p>
 <div class="table-wrap"><table><thead><tr><th>欄位 / Stage</th><th>意思</th></tr></thead><tbody><tr><td><code>COLLSCAN</code></td><td>全集合掃描（缺索引）</td></tr><tr><td><code>IXSCAN</code> → <code>FETCH</code></td><td>用索引找到位置，再讀文件</td></tr><tr><td><code>SORT</code></td><td>在記憶體裡排序（沒有索引提供順序）</td></tr><tr><td><code>PROJECTION_COVERED</code></td><td>覆蓋查詢：只讀索引、不讀文件（記得 <code>_id: 0</code>）</td></tr><tr><td><code>nReturned</code> / <code>totalKeysExamined</code> / <code>totalDocsExamined</code></td><td>回傳幾份 / 看了幾個索引項目 / 讀了幾份文件；三者越接近越好</td></tr></tbody></table></div>
 </section>
-<section class="sec" id="s51" data-part="mongodb"><h2>9. <span class="star" title="面試高頻">★</span> 交易與一致性</h2>
+<section class="sec" id="s57" data-part="mongodb"><h2>9. <span class="star" title="面試高頻">★</span> 交易與一致性</h2>
 <ul><li><strong>單一文件的操作一律是原子的</strong>，所以好的內嵌設計常常不需要交易</li><li>多文件交易（4.0 起）需要<strong>副本集</strong>或分片叢集，單機模式不能用；有效能代價，預設 60 秒逾時</li><li><strong>Write Concern</strong>：寫入要幾個節點確認才算成功。<code>w: 1</code>（主節點）、<code>w: &quot;majority&quot;</code>（多數節點，5.0 起的預設）</li><li><strong>Read Concern</strong>：讀到什麼程度的資料。<code>local</code>、<code>majority</code>（不會讀到之後可能被回滾的資料）、<code>linearizable</code></li><li><strong>Read Preference</strong>：讀哪個節點。<code>primary</code>（預設）、<code>secondaryPreferred</code>（分散讀取，但可能讀到稍舊的資料）</li></ul>
 <pre class="code" data-lang="java"><code>// Spring：@Transactional 搭配 MongoTransactionManager（需要副本集）
 try (ClientSession session = client.startSession()) {
@@ -751,33 +820,33 @@ try (ClientSession session = client.startSession()) {
     });
 }</code></pre>
 </section>
-<section class="sec" id="s52" data-part="mongodb"><h2>10. <span class="star" title="面試高頻">★</span> 副本集與分片</h2>
+<section class="sec" id="s58" data-part="mongodb"><h2>10. <span class="star" title="面試高頻">★</span> 副本集與分片</h2>
 <div class="table-wrap"><table><thead><tr><th>架構</th><th>說明</th></tr></thead><tbody><tr><td>副本集（Replica Set）</td><td>一個 Primary 負責寫入，多個 Secondary 透過 oplog 複製；Primary 掛掉會自動選出新的（通常數秒內），至少要 3 個節點（或 2 + 仲裁者）</td></tr><tr><td>分片（Sharding）</td><td>資料依「分片鍵」分散到多個分片；應用程式連 <code>mongos</code> 路由，設定存在 config servers</td></tr></tbody></table></div>
 <p><span class="star" title="面試高頻">★</span> 分片鍵怎麼選：</p>
 <ul><li>基數要高（值很多種）、分布要平均、查詢條件常常帶到它</li><li>單調遞增的鍵（時間、ObjectId）會讓寫入全部集中在最後一個分片 → 用 hashed 分片，或複合分片鍵</li><li>查詢沒帶分片鍵就要問遍所有分片（scatter-gather），比較慢</li></ul>
 </section>
-<section class="sec" id="s53" data-part="mongodb"><h2>11. 常見陷阱</h2>
+<section class="sec" id="s59" data-part="mongodb"><h2>11. 常見陷阱</h2>
 <div class="table-wrap"><table><thead><tr><th>陷阱</th><th>說明</th></tr></thead><tbody><tr><td><code>{ field: null }</code></td><td>也會找到沒有這個欄位的文件</td></tr><tr><td>型別不同</td><td><code>&quot;540&quot;</code> 和 <code>540</code> 不相等，不會自動轉型</td></tr><tr><td>陣列等號</td><td><code>{ tags: &quot;a&quot; }</code> 是包含；<code>{ tags: [&quot;a&quot;] }</code> 是完全相等</td></tr><tr><td>陣列多條件</td><td>要同一個元素同時符合，用 <code>$elemMatch</code></td></tr><tr><td>時區</td><td>日期以 UTC 儲存，查詢與分組都要明確給時區</td></tr><tr><td><code>replaceOne</code> / <code>save()</code></td><td>整份取代，沒帶到的欄位會消失</td></tr><tr><td><code>updateOne</code></td><td>只更新一份</td></tr><tr><td>大 skip 分頁</td><td>越後面越慢，改用範圍條件分頁</td></tr><tr><td>JDBC 式的思維</td><td>硬把每張表變成一個集合、到處 <code>$lookup</code>，就失去文件資料庫的優勢</td></tr></tbody></table></div>
 </section>
-<section class="sec" id="s54" data-part="mongodb"><h2>12. Java / Spring Data MongoDB</h2>
+<section class="sec" id="s60" data-part="mongodb"><h2>12. Java / Spring Data MongoDB</h2>
 <div class="table-wrap"><table><thead><tr><th>工具</th><th>說明</th></tr></thead><tbody><tr><td>MongoDB Java Driver</td><td>官方驅動程式（展示台用的就是 sync 版）</td></tr><tr><td><code>MongoTemplate</code></td><td>Spring 的操作入口：<code>find(Query, Class)</code>、<code>updateFirst</code>、<code>aggregate</code></td></tr><tr><td><code>MongoRepository</code></td><td>依方法名稱產生查詢：<code>findByStatusOrderByOrderDateDesc(…)</code></td></tr><tr><td><code>@Document</code> / <code>@Id</code> / <code>@Field</code> / <code>@Indexed</code></td><td>對應集合、主鍵、欄位名稱、索引</td></tr><tr><td><code>Criteria</code> / <code>Query</code> / <code>Update</code></td><td>組條件：<code>Query.query(Criteria.where(&quot;status&quot;).is(&quot;paid&quot;))</code></td></tr></tbody></table></div>
 <p><span class="star" title="面試高頻">★</span> 常見坑：</p>
 <ul><li><code>repository.save(entity)</code> 是整份取代：只載入部分欄位的物件存回去，其他欄位就消失了。部分更新用 <code>MongoTemplate.updateFirst</code> + <code>Update.update(…)</code></li><li>Spring Data 預設會在文件裡多存一個 <code>_class</code> 欄位（記錄 Java 類別），可以用 <code>MappingMongoConverter</code> 關掉</li><li><code>@Indexed</code> 預設<strong>不會</strong>自動建立索引（Spring Boot 3 起要設定 <code>spring.data.mongodb.auto-index-creation=true</code>，正式環境建議用遷移工具建）</li><li><code>LocalDateTime</code> 沒有時區，存進 MongoDB 會被當成 UTC，讀回來可能差 8 小時</li></ul>
 </section>
-<section class="sec" id="s55" data-part="mongodb"><h2>13. <span class="star" title="面試高頻">★</span> 面試題速答</h2>
+<section class="sec" id="s61" data-part="mongodb"><h2>13. <span class="star" title="面試高頻">★</span> 面試題速答</h2>
 <div class="table-wrap"><table><thead><tr><th>題目</th><th>重點</th></tr></thead><tbody><tr><td>MongoDB 和關聯式資料庫差在哪</td><td>文件模型、彈性 schema、內嵌取代 JOIN、水平擴展（分片）較容易</td></tr><tr><td>什麼時候該用 MongoDB</td><td>資料結構多變、讀寫以「整份文件」為單位、需要水平擴展；強關聯、複雜交易多的系統用關聯式較好</td></tr><tr><td>內嵌還是參照</td><td>一起讀就一起存；一對少量內嵌、一對很多或無限增長用參照</td></tr><tr><td><code>$elemMatch</code> 什麼時候用</td><td>陣列裡「同一個元素」要同時符合多個條件時</td></tr><tr><td>複合索引欄位順序</td><td>ESR：等值 → 排序 → 範圍</td></tr><tr><td>怎麼判斷查詢有沒有用索引</td><td>explain(&quot;executionStats&quot;)：IXSCAN vs COLLSCAN、docsExamined vs nReturned</td></tr><tr><td>MongoDB 支援交易嗎</td><td>單文件一律原子；多文件交易 4.0 起支援，需要副本集</td></tr><tr><td>副本集怎麼容錯</td><td>oplog 複製、Primary 掛掉自動選舉；write concern majority 避免資料回滾</td></tr><tr><td>分片鍵怎麼選</td><td>高基數、分布平均、常被查詢；避免單調遞增</td></tr><tr><td><code>_id</code> 一定要是 ObjectId 嗎</td><td>不用，任何不重複的值都可以（練習環境用的是 PostgreSQL 的整數 id）</td></tr><tr><td>16 MB 限制怎麼辦</td><td>改設計（參照、Subset、Bucket）；大檔案用 GridFS</td></tr></tbody></table></div>
 </section>
-<section class="sec" id="s56" data-part="mongodb"><h2>14. mongosh 常用指令</h2>
+<section class="sec" id="s62" data-part="mongodb"><h2>14. mongosh 常用指令</h2>
 <div class="table-wrap"><table><thead><tr><th>指令</th><th>作用</th></tr></thead><tbody><tr><td><code>mongosh &quot;mongodb://learner:learner-lab@localhost:27018/shop?authSource=admin&quot;</code></td><td>連到練習環境</td></tr><tr><td><code>docker exec -it mongo-lab mongosh -u admin -p admin-lab</code></td><td>從容器裡用管理員身分連線</td></tr><tr><td><code>show dbs</code>、<code>use shop</code>、<code>show collections</code></td><td>列出資料庫、切換、列出集合</td></tr><tr><td><code>db.orders.stats()</code>、<code>db.stats()</code></td><td>集合 / 資料庫的大小與統計</td></tr><tr><td><code>db.currentOp()</code>、<code>db.killOp(id)</code></td><td>查看 / 中止執行中的操作</td></tr><tr><td><code>db.setProfilingLevel(1, { slowms: 100 })</code></td><td>記錄超過 100 ms 的慢查詢到 <code>system.profile</code></td></tr><tr><td><code>it</code></td><td>顯示下一批結果（find 一次只顯示 20 筆）</td></tr></tbody></table></div>
 </section>
 <section class="part-head" id="cassandra" data-part="cassandra"><h1>Cassandra</h1>
 <blockquote>範例都來自練習環境（<code>cassandra-lab</code> 容器，port 9043，keyspace <code>shop</code>），可以直接貼到展示台的「cqlsh 主控台」執行。資料是從 PostgreSQL 轉進來的，練壞了按「重新載入資料」。</blockquote>
 </section>
-<section class="sec" id="s58" data-part="cassandra"><h2>1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</h2>
+<section class="sec" id="s64" data-part="cassandra"><h2>1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</h2>
 <div class="table-wrap"><table><thead><tr><th>SQL</th><th>Cassandra</th></tr></thead><tbody><tr><td>database / schema</td><td>keyspace（同時決定複寫策略與複本數）</td></tr><tr><td>table</td><td>table（舊稱 column family）</td></tr><tr><td>row</td><td>row（屬於某個 partition）</td></tr><tr><td>primary key</td><td>partition key ＋ clustering columns</td></tr><tr><td>JOIN</td><td>沒有。查詢需要的資料要事先放進同一張表（反正規化）</td></tr><tr><td>GROUP BY / ORDER BY</td><td>只能用主鍵欄位，而且有很多限制</td></tr><tr><td>transaction</td><td>沒有一般交易；只有單一分區的輕量交易（LWT）與 BATCH</td></tr></tbody></table></div>
 <ul><li><strong>無主架構（masterless）</strong>：每個節點地位相同，沒有單點故障；任何節點都能當「協調節點」接收請求</li><li><strong>一致性雜湊環</strong>：分區鍵經過雜湊（Murmur3）得到 token，token 決定資料放在哪些節點；每個節點負責很多段 token 範圍（vnodes，預設 <code>num_tokens: 16</code>）</li><li><strong>寫入路徑</strong>：commitlog（循序寫入，保證持久）→ memtable（記憶體）→ 滿了 flush 成不可修改的 SSTable。寫入不需要先讀，所以非常快</li><li><strong>讀取路徑</strong>：memtable ＋ 可能好幾個 SSTable 合併；用 bloom filter 跳過不含這個分區的 SSTable，再用分區索引找到位置</li><li><strong>compaction</strong>：背景把多個 SSTable 合併成一個，順便清掉過期資料與墓碑</li><li>適合：大量寫入、時間序列、事件紀錄、使用者活動、IoT、需要多機房且不能停機的服務</li><li>不適合：需要 JOIN、隨意查詢、交易、強一致的計數（庫存、帳戶餘額）</li></ul>
 </section>
-<section class="sec" id="s59" data-part="cassandra"><h2>2. <span class="star" title="面試高頻">★</span> 主鍵：分區鍵與叢集鍵</h2>
+<section class="sec" id="s65" data-part="cassandra"><h2>2. <span class="star" title="面試高頻">★</span> 主鍵：分區鍵與叢集鍵</h2>
 <pre class="code" data-lang="cql"><code>CREATE TABLE orders_by_customer (
   customer_id int,
   order_time  timestamp,
@@ -789,12 +858,12 @@ try (ClientSession session = client.startSession()) {
 <div class="table-wrap"><table><thead><tr><th>部分</th><th>寫法</th><th>作用</th></tr></thead><tbody><tr><td>分區鍵</td><td><code>(customer_id)</code>，複合的寫成 <code>((a, b), …)</code></td><td>決定資料放在<strong>哪個節點</strong>；同一個分區的資料存在一起</td></tr><tr><td>叢集鍵</td><td><code>order_time, order_id</code></td><td>決定資料在<strong>分區裡的順序</strong>，可以用範圍查詢</td></tr><tr><td>主鍵</td><td>分區鍵 ＋ 叢集鍵</td><td>唯一識別一列；寫入同樣的主鍵就是覆蓋</td></tr></tbody></table></div>
 <ul><li><code>PRIMARY KEY (a, b, c)</code>：a 是分區鍵，b、c 是叢集鍵；<code>PRIMARY KEY ((a, b), c)</code>：a、b 一起當分區鍵</li><li><span class="star" title="面試高頻">★</span> 叢集鍵要能讓主鍵唯一：只用 <code>order_time</code> 時，同一毫秒的兩筆訂單會互相覆蓋，所以加上 <code>order_id</code></li><li><span class="star" title="面試高頻">★</span> 分區大小建議：100 MB 以內、10 萬列以內。會無限長大的分區（例如「所有訂單」「某個感測器的所有資料」）要分桶</li><li>static 欄位：<code>col text STATIC</code>，同一個分區的所有列共用一個值（例如分區層級的屬性）</li></ul>
 </section>
-<section class="sec" id="s60" data-part="cassandra"><h2>3. <span class="star" title="面試高頻">★</span> 查詢先行的資料模型</h2>
+<section class="sec" id="s66" data-part="cassandra"><h2>3. <span class="star" title="面試高頻">★</span> 查詢先行的資料模型</h2>
 <p>關聯式是「先設計資料，再寫查詢」；Cassandra 是「<strong>先列出要怎麼查，再為每一種查詢設計一張表</strong>」。</p>
 <div class="table-wrap"><table><thead><tr><th>查詢</th><th>表</th><th>主鍵</th></tr></thead><tbody><tr><td>用訂單編號查訂單</td><td><code>orders</code></td><td><code>(order_id)</code></td></tr><tr><td>某會員的訂單，新的在前</td><td><code>orders_by_customer</code></td><td><code>((customer_id), order_time DESC, order_id)</code></td></tr><tr><td>某一天的訂單</td><td><code>orders_by_day</code></td><td><code>((order_day), order_time, order_id)</code></td></tr><tr><td>某分類的商品，價格由高到低</td><td><code>products_by_category</code></td><td><code>((category), price DESC, product_id)</code></td></tr><tr><td>用 email 登入</td><td><code>customers_by_email</code></td><td><code>(email)</code></td></tr></tbody></table></div>
 <ul><li>同一份資料寫進好幾張表是常態（寫入便宜、讀取跨分區才貴）；用 logged BATCH 讓多張表最終一致</li><li><strong>時間分桶</strong>：<code>((sensor_id, day), ts)</code>、<code>((order_day), order_time)</code>，讓分區大小固定</li><li><strong>熱點</strong>：分區鍵的值分布要平均。例如用「狀態」當分區鍵，<code>delivered</code> 那個分區會非常大</li><li>一對多的子資料可以用集合或 UDT 放在同一列（<code>list&lt;frozen&lt;order_item&gt;&gt;</code>），數量少、一起讀時適用</li></ul>
 </section>
-<section class="sec" id="s61" data-part="cassandra"><h2>4. 查詢：SELECT 的規則</h2>
+<section class="sec" id="s67" data-part="cassandra"><h2>4. 查詢：SELECT 的規則</h2>
 <pre class="code" data-lang="cql"><code>SELECT * FROM orders_by_customer WHERE customer_id = 4242;                 -- 單一分區
 SELECT * FROM orders_by_customer WHERE customer_id = 1 LIMIT 3;            -- 分區已排好序，最新 3 筆
 SELECT * FROM orders_by_customer
@@ -811,7 +880,7 @@ SELECT customer_id, token(customer_id) FROM customers LIMIT 5;             -- �
 <p><span class="star" title="面試高頻">★</span> <code>ALLOW FILTERING</code> 的成本 = 為了找到結果要讀過的列數。限定了分區鍵之後在分區內過濾很便宜；沒有分區鍵就是全表掃描。</p>
 <p><span class="star" title="面試高頻">★</span> 時間字串沒寫時區時，用<strong>伺服器的時區</strong>解讀。一律寫清楚：<code>&#x27;2026-09-01 20:00:00+0800&#x27;</code>。timestamp 一律以 UTC 儲存（毫秒精度）。</p>
 </section>
-<section class="sec" id="s62" data-part="cassandra"><h2>5. 寫入：INSERT、UPDATE、DELETE</h2>
+<section class="sec" id="s68" data-part="cassandra"><h2>5. 寫入：INSERT、UPDATE、DELETE</h2>
 <pre class="code" data-lang="cql"><code>INSERT INTO customers_by_email (email, customer_id, name) VALUES (&#x27;a@example.com&#x27;, 1, &#x27;王小明&#x27;);
 UPDATE products SET stock = 0, tags = tags + {&#x27;缺貨&#x27;} WHERE product_id = 540;
 UPDATE products SET specs[&#x27;color&#x27;] = &#x27;黑&#x27; WHERE product_id = 540;            -- map 的單一 key
@@ -823,22 +892,22 @@ WHERE customer_id = 1 AND order_time &lt; &#x27;2023-01-01 00:00:00+0800&#x27;; 
 UPDATE product_sales SET units = units + 2 WHERE product_id = 540;           -- 計數器</code></pre>
 <ul><li><span class="star" title="面試高頻">★</span> <strong>INSERT 和 UPDATE 都是 upsert</strong>：寫入前不會先讀，主鍵已存在就覆蓋、不存在就新增，不會報錯</li><li><span class="star" title="面試高頻">★</span> <strong>last write wins</strong>：每個欄位值（cell）都帶著寫入時間戳記，讀取時時間戳記大的勝出，跟執行順序無關（<code>USING TIMESTAMP</code> 可以指定）。各台應用程式伺服器的時鐘要同步</li><li><span class="star" title="面試高頻">★</span> <strong>TTL 是設在每個 cell 上</strong>：UPDATE 只對這次寫的欄位設 TTL；要整列過期就用 INSERT … USING TTL，或建表時設 <code>default_time_to_live</code></li><li><span class="star" title="面試高頻">★</span> <strong>寫 null = 刪除 = 墓碑</strong>：沒有值的欄位不要寫（driver 4 的 prepared statement 可以讓參數保持 unset）</li><li>計數器：只能 <code>UPDATE … SET c = c + n</code>，不能 INSERT、不能設 TTL、表裡除了主鍵只能有 counter 欄位；重試可能重複加，不是冪等的</li></ul>
 </section>
-<section class="sec" id="s63" data-part="cassandra"><h2>6. 資料型別</h2>
+<section class="sec" id="s69" data-part="cassandra"><h2>6. 資料型別</h2>
 <div class="table-wrap"><table><thead><tr><th>類別</th><th>型別</th></tr></thead><tbody><tr><td>文字</td><td><code>text</code>（= <code>varchar</code>）、<code>ascii</code></td></tr><tr><td>整數</td><td><code>tinyint</code> <code>smallint</code> <code>int</code> <code>bigint</code> <code>varint</code>（任意長度）</td></tr><tr><td>小數</td><td><code>float</code> <code>double</code> <code>decimal</code>（金額用 decimal）</td></tr><tr><td>時間</td><td><code>timestamp</code>（毫秒）、<code>date</code>、<code>time</code>、<code>duration</code></td></tr><tr><td>識別</td><td><code>uuid</code>、<code>timeuuid</code>（含時間，可依時間排序，<code>now()</code> 產生）</td></tr><tr><td>其他</td><td><code>boolean</code> <code>blob</code> <code>inet</code> <code>counter</code> <code>vector&lt;float, n&gt;</code>（5.0，向量搜尋）</td></tr><tr><td>集合</td><td><code>list&lt;T&gt;</code>（有順序、可重複）、<code>set&lt;T&gt;</code>（不重複、排序）、<code>map&lt;K, V&gt;</code></td></tr><tr><td>自訂</td><td>UDT（<code>CREATE TYPE</code>）、<code>tuple&lt;…&gt;</code>、<code>frozen&lt;…&gt;</code>（整個當成一個值，只能整個換掉）</td></tr></tbody></table></div>
 <ul><li>集合適合少量資料（幾十個以內），整個集合會一起讀出來</li><li><span class="star" title="面試高頻">★</span> <code>tags = {&#x27;a&#x27;}</code> 是整個換掉（會先寫一個墓碑）；<code>tags = tags + {&#x27;a&#x27;}</code> 只新增元素</li><li>list 的 <code>+</code> 會重複加入；set 不會</li></ul>
 </section>
-<section class="sec" id="s64" data-part="cassandra"><h2>7. <span class="star" title="面試高頻">★</span> 墓碑與 compaction</h2>
+<section class="sec" id="s70" data-part="cassandra"><h2>7. <span class="star" title="面試高頻">★</span> 墓碑與 compaction</h2>
 <ul><li>SSTable 寫入後不會修改，<strong>刪除是寫入一個墓碑（tombstone）</strong>；DELETE、寫 null、TTL 過期、整個換掉集合都會產生墓碑</li><li>讀取時要讀到墓碑才知道資料被刪了：超過 <code>tombstone_warn_threshold</code>（1,000）會警告，超過 <code>tombstone_failure_threshold</code>（100,000）查詢直接失敗</li><li>墓碑要等 <code>gc_grace_seconds</code>（預設 10 天）過後、compaction 時才清掉。這段時間是給下線的複本回來時同步刪除，否則被刪的資料會「復活」（zombie）；所以 <strong>repair 一定要在 gc_grace_seconds 內跑完一輪</strong></li><li><span class="star" title="面試高頻">★</span> 範圍刪除只寫一個範圍墓碑；逐筆刪除每一列一個墓碑</li><li><span class="star" title="面試高頻">★</span> 反模式：把 Cassandra 當佇列（一直寫入再刪除）、頻繁更新後又刪除</li></ul>
 <div class="table-wrap"><table><thead><tr><th>compaction 策略</th><th>適合</th></tr></thead><tbody><tr><td>STCS（SizeTiered，預設）</td><td>寫入為主</td></tr><tr><td>LCS（Leveled）</td><td>讀取為主、常更新；讀取時要碰的 SSTable 少，但 compaction 的 I/O 多</td></tr><tr><td>TWCS（TimeWindow）</td><td>時間序列＋TTL：同一時間窗的資料放一起，整個過期後整個檔案丟掉</td></tr><tr><td>UCS（Unified，5.0）</td><td>可以調整成接近上面任何一種，新版建議</td></tr></tbody></table></div>
 </section>
-<section class="sec" id="s65" data-part="cassandra"><h2>8. <span class="star" title="面試高頻">★</span> 複寫與一致性等級</h2>
+<section class="sec" id="s71" data-part="cassandra"><h2>8. <span class="star" title="面試高頻">★</span> 複寫與一致性等級</h2>
 <pre class="code" data-lang="cql"><code>CREATE KEYSPACE shop WITH replication = {&#x27;class&#x27;: &#x27;NetworkTopologyStrategy&#x27;, &#x27;dc1&#x27;: 3, &#x27;dc2&#x27;: 3};
 CONSISTENCY QUORUM;     -- cqlsh 指令：之後的請求用 QUORUM</code></pre>
 <ul><li><strong>RF（複本數）</strong>：每份資料存幾份。正式環境常用 3；<code>NetworkTopologyStrategy</code> 可以每個機房各設</li><li><strong>CL（一致性等級）</strong>：每一次讀寫各自指定「要幾個複本回應才算成功」</li></ul>
 <div class="table-wrap"><table><thead><tr><th>CL</th><th>需要幾個複本回應</th></tr></thead><tbody><tr><td><code>ONE</code> / <code>TWO</code> / <code>THREE</code></td><td>1 / 2 / 3 個</td></tr><tr><td><code>QUORUM</code></td><td>⌊RF / 2⌋ + 1（RF = 3 時是 2），跨所有機房計算</td></tr><tr><td><code>LOCAL_QUORUM</code></td><td>本地機房的 quorum，不必等跨機房的延遲（最常用）</td></tr><tr><td><code>EACH_QUORUM</code></td><td>每個機房各自達到 quorum（寫入用）</td></tr><tr><td><code>ALL</code></td><td>全部複本，任何一台掛掉就失敗</td></tr><tr><td><code>ANY</code></td><td>只用在寫入：連 hint 都算成功</td></tr></tbody></table></div>
 <ul><li><span class="star" title="面試高頻">★</span> <strong>R + W &gt; RF 就是強一致</strong>：讀寫都用 QUORUM（2 + 2 &gt; 3），讀到的複本裡一定有最新的那份</li><li>寫 ONE、讀 ONE：最快、最終一致，可能讀到舊資料</li><li>複本不足時直接失敗：<code>UnavailableException: … QUORUM (2 required but only 1 alive)</code></li><li>修復機制：<strong>hinted handoff</strong>（複本暫時掛掉時，協調節點先記下 hint，回來後補寫，預設保留 3 小時）、<strong>read repair</strong>（讀取時發現複本不一致就修正）、<strong>anti-entropy repair</strong>（<code>nodetool repair</code>，定期全面比對）</li><li>CAP：Cassandra 是 AP 系統，但一致性可以依每個請求調整（tunable consistency）</li></ul>
 </section>
-<section class="sec" id="s66" data-part="cassandra"><h2>9. <span class="star" title="面試高頻">★</span> 輕量交易（LWT）與 BATCH</h2>
+<section class="sec" id="s72" data-part="cassandra"><h2>9. <span class="star" title="面試高頻">★</span> 輕量交易（LWT）與 BATCH</h2>
 <pre class="code" data-lang="cql"><code>INSERT INTO customers_by_email (email, customer_id, name) VALUES (&#x27;a@example.com&#x27;, 1, &#x27;王小明&#x27;) IF NOT EXISTS;
 UPDATE products SET price = 27999 WHERE product_id = 540 IF price = 30000;   -- compare-and-set
 UPDATE products SET stock = 9 WHERE product_id = 540 IF EXISTS;
@@ -849,17 +918,17 @@ BEGIN BATCH
 APPLY BATCH;</code></pre>
 <ul><li><strong>LWT</strong>：用 Paxos 達成「先檢查再寫入」，回傳 <code>[applied]</code>（失敗時附上目前的值）。只限單一分區；延遲是一般寫入的好幾倍，衝突多時會一直重試</li><li>讀取 LWT 寫入的資料用 <code>SERIAL</code> / <code>LOCAL_SERIAL</code></li><li><span class="star" title="面試高頻">★</span> 同一份資料不要混用 LWT 與一般寫入（一般寫入不經過 Paxos，會破壞 LWT 的保證）</li><li><strong>logged BATCH</strong>（預設）：先寫進 batchlog，保證全部「最終都會套用」，用來維持反正規化的多張表一致；<strong>不是交易</strong>：沒有隔離、不能 ROLLBACK</li><li><strong>unlogged BATCH</strong>：只有同一個分區時才合理（一次寫入）</li><li><span class="star" title="面試高頻">★</span> BATCH 不是用來加速的：跨很多分區的 batch 會壓垮協調節點（<code>batch_size_warn_threshold</code> 5 KiB、<code>batch_size_fail_threshold</code> 50 KiB）</li><li>庫存、餘額這種要「條件扣減」的資料，通常放在關聯式資料庫或 Redis</li></ul>
 </section>
-<section class="sec" id="s67" data-part="cassandra"><h2>10. 索引：SAI、二級索引、物化視圖</h2>
+<section class="sec" id="s73" data-part="cassandra"><h2>10. 索引：SAI、二級索引、物化視圖</h2>
 <pre class="code" data-lang="cql"><code>CREATE INDEX orders_customer_idx ON orders (customer_id) USING &#x27;sai&#x27;;
 CREATE INDEX products_tags_idx ON products (tags) USING &#x27;sai&#x27;;     -- 集合：CONTAINS
 SELECT * FROM products WHERE tags CONTAINS &#x27;熱銷&#x27; AND price &lt; 1000;  -- 多個 SAI 條件取交集（price 也要有索引）
 DROP INDEX orders_customer_idx;</code></pre>
 <ul><li><strong>SAI</strong>（Storage-Attached Index，5.0）：索引跟著每個 SSTable 建立，支援等號、範圍、集合、向量搜尋（ANN），多個條件可以一起用</li><li><span class="star" title="面試高頻">★</span> 索引是每個節點的<strong>本地索引</strong>：沒有分區鍵時要問遍所有節點（scatter-gather），節點越多越貴。適合低頻查詢、搭配分區鍵、或資料量小的表</li><li>舊的二級索引（2i）、SASI 有很多限制；5.0 之後建議用 SAI</li><li>物化視圖（MV）：自動維護另一個主鍵的表，但一直是實驗功能、預設關閉，實務上多半自己用 BATCH 寫多張表</li></ul>
 </section>
-<section class="sec" id="s68" data-part="cassandra"><h2>11. 常見陷阱</h2>
+<section class="sec" id="s74" data-part="cassandra"><h2>11. 常見陷阱</h2>
 <div class="table-wrap"><table><thead><tr><th>陷阱</th><th>說明</th></tr></thead><tbody><tr><td>INSERT 不會報主鍵重複</td><td>upsert，直接覆蓋；要用 <code>IF NOT EXISTS</code></td></tr><tr><td>UPDATE 不存在的列會長出一列</td><td>也是 upsert；要用 <code>IF EXISTS</code></td></tr><tr><td>沒有分區鍵就查不了</td><td>要建專用的表、SAI，或接受 <code>ALLOW FILTERING</code> 的全表掃描</td></tr><tr><td>ORDER BY 任意欄位</td><td>只能用叢集鍵</td></tr><tr><td><code>COUNT(*)</code> 整張表</td><td>真的把每一列讀出來數，會逾時；用計數器表或 <code>nodetool tablestats</code> 的估計值</td></tr><tr><td><code>AVG(int)</code></td><td>回傳 int，小數被捨去</td></tr><tr><td>寫入 null</td><td>等於刪除，產生墓碑</td></tr><tr><td>時鐘不同步</td><td>last write wins，後寫的可能輸給先寫的</td></tr><tr><td>把 Cassandra 當佇列</td><td>墓碑堆積，讀取越來越慢，最後失敗</td></tr><tr><td>分區無限長大</td><td>時間序列要分桶</td></tr><tr><td>分區鍵用 <code>IN</code> 帶上千個值</td><td>協調節點壓力大；改成平行送出多個單一分區查詢</td></tr><tr><td>計數器重試</td><td>不是冪等的，可能加兩次</td></tr></tbody></table></div>
 </section>
-<section class="sec" id="s69" data-part="cassandra"><h2>12. Java / Spring Data Cassandra</h2>
+<section class="sec" id="s75" data-part="cassandra"><h2>12. Java / Spring Data Cassandra</h2>
 <pre class="code" data-lang="java"><code>CqlSession session = CqlSession.builder()
         .addContactPoint(new InetSocketAddress(&quot;localhost&quot;, 9043))
         .withLocalDatacenter(&quot;dc1&quot;)
@@ -879,10 +948,10 @@ public record OrderByCustomer(
 }</code></pre>
 <ul><li><span class="star" title="面試高頻">★</span> CqlSession 很重（連線池、metadata），整個應用程式共用一個；一定要用 <strong>prepared statement</strong>（只解析一次，而且知道分區鍵，可以直接送到負責的節點：token-aware）</li><li>driver 4 的 Maven 座標已經改成 <code>org.apache.cassandra:java-driver-core</code></li><li>大結果自動分頁（預設一頁 5,000 列）；做 API 分頁時用 <code>getPagingState()</code> 傳給下一次請求，不要用 OFFSET（Cassandra 沒有）</li><li>Spring Data 的衍生查詢只能用主鍵欄位；用到其他欄位要 <code>@AllowFiltering</code> 或自己寫 CQL</li><li>寫入重試要小心：一般的 INSERT / UPDATE 是冪等的，可以安全重試；計數器、<code>list</code> 的 append、LWT 不行</li></ul>
 </section>
-<section class="sec" id="s70" data-part="cassandra"><h2>13. <span class="star" title="面試高頻">★</span> 面試題速答</h2>
+<section class="sec" id="s76" data-part="cassandra"><h2>13. <span class="star" title="面試高頻">★</span> 面試題速答</h2>
 <div class="table-wrap"><table><thead><tr><th>問題</th><th>重點</th></tr></thead><tbody><tr><td>Cassandra 為什麼寫入快？</td><td>寫入前不讀；commitlog 循序寫入＋memtable；SSTable 不修改，合併交給背景 compaction（LSM tree）</td></tr><tr><td>分區鍵和叢集鍵差在哪？</td><td>分區鍵決定資料在哪個節點；叢集鍵決定分區內的排序，可以範圍查詢</td></tr><tr><td>怎麼設計資料模型？</td><td>查詢先行：列出所有查詢 → 每個查詢一張表；反正規化；控制分區大小（分桶）；避免熱點</td></tr><tr><td>一致性等級怎麼選？</td><td>一般用 LOCAL_QUORUM 讀寫；R + W &gt; RF 就是強一致；ONE 最快但可能讀到舊資料</td></tr><tr><td>一台節點掛了會怎樣？</td><td>RF = 3、QUORUM 時照常運作；hinted handoff 先記下，回來後補寫；之後 repair</td></tr><tr><td>什麼是墓碑？為什麼要 gc_grace_seconds？</td><td>刪除是寫入標記；等複本都同步刪除後才能清掉，否則資料會復活</td></tr><tr><td>LWT 是什麼？代價？</td><td>Paxos 的 compare-and-set；只限單一分區、延遲高；用在唯一性檢查等低頻操作</td></tr><tr><td>BATCH 可以當交易用嗎？</td><td>不行。logged batch 只保證最終全部套用，沒有隔離、不能 rollback</td></tr><tr><td>二級索引為什麼要小心？</td><td>本地索引，沒有分區鍵時要問遍所有節點；高頻查詢應該建專用的表</td></tr><tr><td>Cassandra vs MongoDB？</td><td>Cassandra：無主、寫入量極大、多機房、查詢模式固定；MongoDB：文件模型、查詢彈性高、有交易，主從複寫</td></tr><tr><td>什麼時候不要用 Cassandra？</td><td>需要 JOIN、隨意查詢、交易、強一致的計數，或資料量小（一台 PostgreSQL 就夠）</td></tr></tbody></table></div>
 </section>
-<section class="sec" id="s71" data-part="cassandra"><h2>14. cqlsh 與 nodetool 常用指令</h2>
+<section class="sec" id="s77" data-part="cassandra"><h2>14. cqlsh 與 nodetool 常用指令</h2>
 <pre class="code" data-lang="text"><code>DESCRIBE KEYSPACES;              -- 列出 keyspace（4.0 起在伺服器端執行）
 DESCRIBE TABLE shop.orders;      -- 看建表語句
 CONSISTENCY LOCAL_QUORUM;        -- 之後的請求用這個一致性等級
@@ -894,6 +963,154 @@ nodetool status                  -- 節點狀態（UN = Up / Normal）、負載�
 nodetool tablestats shop.orders  -- 估計筆數、分區大小、SSTable 數量
 nodetool flush / compact / repair
 nodetool getendpoints shop orders_by_customer 4242   -- 這個分區在哪些節點</code></pre>
+</section>
+<section class="part-head" id="neo4j" data-part="neo4j"><h1>Neo4j</h1>
+<blockquote>範例都來自練習環境（<code>neo4j-lab</code> 容器，Bolt port 7688，Neo4j Browser http://localhost:7475），可以直接貼到展示台的「Cypher 主控台」執行（一律 ROLLBACK，可以放心試寫入）。資料是從 PostgreSQL 轉進來的，追蹤關係（FOLLOWS）是模擬資料。</blockquote>
+</section>
+<section class="sec" id="s79" data-part="neo4j"><h2>1. <span class="star" title="面試高頻">★</span> 基本觀念與 SQL 對照</h2>
+<div class="table-wrap"><table><thead><tr><th>關聯式</th><th>Neo4j（屬性圖）</th></tr></thead><tbody><tr><td>table</td><td>label（標籤），一個節點可以有多個標籤：<code>(:Customer:Vip)</code></td></tr><tr><td>row</td><td>node（節點）</td></tr><tr><td>column</td><td>property（屬性），每個節點可以不一樣</td></tr><tr><td>外鍵 / 中間表</td><td>relationship（關係）：一定有<strong>型別</strong>和<strong>方向</strong>，也可以有屬性</td></tr><tr><td>JOIN</td><td>沿著關係走（traversal）</td></tr><tr><td>SQL</td><td>Cypher：用 ASCII 圖案「畫」出要找的圖樣</td></tr></tbody></table></div>
+<pre class="code" data-lang="text"><code>(:Customer)-[:PLACED]-&gt;(:Order)-[:CONTAINS {qty, unitPrice}]-&gt;(:Product)-[:IN_CATEGORY]-&gt;(:Category)
+(:Customer)-[:FOLLOWS]-&gt;(:Customer)      (:Customer)-[:LIVES_IN]-&gt;(:City)</code></pre>
+<ul><li><span class="star" title="面試高頻">★</span> <strong>index-free adjacency</strong>：每個節點直接記著自己的關係，走一步的成本跟資料庫總大小無關；關聯式資料庫每一次 JOIN 都要查一次索引</li><li>適合：社群關係、推薦、詐騙偵測（環狀轉帳）、權限繼承、知識圖譜、供應鏈、網路拓撲——「關係本身就是重點」、而且要走好幾層的問題</li><li>不適合：整張表的彙總報表、大量欄位的篩選、單純的 CRUD</li><li>索引只用來找「起點」，找到起點之後沿著關係走</li></ul>
+</section>
+<section class="sec" id="s80" data-part="neo4j"><h2>2. 圖樣語法</h2>
+<pre class="code" data-lang="cypher"><code>(c)                          // 任意節點，變數 c
+(c:Customer)                 // 標籤
+(c:Customer {id: 4242})      // 屬性條件
+(a)-[:FOLLOWS]-&gt;(b)          // a 追蹤 b（有方向）
+(a)&lt;-[:FOLLOWS]-(b)          // b 追蹤 a
+(a)-[:FOLLOWS]-(b)           // 不管方向（兩個方向都配對）
+(a)-[r:FOLLOWS]-&gt;(b)         // 關係也可以有變數，r.since 取屬性
+(a)-[:FOLLOWS|LIKES]-&gt;(b)    // 多種型別
+(a)-[:FOLLOWS*1..3]-&gt;(b)     // 可變長度：1 到 3 步（★ 一定要給上限）
+p = (a)-[:FOLLOWS*..5]-&gt;(b)  // 整條路徑存成變數 p</code></pre>
+</section>
+<section class="sec" id="s81" data-part="neo4j"><h2>3. 查詢：MATCH、WHERE、RETURN、WITH</h2>
+<pre class="code" data-lang="cypher"><code>MATCH (c:Customer {id: 4242})-[:PLACED]-&gt;(o:Order)
+WHERE o.total &gt;= 1000 AND o.orderDate &gt;= datetime(&#x27;2025-01-01T00:00:00+08:00&#x27;)
+RETURN o.id, o.total
+ORDER BY o.orderDate DESC
+SKIP 0 LIMIT 10;
+
+MATCH (c:Customer) WHERE NOT (c)-[:PLACED]-&gt;() RETURN count(c);   // 從沒下過單（圖樣當條件）
+MATCH (c:Customer) WHERE EXISTS { (c)-[:PLACED]-&gt;(:Order {status: &#x27;returned&#x27;}) } RETURN count(c);
+
+MATCH (c:Customer) WHERE c.id IN [1, 2, 4242]
+OPTIONAL MATCH (c)-[:PLACED]-&gt;(o:Order) WHERE o.total &gt;= 50000    // 像 LEFT JOIN … ON
+RETURN c.id, count(o);
+
+MATCH (:Customer {id: 4242})-[:FOLLOWS]-&gt;(f)
+WITH f ORDER BY f.id                       // WITH = 中間的 RETURN：排序、過濾、聚合後交給下一段
+RETURN collect(f.name);
+
+UNWIND [4242, 1, 2] AS id                  // 清單展開成多列
+MATCH (c:Customer {id: id}) RETURN c.name;</code></pre>
+<div class="table-wrap"><table><thead><tr><th>子句 / 函式</th><th>用途</th></tr></thead><tbody><tr><td><code>WITH</code></td><td>把結果交給下一段（可以搭配 WHERE、ORDER BY、LIMIT、聚合）</td></tr><tr><td><code>OPTIONAL MATCH</code></td><td>找不到時變數是 null，整列保留（LEFT JOIN）</td></tr><tr><td><code>UNWIND</code></td><td>清單展開成多列（批次寫入常用）</td></tr><tr><td><code>collect()</code></td><td>多列收集成清單</td></tr><tr><td><code>[x IN list WHERE 條件 | 運算式]</code></td><td>list comprehension</td></tr><tr><td><code>EXISTS { 圖樣 }</code>、<code>COUNT { 圖樣 }</code></td><td>子查詢條件</td></tr><tr><td><code>CASE WHEN … THEN … END</code></td><td>跟 SQL 一樣</td></tr><tr><td><code>coalesce()</code>、<code>toInteger()</code>、<code>toFloat()</code>、<code>size()</code>、<code>keys()</code>、<code>labels()</code>、<code>type()</code></td><td>常用函式</td></tr></tbody></table></div>
+<p><span class="star" title="面試高頻">★</span> 參數用 <code>$name</code>：<code>MATCH (c:Customer {id: $id})</code>。不要把值串進字串（Cypher injection、也無法重用執行計畫）。</p>
+</section>
+<section class="sec" id="s82" data-part="neo4j"><h2>4. 聚合</h2>
+<pre class="code" data-lang="cypher"><code>MATCH (c:Customer)&lt;-[:FOLLOWS]-(fan)
+RETURN c.id, c.name, count(fan) AS followers      // 沒有 GROUP BY：非聚合的欄位就是分組依據
+ORDER BY followers DESC LIMIT 5;</code></pre>
+<ul><li>聚合函式：<code>count()</code>、<code>count(DISTINCT x)</code>、<code>sum()</code>、<code>avg()</code>、<code>min()</code>、<code>max()</code>、<code>collect()</code>、<code>percentileCont()</code></li><li><span class="star" title="面試高頻">★</span> <code>count(*)</code> 算列數；<code>count(x)</code> 不算 null</li><li><span class="star" title="面試高頻">★</span> 整數相除還是整數：<code>7 / 2 = 3</code>，<code>avg()</code> 才是浮點數</li></ul>
+</section>
+<section class="sec" id="s83" data-part="neo4j"><h2>5. <span class="star" title="面試高頻">★</span> 路徑與走訪</h2>
+<pre class="code" data-lang="cypher"><code>// 朋友的朋友（你可能認識的人）
+MATCH (me:Customer {id: 224})-[:FOLLOWS]-&gt;()-[:FOLLOWS]-&gt;(fof)
+WHERE fof &lt;&gt; me AND NOT (me)-[:FOLLOWS]-&gt;(fof)
+RETURN count(DISTINCT fof);
+
+// 最短路徑（雙向廣度優先，找到就停）
+MATCH p = shortestPath((a:Customer {id: 4242})-[:FOLLOWS*..10]-&gt;(b:Customer {id: 19999}))
+RETURN length(p), [n IN nodes(p) | n.name];
+
+MATCH p = allShortestPaths((a)-[:FOLLOWS*..10]-&gt;(b)) RETURN p;   // 所有一樣短的路徑
+
+// 樹：分類底下的所有子分類（SQL 要 WITH RECURSIVE）
+MATCH (c:Category)-[:SUBCATEGORY_OF*1..]-&gt;(:Category {name: &#x27;3C電子&#x27;}) RETURN c.name;</code></pre>
+<ul><li><code>nodes(p)</code>、<code>relationships(p)</code>、<code>length(p)</code>（關係數）</li><li><span class="star" title="面試高頻">★</span> <strong>關係唯一性</strong>：同一個 MATCH 圖樣裡，同一條關係不會走兩次（避免無限繞圈）；但同一個節點可以出現多次。所以「朋友的朋友」可能包含自己（互相追蹤時）</li><li><span class="star" title="面試高頻">★</span> 一條長圖樣 <code>(p)&lt;-[:CONTAINS]-(:Order)&lt;-[:PLACED]-(c)-[:PLACED]-&gt;(:Order)-[:CONTAINS]-&gt;(x)</code> 的兩個 PLACED 必須是不同的關係 → 漏掉「同一張訂單」的情況；要的話拆成兩個 MATCH</li><li><span class="star" title="面試高頻">★</span> MATCH 回傳的是「每一種配對方式」：同一個人經由兩條路徑到達就出現兩次，算人數要 DISTINCT</li><li>進階演算法（PageRank、社群偵測、相似度）用 GDS（Graph Data Science）函式庫</li></ul>
+</section>
+<section class="sec" id="s84" data-part="neo4j"><h2>6. 寫入：CREATE、MERGE、SET、DELETE</h2>
+<pre class="code" data-lang="cypher"><code>MATCH (city:City {name: &#x27;台北市&#x27;})
+CREATE (c:Customer {id: 99999, name: &#x27;測試&#x27;})-[:LIVES_IN]-&gt;(city);   // 連到「既有」的節點
+
+MATCH (a:Customer {id: 4242}), (b:Customer {id: 1})
+MERGE (a)-[:FOLLOWS]-&gt;(b);                                       // 有就用，沒有才建立
+
+MERGE (c:Customer {id: 4242})
+ON CREATE SET c.name = &#x27;新會員&#x27;, c.createdAt = datetime()
+ON MATCH SET c.lastLogin = datetime();
+
+MATCH (p:Product {id: 540})
+SET p.stock = 0, p.tags = p.tags + &#x27;缺貨&#x27;, p += {isActive: false}
+REMOVE p.discount;                                               // 刪屬性（等於 SET p.discount = null）
+
+MATCH (:Customer {id: 4242})-[r:FOLLOWS]-&gt;(:Customer {id: 15084}) DELETE r;   // 刪關係
+MATCH (c:Customer {id: 99999}) DETACH DELETE c;                  // 刪節點和它所有的關係
+
+UNWIND $rows AS row                                              // ★ 批次寫入：一次送一批
+MERGE (c:Customer {id: row.id}) SET c.name = row.name;</code></pre>
+<ul><li><span class="star" title="面試高頻">★</span> <strong>MERGE 是整個圖樣一起比對</strong>：<code>MERGE (a:Person {name:&#x27;A&#x27;})-[:KNOWS]-&gt;(b:Person {name:&#x27;B&#x27;})</code> 找不到完整圖樣時，會連兩個節點一起重新建立（產生重複節點）。正確：先 MATCH / MERGE 兩端，再 MERGE 關係</li><li>MERGE 要搭配唯一約束：沒有約束時兩個交易同時 MERGE 可能建出兩個節點</li><li><code>SET p = {…}</code> 會把所有屬性換掉；<code>SET p += {…}</code> 只更新給的屬性</li><li>屬性設成 null = 刪除這個屬性</li><li>有關係的節點不能直接 DELETE：交易 commit 時會報錯（交易內看起來成功），要 DETACH DELETE</li><li><span class="star" title="面試高頻">★</span> MATCH 找不到時，後面的 CREATE / SET 會執行 0 次，<strong>不會報錯</strong>；要確認有寫入就看回傳的列或寫入統計</li><li>大量刪除 / 更新要分批：<code>CALL { … } IN TRANSACTIONS OF 10000 ROWS</code></li></ul>
+</section>
+<section class="sec" id="s85" data-part="neo4j"><h2>7. <span class="star" title="面試高頻">★</span> 資料模型設計</h2>
+<div class="table-wrap"><table><thead><tr><th>問題</th><th>建議</th></tr></thead><tbody><tr><td>屬性還是節點？</td><td>會被「拿來連」或「拿來走訪」的東西做成節點（城市、品牌、標籤）；只是描述的就當屬性</td></tr><tr><td>關係屬性</td><td>描述「兩者之間」的資訊放在關係上（數量、時間、權重）</td></tr><tr><td>多對多帶很多資訊</td><td>中間節點（例如 Order 連接 Customer 與 Product），比把一切塞進關係彈性</td></tr><tr><td>標籤</td><td>用來分類、加速篩選（<code>:Customer:Vip</code>）；不要把會變的狀態做成大量標籤</td></tr><tr><td>關係型別要具體</td><td><code>:PLACED</code>、<code>:FOLLOWS</code> 比通用的 <code>:RELATED_TO</code> 好：查詢時可以只走需要的型別</td></tr><tr><td><span class="star" title="面試高頻">★</span> 超級節點</td><td>有幾十萬條關係的節點（名人、熱門標籤）會讓經過它的查詢變慢：限制方向與型別、依時間拆關係型別、預先算好統計值</td></tr><tr><td>方向</td><td>依語意選一個方向存就好（不需要雙向各存一條）；查詢時可以不寫方向</td></tr></tbody></table></div>
+</section>
+<section class="sec" id="s86" data-part="neo4j"><h2>8. 索引、約束與 PROFILE</h2>
+<pre class="code" data-lang="cypher"><code>CREATE CONSTRAINT customer_id IF NOT EXISTS FOR (c:Customer) REQUIRE c.id IS UNIQUE;  // 唯一約束（自帶索引）
+CREATE INDEX customer_email IF NOT EXISTS FOR (c:Customer) ON (c.email);              // RANGE 索引
+CREATE INDEX order_comp FOR (o:Order) ON (o.status, o.orderDate);                     // 複合索引
+CREATE TEXT INDEX product_name FOR (p:Product) ON (p.name);                           // CONTAINS / ENDS WITH
+CREATE FULLTEXT INDEX product_ft FOR (p:Product) ON EACH [p.name];                    // 全文搜尋
+CREATE INDEX follows_since FOR ()-[r:FOLLOWS]-() ON (r.since);                        // 關係屬性也能建索引
+SHOW INDEXES;  SHOW CONSTRAINTS;  DROP INDEX customer_email;
+
+PROFILE MATCH (c:Customer) WHERE c.email = &#x27;user04242@example.com&#x27; RETURN c;          // 執行並顯示 db hits
+EXPLAIN MATCH …;                                                                      // 只看計畫，不執行</code></pre>
+<div class="table-wrap"><table><thead><tr><th>運算子</th><th>意思</th></tr></thead><tbody><tr><td><code>AllNodesScan</code></td><td>掃描所有節點（沒寫標籤）—— 最差</td></tr><tr><td><code>NodeByLabelScan</code></td><td>掃描某個標籤的所有節點（沒有索引可用）</td></tr><tr><td><code>NodeIndexSeek</code> / <code>NodeUniqueIndexSeek</code></td><td>用索引找到起點 ✓</td></tr><tr><td><code>NodeIndexSeekByRange</code> / <code>NodeIndexContainsScan</code></td><td>範圍 / TEXT 索引</td></tr><tr><td><code>Expand(All)</code> / <code>Expand(Into)</code></td><td>沿著關係走</td></tr><tr><td><code>Filter</code></td><td>逐列過濾</td></tr><tr><td><code>CartesianProduct</code></td><td>兩個沒有連在一起的圖樣 ⚠</td></tr><tr><td><code>Eager</code></td><td>整批讀完才寫入（避免讀寫衝突），大量資料時耗記憶體</td></tr></tbody></table></div>
+<ul><li><span class="star" title="面試高頻">★</span> <strong>db hits</strong> = 存取儲存層的次數，比毫秒更穩定的成本指標（實驗室：沒索引 40,003 → 有索引 4）</li><li>在屬性上做運算（<code>c.id + 0 = 4242</code>、<code>toString(c.id) = &#x27;4242&#x27;</code>）就用不到索引</li><li>RANGE 索引：=、範圍、STARTS WITH、IS NOT NULL；TEXT 索引：CONTAINS、ENDS WITH</li><li>社群版有唯一約束；屬性存在約束、Node Key、屬性型別約束是企業版功能</li></ul>
+</section>
+<section class="sec" id="s87" data-part="neo4j"><h2>9. 交易與叢集</h2>
+<ul><li>ACID 交易，預設隔離等級是 read committed；寫入時對節點 / 關係加鎖，可能發生 deadlock（TransientException，driver 的 managed transaction 會自動重試）</li><li><span class="star" title="面試高頻">★</span> 一個交易裡的所有句子要嘛全部 commit、要嘛全部 rollback；有些檢查（例如刪除有關係的節點）在 commit 時才做</li><li>叢集（企業版）：primary 伺服器用 Raft 達成多數決寫入，secondary 伺服器負責讀取擴展</li><li><strong>bookmark</strong>：寫入後拿到 bookmark，下一次讀取帶著它，保證讀得到自己剛寫的資料（causal consistency），driver 的 session 會自動處理</li><li>社群版：單機、只有一個使用者資料庫（neo4j）、沒有角色權限</li></ul>
+</section>
+<section class="sec" id="s88" data-part="neo4j"><h2>10. 常見陷阱</h2>
+<div class="table-wrap"><table><thead><tr><th>陷阱</th><th>說明</th></tr></thead><tbody><tr><td>MERGE 整個圖樣</td><td>找不到完整圖樣就全部重新建立，產生重複節點</td></tr><tr><td>不寫方向</td><td>兩個方向都會配對（追蹤 6 + 粉絲 4 = 10）</td></tr><tr><td><code>= null</code></td><td>永遠找不到，要用 <code>IS NULL</code></td></tr><tr><td>OPTIONAL MATCH 後面的 WHERE</td><td>寫在 OPTIONAL MATCH 裡是配對條件（列會保留）；寫在後面的 WITH … WHERE 會把 null 濾掉</td></tr><tr><td>逗號連接兩個不相關的圖樣</td><td>笛卡兒積（891 × 83 = 73,953 列），伺服器會給警告</td></tr><tr><td>忘了 DISTINCT</td><td>每一條路徑算一列</td></tr><tr><td>朋友的朋友包含自己</td><td>關係唯一、節點可以重複；記得 <code>fof &lt;&gt; me</code></td></tr><tr><td>一條長圖樣漏資料</td><td>同一條關係不會用兩次 → 拆成兩個 MATCH</td></tr><tr><td>型別不一致</td><td><code>{id: &#x27;4242&#x27;}</code>（字串）找不到 <code>id: 4242</code>，也不報錯</td></tr><tr><td>整數相除</td><td><code>sum(x) / count(x)</code> 捨去小數</td></tr><tr><td>MATCH 找不到就沒事發生</td><td>後面的 CREATE 執行 0 次，不報錯</td></tr><tr><td>沒有上限的 <code>*</code></td><td>大圖上可能走出幾百萬條路徑</td></tr></tbody></table></div>
+</section>
+<section class="sec" id="s89" data-part="neo4j"><h2>11. Java / Spring Data Neo4j</h2>
+<pre class="code" data-lang="java"><code>try (Driver driver = GraphDatabase.driver(&quot;bolt://localhost:7688&quot;, AuthTokens.basic(&quot;neo4j&quot;, &quot;neo4j-lab&quot;));
+     Session session = driver.session(SessionConfig.forDatabase(&quot;neo4j&quot;))) {
+    List&lt;String&gt; names = session.executeRead(tx -&gt; tx.run(
+            &quot;MATCH (:Customer {id: $id})-[:FOLLOWS]-&gt;(f) RETURN f.name AS name&quot;,
+            Map.of(&quot;id&quot;, 4242)).list(r -&gt; r.get(&quot;name&quot;).asString()));
+    session.executeWrite(tx -&gt; tx.run(&quot;UNWIND $rows AS r MERGE (c:Customer {id: r.id}) SET c.name = r.name&quot;,
+            Map.of(&quot;rows&quot;, rows)).consume());
+}</code></pre>
+<pre class="code" data-lang="java"><code>@Node(&quot;Customer&quot;)
+public class Customer {
+    @Id private Long id;                       // 業務 id；或 @Id @GeneratedValue 用內部 id
+    private String name;
+    @Relationship(type = &quot;FOLLOWS&quot;, direction = Relationship.Direction.OUTGOING)
+    private Set&lt;Customer&gt; follows;
+}
+
+public interface CustomerRepository extends Neo4jRepository&lt;Customer, Long&gt; {
+    @Query(&quot;MATCH (:Customer {id: $id})-[:FOLLOWS]-&gt;(f) RETURN f&quot;)
+    List&lt;Customer&gt; following(Long id);
+}</code></pre>
+<ul><li><span class="star" title="面試高頻">★</span> Driver 很重，整個應用程式共用一個；Session 很輕，用完就關</li><li><code>executeRead</code> / <code>executeWrite</code>（managed transaction）遇到暫時性錯誤會自動重試，交易函式要能重複執行（不要在裡面寄信）</li><li>一律用參數 <code>$id</code>，不要字串串接</li><li>大量寫入用 <code>UNWIND $rows</code> 一次送一批（本專案載入資料：一批 5,000 筆）</li><li>Spring Data Neo4j 載入有關係的實體時，可能一次把很大一片圖拉回來；大型查詢用自訂 Cypher 或投影（projection）</li><li>不要用 <code>elementId()</code> / 內部 id 當業務 id：刪除後可能被重複使用</li></ul>
+</section>
+<section class="sec" id="s90" data-part="neo4j"><h2>12. <span class="star" title="面試高頻">★</span> 面試題速答</h2>
+<div class="table-wrap"><table><thead><tr><th>問題</th><th>重點</th></tr></thead><tbody><tr><td>圖資料庫跟關聯式資料庫差在哪？</td><td>關係是存起來的（index-free adjacency），走一步的成本跟資料總量無關；JOIN 是查詢時才用索引比對</td></tr><tr><td>什麼時候用圖資料庫？</td><td>關係本身是重點、要走好幾層、層數不固定：社群、推薦、詐騙偵測、權限、知識圖譜</td></tr><tr><td>圖資料庫一定比較快嗎？</td><td>不一定。實驗室：8 萬條追蹤關係時，「幾步內可到達幾人」PostgreSQL 一樣快；但最短路徑（8 步）SQL 慢了幾十倍</td></tr><tr><td>Cypher 的 MERGE 要注意什麼？</td><td>整個圖樣一起比對；先 MATCH 兩端再 MERGE 關係；搭配唯一約束</td></tr><tr><td>什麼是超級節點？怎麼處理？</td><td>關係非常多的節點；限制方向與型別、拆關係型別、預先計算</td></tr><tr><td>怎麼看查詢效能？</td><td>PROFILE 看運算子與 db hits；確認起點是 IndexSeek 而不是 LabelScan</td></tr><tr><td>屬性還是節點？</td><td>會拿來連結、走訪的做成節點；只是描述的當屬性</td></tr><tr><td>怎麼做推薦？</td><td>協同過濾：商品 ← 買過的人 → 這些人買的其他商品，依共同購買人數排序</td></tr><tr><td>Neo4j 怎麼擴展？</td><td>企業版叢集：primary（Raft 寫入）＋ secondary（讀取擴展）；資料量極大時用 Fabric / 複合資料庫分片</td></tr></tbody></table></div>
+</section>
+<section class="sec" id="s91" data-part="neo4j"><h2>13. 工具與指令</h2>
+<pre class="code" data-lang="text"><code>cypher-shell -a bolt://localhost:7688 -u neo4j -p neo4j-lab     # 命令列
+docker exec -it neo4j-lab cypher-shell -u neo4j -p neo4j-lab
+http://localhost:7475                                            # Neo4j Browser（結果畫成圖）
+
+SHOW INDEXES;  SHOW CONSTRAINTS;  SHOW TRANSACTIONS;
+CALL db.schema.visualization();                                  # 看標籤與關係型別的結構
+CALL db.labels();  CALL db.relationshipTypes();  CALL db.propertyKeys();
+neo4j-admin database import full …                               # 離線大量匯入 CSV（最快）</code></pre>
+<ul><li>APOC：常用的工具程序（匯入匯出、批次、日期處理）；GDS：圖演算法（PageRank、最短路徑、社群偵測）</li></ul>
 </section>
   </main>
 </div>
@@ -970,6 +1187,31 @@ function highlightMongo(text) {
   return out + esc(text.slice(last));
 }
 
+/** Cypher：關鍵字、// 註解、字串、:標籤 / :關係型別、$參數。 */
+const CYPHER_KEYWORDS = new Set(`
+  match optional where return with order by skip limit create merge set remove delete detach on unwind as and or not
+  xor in is null exists count call yield distinct case when then else end asc desc union all profile explain index
+  constraint for require unique drop if show indexes constraints transactions true false starts ends contains
+  shortestpath allshortestpaths collect`.trim().split(/\s+/));
+
+function highlightCypher(text) {
+  const TOKEN = /(\/\/[^\n]*)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|(:[A-Za-z_][A-Za-z0-9_]*)|(\$[A-Za-z_][A-Za-z0-9_]*)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
+  let out = "", last = 0, m;
+  while ((m = TOKEN.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    const [tok, cmt, str, label, param, num, word] = m;
+    if (cmt) out += `<span class="hl-cmt">${esc(tok)}</span>`;
+    else if (str) out += `<span class="hl-str">${esc(tok)}</span>`;
+    else if (label) out += `<span class="hl-fn">${esc(tok)}</span>`;
+    else if (param) out += `<span class="hl-op">${esc(tok)}</span>`;
+    else if (num) out += `<span class="hl-num">${esc(tok)}</span>`;
+    else if (CYPHER_KEYWORDS.has(word.toLowerCase())) out += `<span class="hl-kw">${esc(tok)}</span>`;
+    else out += esc(tok);
+    last = m.index + tok.length;
+  }
+  return out + esc(text.slice(last));
+}
+
 /** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
 function enhanceCode(root) {
   root.querySelectorAll("pre.code").forEach((pre) => {
@@ -980,6 +1222,7 @@ function enhanceCode(root) {
     if (pre.dataset.lang === "redis") code.innerHTML = highlightRedis(raw);
     else if (pre.dataset.lang === "mongo") code.innerHTML = highlightMongo(raw);
     else if (pre.dataset.lang === "cql") code.innerHTML = highlightSQL(raw, CQL_KEYWORDS);
+    else if (pre.dataset.lang === "cypher") code.innerHTML = highlightCypher(raw);
     else if (pre.dataset.lang === "sql" || pre.dataset.lang === undefined && !pre.closest(".doc")) code.innerHTML = highlightSQL(raw);
     const btn = document.createElement("button");
     btn.type = "button";

@@ -553,6 +553,163 @@ INSERT INTO orders_archive SELECT * FROM moved;
 
 BRIN 的前提：資料在磁碟上的順序要和欄位值一致（相關性高）。隨機寫入的欄位建 BRIN 完全沒用。
 
+### ★ Partial Index（部分索引）
+
+只替「符合條件的資料列」建索引。適合「大部分資料永遠不會用這個條件查」的情況。
+
+```sql
+-- 客服只查待處理的訂單：pending 只佔 3%
+CREATE INDEX idx_orders_pending ON orders (order_date) WHERE status = 'pending';
+
+SELECT id, customer_id FROM orders
+WHERE status = 'pending'            -- 條件要「蘊含」索引的 WHERE，才用得到
+ORDER BY order_date DESC LIMIT 20;  -- 索引依 order_date 排序：Index Scan Backward，不用排序
+```
+
+實測（索引實驗室的 perf.orders_big，200 萬筆，pending 約 6 萬筆）：
+
+| 索引 | 大小 | 「最新 20 筆 pending」 |
+|---|---:|---|
+| `(status)` 完整索引 | 13 MB | 找出 6 萬筆再排序 |
+| `(order_date) WHERE status = 'pending'` | 1.3 MB | Index Scan Backward，0.1 ms |
+
+| 常見用途 | 寫法 |
+|---|---|
+| 軟刪除：只索引還沒刪的資料 | `CREATE INDEX … (email) WHERE deleted_at IS NULL` |
+| 工作佇列：只索引未處理的工作 | `CREATE INDEX … (created_at) WHERE done = false` |
+| ★ 條件式唯一：例如每位會員只能有一個預設地址 | `CREATE UNIQUE INDEX … (customer_id) WHERE is_default` |
+| 排除大量的 NULL | `CREATE INDEX … (birth_date) WHERE birth_date IS NOT NULL` |
+
+- 好處：索引小（更容易整個放進記憶體）、寫入時不符合條件的資料列不用維護索引
+- ★ 查詢的 WHERE 必須讓優化器「證明」符合索引條件：`status = 'pending'` 可以；`status IN ('pending', 'paid')`、`status = $1`（參數）都不行
+- ★ Java / JDBC 的坑：用 PreparedStatement 帶參數 `WHERE status = ?` 時，PostgreSQL 執行幾次之後可能改用「通用計畫」（generic plan），通用計畫不知道參數值，就**用不到**部分索引（實測：改走完整的 status 索引 + 排序）。固定的條件直接寫在 SQL 裡（`WHERE status = 'pending'`），不要當參數
+- 條件式唯一：表格上的 `UNIQUE` 約束不能加 WHERE，要用 `CREATE UNIQUE INDEX … WHERE …`（或 EXCLUDE 約束）
+- 面試說法：「只有一小部分資料會被這樣查，而且查詢條件是固定的，就用部分索引；索引小、寫入成本低。」
+
+> 以下實測都在索引實驗室的 perf 大表（各 200 萬筆）上，在交易裡建索引、量完就 ROLLBACK。
+
+### ★ Expression Index（運算式索引）
+
+索引存的是「運算之後的值」。查詢條件對欄位做了運算（函式、型別轉換、時區換算）時，一般索引用不到，就建運算式索引。
+
+```sql
+-- 依「台灣時間的日期」查訂單：order_date 是 timestamptz
+CREATE INDEX idx_orders_tw_day ON orders (((order_date AT TIME ZONE 'Asia/Taipei')::date));
+SELECT count(*) FROM orders
+WHERE (order_date AT TIME ZONE 'Asia/Taipei')::date = '2025-06-01';   -- 運算式要「一模一樣」
+
+CREATE INDEX idx_customers_email_lower ON customers (lower(email));     -- 不分大小寫的 email
+SELECT * FROM customers WHERE lower(email) = lower('User04242@Example.com');
+```
+
+| | 沒有索引 | 運算式索引 |
+|---|---|---|
+| 計畫 | Seq Scan，濾掉 199.8 萬筆 | Bitmap Index Scan |
+| 時間 | 488 ms | 5 ms |
+
+- ★ 查詢的運算式要跟索引**完全一樣**：建的是 `(order_date AT TIME ZONE 'Asia/Taipei')::date`，查詢寫成 `order_date::date` 就用不到（實測：Seq Scan）
+- ★ 只能用 **IMMUTABLE** 函式（輸入一樣、結果永遠一樣）：`now()` 不行；`timestamptz::date` 依賴 session 的時區設定也不行，所以要明確寫 `AT TIME ZONE`
+- 也常用在 JSONB 的單一鍵：`CREATE INDEX … ((meta->>'coupon'))`，搭配 `WHERE meta->>'coupon' = 'FALL10'`
+- 代價：每次寫入都要算一次運算式；索引大小跟一般 B-tree 差不多（這裡 14 MB）
+- 同義的寫法：與其對欄位做運算，不如把運算移到「值」那一邊，例如 `WHERE order_date >= '2025-06-01 00:00+08' AND order_date < '2025-06-02 00:00+08'`，一般的 order_date 索引就能用
+
+### ★ GIN（Generalized Inverted Index，倒排索引）
+
+把一個值「拆開」來索引：JSONB 的每個鍵值、陣列的每個元素、文章的每個詞，記錄它們出現在哪些資料列。適合「一欄裡有很多值，要查包含某個值的列」。
+
+```sql
+CREATE INDEX idx_events_meta ON order_events USING gin (meta);                   -- 支援 @> ? ?| ?&
+CREATE INDEX idx_events_meta_path ON order_events USING gin (meta jsonb_path_ops); -- 只支援 @>，但小一半
+SELECT count(*) FROM order_events WHERE meta @> '{"coupon": "VIP2026"}';           -- ★ 要寫 @>
+
+CREATE INDEX idx_products_tags ON products USING gin (tags);                     -- text[]：@> && <@
+SELECT * FROM products WHERE tags @> ARRAY['熱銷'];
+
+CREATE EXTENSION pg_trgm;                                                        -- 三字元組：LIKE '%…%'
+CREATE INDEX idx_customers_email_trgm ON customers USING gin (email gin_trgm_ops);
+SELECT * FROM customers WHERE email LIKE '%04242%';
+
+CREATE INDEX idx_docs_fts ON docs USING gin (to_tsvector('simple', body));       -- 全文檢索
+```
+
+| JSONB `meta @> '{"coupon": "VIP2026"}'` | 時間 | 索引大小 |
+|---|---|---|
+| 沒有索引（Seq Scan） | 524 ms | — |
+| `gin (meta)` | — | 8.7 MB |
+| `gin (meta jsonb_path_ops)`（優化器選了這個） | 6.8 ms | 4.5 MB |
+
+- ★ `meta->>'coupon' = 'VIP2026'` **用不到** GIN（`->>` 加 `=` 不是 GIN 支援的運算子），要寫成 `meta @> '{"coupon": "VIP2026"}'`，或另外建運算式 B-tree
+- `jsonb_ops`（預設）：支援 `@>`、`?`（有沒有這個鍵）、`?|`、`?&`；`jsonb_path_ops`：只支援 `@>`，但更小、更快
+- pg_trgm + GIN 讓 `LIKE '%中間%'`、`ILIKE` 也能用索引（實測 2.7 ms → 0.04 ms，2 萬筆）；B-tree 只能處理 `LIKE 'abc%'`（前綴）
+- 代價：寫入比較慢（一筆資料要更新很多個索引項目），PostgreSQL 用 pending list 延後合併（`fastupdate`）來緩和
+- 跟 Elasticsearch 的核心一樣是倒排索引；Elasticsearch 另外有分詞、相關性分數、分散式
+
+### GiST（Generalized Search Tree）
+
+一種「可以自訂比較方式」的平衡樹，用來索引**會重疊、有遠近**的資料：範圍（tstzrange）、幾何（point、polygon、PostGIS）、全文檢索。B-tree 只懂「大小順序」，GiST 懂「重疊 `&&`」「包含 `@>`」「距離 `<->`」。
+
+```sql
+-- ★ 排除約束：同一間房間的預約時段不能重疊（UNIQUE 做不到「重疊」的檢查）
+CREATE EXTENSION btree_gist;                          -- 讓 GiST 也能處理 room 的 =
+CREATE TABLE bookings (
+  room   int,
+  during tstzrange,
+  EXCLUDE USING gist (room WITH =, during WITH &&)
+);
+INSERT INTO bookings VALUES (101, '[2026-10-07 14:00, 2026-10-07 16:00)');
+INSERT INTO bookings VALUES (101, '[2026-10-07 15:00, 2026-10-07 17:00)');  -- ✗ conflicting key value violates exclusion constraint
+INSERT INTO bookings VALUES (101, '[2026-10-07 16:00, 2026-10-07 18:00)');  -- ✓ [) 半開區間，16:00 剛好接上
+
+-- 最近鄰（KNN）：離台北車站最近的 5 家店
+CREATE INDEX idx_stores_loc ON stores USING gist (loc);
+SELECT id FROM stores ORDER BY loc <-> point(121.5, 25.03) LIMIT 5;
+```
+
+| 最近的 5 家店（20 萬家） | 計畫 | 時間 |
+|---|---|---|
+| 沒有索引 | Seq Scan 20 萬筆 + top-N 排序 | 27 ms |
+| GiST | Index Scan，依距離直接讀出前 5 筆 | 0.15 ms |
+
+- ★ 排除約束（EXCLUDE）是 GiST 最常被問的用途：會議室 / 飯店訂房不重疊、同一位員工的排班不重疊、價格區間不重疊
+- KNN 搜尋：`ORDER BY 欄位 <-> 目標 LIMIT n`，索引可以直接「由近到遠」讀出，不用算完全部距離再排序
+- 全文檢索也可以用 GiST：比 GIN 小、更新快，但查詢比較慢（會有誤判要重新檢查）；以查詢為主時選 GIN
+- PostGIS 的空間索引就是 GiST；pgvector 的向量索引則是 HNSW / IVFFlat（另外的索引類型）
+
+### ★ BRIN（Block Range Index）
+
+不記錄每一筆資料，只記錄「每一段磁碟區塊（預設 128 個 page）裡的最小值和最大值」。查詢時跳過範圍不符的區塊，再讀剩下的區塊逐筆檢查。
+
+```sql
+CREATE INDEX idx_events_time_brin ON order_events USING brin (event_time);
+SELECT count(*) FROM order_events
+WHERE event_time >= '2025-06-01' AND event_time < '2025-06-02';
+```
+
+| order_events.event_time（依時間寫入） | 時間 | 索引大小 |
+|---|---|---|
+| 沒有索引（Seq Scan） | 108 ms | — |
+| BRIN | 1.5 ms（Heap Blocks: lossy=128，多讀了 8,527 筆再過濾） | **24 kB** |
+| B-tree | 0.12 ms（Index Only Scan：count 不必讀資料表） | 43 MB |
+
+- BRIN 比 B-tree 慢一點（要讀整段區塊再過濾），但索引小了 1,800 倍；資料量越大、記憶體越吃緊，這個取捨越划算
+- ★ 前提：資料在磁碟上的順序要跟欄位值一致（相關性高）。依時間附加寫入的 log、IoT、交易紀錄最適合；隨機寫入的欄位建 BRIN 完全沒用（實驗室的 orders_big：優化器直接放棄用它）
+- 大量 UPDATE / DELETE 之後順序會亂掉，效果變差
+- 「lossy」：BRIN 只能說「這一段區塊可能有」，所以一定要重新檢查（Rows Removed by Index Recheck）
+- 適合：幾億筆的時間序列、只追加的資料；以極小的索引換取「大致定位」。TimescaleDB 也大量利用這個特性
+
+### 怎麼選索引
+
+| 查詢長這樣 | 用 |
+|---|---|
+| `=`、`<`、`>`、`BETWEEN`、`ORDER BY`、`LIKE 'abc%'` | B-tree（預設） |
+| 只查一小部分資料、條件固定（`WHERE status = 'pending'`） | Partial Index |
+| 條件對欄位做了運算（`lower(email)`、時區換算） | Expression Index |
+| JSONB `@>` / `?`、陣列 `@>` `&&`、全文檢索、`LIKE '%…%'`（pg_trgm） | GIN |
+| 範圍重疊、排除約束、幾何、最近鄰（`<->`） | GiST |
+| 超大、依時間附加寫入的表，查時間範圍 | BRIN |
+| 只有 `=`，而且值很長 | Hash（實務上很少用） |
+| 向量相似度（AI 語意搜尋） | pgvector 的 HNSW / IVFFlat |
+
 ## 16. psql 常用指令
 
 | 指令 | 作用 |
@@ -1471,3 +1628,280 @@ nodetool tablestats shop.orders  -- 估計筆數、分區大小、SSTable 數量
 nodetool flush / compact / repair
 nodetool getendpoints shop orders_by_customer 4242   -- 這個分區在哪些節點
 ```
+
+# Neo4j
+
+> 範例都來自練習環境（`neo4j-lab` 容器，Bolt port 7688，Neo4j Browser http://localhost:7475），可以直接貼到展示台的「Cypher 主控台」執行（一律 ROLLBACK，可以放心試寫入）。資料是從 PostgreSQL 轉進來的，追蹤關係（FOLLOWS）是模擬資料。
+
+## 1. ★ 基本觀念與 SQL 對照
+
+| 關聯式 | Neo4j（屬性圖） |
+|---|---|
+| table | label（標籤），一個節點可以有多個標籤：`(:Customer:Vip)` |
+| row | node（節點） |
+| column | property（屬性），每個節點可以不一樣 |
+| 外鍵 / 中間表 | relationship（關係）：一定有**型別**和**方向**，也可以有屬性 |
+| JOIN | 沿著關係走（traversal） |
+| SQL | Cypher：用 ASCII 圖案「畫」出要找的圖樣 |
+
+```text
+(:Customer)-[:PLACED]->(:Order)-[:CONTAINS {qty, unitPrice}]->(:Product)-[:IN_CATEGORY]->(:Category)
+(:Customer)-[:FOLLOWS]->(:Customer)      (:Customer)-[:LIVES_IN]->(:City)
+```
+
+- ★ **index-free adjacency**：每個節點直接記著自己的關係，走一步的成本跟資料庫總大小無關；關聯式資料庫每一次 JOIN 都要查一次索引
+- 適合：社群關係、推薦、詐騙偵測（環狀轉帳）、權限繼承、知識圖譜、供應鏈、網路拓撲——「關係本身就是重點」、而且要走好幾層的問題
+- 不適合：整張表的彙總報表、大量欄位的篩選、單純的 CRUD
+- 索引只用來找「起點」，找到起點之後沿著關係走
+
+## 2. 圖樣語法
+
+```cypher
+(c)                          // 任意節點，變數 c
+(c:Customer)                 // 標籤
+(c:Customer {id: 4242})      // 屬性條件
+(a)-[:FOLLOWS]->(b)          // a 追蹤 b（有方向）
+(a)<-[:FOLLOWS]-(b)          // b 追蹤 a
+(a)-[:FOLLOWS]-(b)           // 不管方向（兩個方向都配對）
+(a)-[r:FOLLOWS]->(b)         // 關係也可以有變數，r.since 取屬性
+(a)-[:FOLLOWS|LIKES]->(b)    // 多種型別
+(a)-[:FOLLOWS*1..3]->(b)     // 可變長度：1 到 3 步（★ 一定要給上限）
+p = (a)-[:FOLLOWS*..5]->(b)  // 整條路徑存成變數 p
+```
+
+## 3. 查詢：MATCH、WHERE、RETURN、WITH
+
+```cypher
+MATCH (c:Customer {id: 4242})-[:PLACED]->(o:Order)
+WHERE o.total >= 1000 AND o.orderDate >= datetime('2025-01-01T00:00:00+08:00')
+RETURN o.id, o.total
+ORDER BY o.orderDate DESC
+SKIP 0 LIMIT 10;
+
+MATCH (c:Customer) WHERE NOT (c)-[:PLACED]->() RETURN count(c);   // 從沒下過單（圖樣當條件）
+MATCH (c:Customer) WHERE EXISTS { (c)-[:PLACED]->(:Order {status: 'returned'}) } RETURN count(c);
+
+MATCH (c:Customer) WHERE c.id IN [1, 2, 4242]
+OPTIONAL MATCH (c)-[:PLACED]->(o:Order) WHERE o.total >= 50000    // 像 LEFT JOIN … ON
+RETURN c.id, count(o);
+
+MATCH (:Customer {id: 4242})-[:FOLLOWS]->(f)
+WITH f ORDER BY f.id                       // WITH = 中間的 RETURN：排序、過濾、聚合後交給下一段
+RETURN collect(f.name);
+
+UNWIND [4242, 1, 2] AS id                  // 清單展開成多列
+MATCH (c:Customer {id: id}) RETURN c.name;
+```
+
+| 子句 / 函式 | 用途 |
+|---|---|
+| `WITH` | 把結果交給下一段（可以搭配 WHERE、ORDER BY、LIMIT、聚合） |
+| `OPTIONAL MATCH` | 找不到時變數是 null，整列保留（LEFT JOIN） |
+| `UNWIND` | 清單展開成多列（批次寫入常用） |
+| `collect()` | 多列收集成清單 |
+| `[x IN list WHERE 條件 \| 運算式]` | list comprehension |
+| `EXISTS { 圖樣 }`、`COUNT { 圖樣 }` | 子查詢條件 |
+| `CASE WHEN … THEN … END` | 跟 SQL 一樣 |
+| `coalesce()`、`toInteger()`、`toFloat()`、`size()`、`keys()`、`labels()`、`type()` | 常用函式 |
+
+★ 參數用 `$name`：`MATCH (c:Customer {id: $id})`。不要把值串進字串（Cypher injection、也無法重用執行計畫）。
+
+## 4. 聚合
+
+```cypher
+MATCH (c:Customer)<-[:FOLLOWS]-(fan)
+RETURN c.id, c.name, count(fan) AS followers      // 沒有 GROUP BY：非聚合的欄位就是分組依據
+ORDER BY followers DESC LIMIT 5;
+```
+
+- 聚合函式：`count()`、`count(DISTINCT x)`、`sum()`、`avg()`、`min()`、`max()`、`collect()`、`percentileCont()`
+- ★ `count(*)` 算列數；`count(x)` 不算 null
+- ★ 整數相除還是整數：`7 / 2 = 3`，`avg()` 才是浮點數
+
+## 5. ★ 路徑與走訪
+
+```cypher
+// 朋友的朋友（你可能認識的人）
+MATCH (me:Customer {id: 224})-[:FOLLOWS]->()-[:FOLLOWS]->(fof)
+WHERE fof <> me AND NOT (me)-[:FOLLOWS]->(fof)
+RETURN count(DISTINCT fof);
+
+// 最短路徑（雙向廣度優先，找到就停）
+MATCH p = shortestPath((a:Customer {id: 4242})-[:FOLLOWS*..10]->(b:Customer {id: 19999}))
+RETURN length(p), [n IN nodes(p) | n.name];
+
+MATCH p = allShortestPaths((a)-[:FOLLOWS*..10]->(b)) RETURN p;   // 所有一樣短的路徑
+
+// 樹：分類底下的所有子分類（SQL 要 WITH RECURSIVE）
+MATCH (c:Category)-[:SUBCATEGORY_OF*1..]->(:Category {name: '3C電子'}) RETURN c.name;
+```
+
+- `nodes(p)`、`relationships(p)`、`length(p)`（關係數）
+- ★ **關係唯一性**：同一個 MATCH 圖樣裡，同一條關係不會走兩次（避免無限繞圈）；但同一個節點可以出現多次。所以「朋友的朋友」可能包含自己（互相追蹤時）
+- ★ 一條長圖樣 `(p)<-[:CONTAINS]-(:Order)<-[:PLACED]-(c)-[:PLACED]->(:Order)-[:CONTAINS]->(x)` 的兩個 PLACED 必須是不同的關係 → 漏掉「同一張訂單」的情況；要的話拆成兩個 MATCH
+- ★ MATCH 回傳的是「每一種配對方式」：同一個人經由兩條路徑到達就出現兩次，算人數要 DISTINCT
+- 進階演算法（PageRank、社群偵測、相似度）用 GDS（Graph Data Science）函式庫
+
+## 6. 寫入：CREATE、MERGE、SET、DELETE
+
+```cypher
+MATCH (city:City {name: '台北市'})
+CREATE (c:Customer {id: 99999, name: '測試'})-[:LIVES_IN]->(city);   // 連到「既有」的節點
+
+MATCH (a:Customer {id: 4242}), (b:Customer {id: 1})
+MERGE (a)-[:FOLLOWS]->(b);                                       // 有就用，沒有才建立
+
+MERGE (c:Customer {id: 4242})
+ON CREATE SET c.name = '新會員', c.createdAt = datetime()
+ON MATCH SET c.lastLogin = datetime();
+
+MATCH (p:Product {id: 540})
+SET p.stock = 0, p.tags = p.tags + '缺貨', p += {isActive: false}
+REMOVE p.discount;                                               // 刪屬性（等於 SET p.discount = null）
+
+MATCH (:Customer {id: 4242})-[r:FOLLOWS]->(:Customer {id: 15084}) DELETE r;   // 刪關係
+MATCH (c:Customer {id: 99999}) DETACH DELETE c;                  // 刪節點和它所有的關係
+
+UNWIND $rows AS row                                              // ★ 批次寫入：一次送一批
+MERGE (c:Customer {id: row.id}) SET c.name = row.name;
+```
+
+- ★ **MERGE 是整個圖樣一起比對**：`MERGE (a:Person {name:'A'})-[:KNOWS]->(b:Person {name:'B'})` 找不到完整圖樣時，會連兩個節點一起重新建立（產生重複節點）。正確：先 MATCH / MERGE 兩端，再 MERGE 關係
+- MERGE 要搭配唯一約束：沒有約束時兩個交易同時 MERGE 可能建出兩個節點
+- `SET p = {…}` 會把所有屬性換掉；`SET p += {…}` 只更新給的屬性
+- 屬性設成 null = 刪除這個屬性
+- 有關係的節點不能直接 DELETE：交易 commit 時會報錯（交易內看起來成功），要 DETACH DELETE
+- ★ MATCH 找不到時，後面的 CREATE / SET 會執行 0 次，**不會報錯**；要確認有寫入就看回傳的列或寫入統計
+- 大量刪除 / 更新要分批：`CALL { … } IN TRANSACTIONS OF 10000 ROWS`
+
+## 7. ★ 資料模型設計
+
+| 問題 | 建議 |
+|---|---|
+| 屬性還是節點？ | 會被「拿來連」或「拿來走訪」的東西做成節點（城市、品牌、標籤）；只是描述的就當屬性 |
+| 關係屬性 | 描述「兩者之間」的資訊放在關係上（數量、時間、權重） |
+| 多對多帶很多資訊 | 中間節點（例如 Order 連接 Customer 與 Product），比把一切塞進關係彈性 |
+| 標籤 | 用來分類、加速篩選（`:Customer:Vip`）；不要把會變的狀態做成大量標籤 |
+| 關係型別要具體 | `:PLACED`、`:FOLLOWS` 比通用的 `:RELATED_TO` 好：查詢時可以只走需要的型別 |
+| ★ 超級節點 | 有幾十萬條關係的節點（名人、熱門標籤）會讓經過它的查詢變慢：限制方向與型別、依時間拆關係型別、預先算好統計值 |
+| 方向 | 依語意選一個方向存就好（不需要雙向各存一條）；查詢時可以不寫方向 |
+
+## 8. 索引、約束與 PROFILE
+
+```cypher
+CREATE CONSTRAINT customer_id IF NOT EXISTS FOR (c:Customer) REQUIRE c.id IS UNIQUE;  // 唯一約束（自帶索引）
+CREATE INDEX customer_email IF NOT EXISTS FOR (c:Customer) ON (c.email);              // RANGE 索引
+CREATE INDEX order_comp FOR (o:Order) ON (o.status, o.orderDate);                     // 複合索引
+CREATE TEXT INDEX product_name FOR (p:Product) ON (p.name);                           // CONTAINS / ENDS WITH
+CREATE FULLTEXT INDEX product_ft FOR (p:Product) ON EACH [p.name];                    // 全文搜尋
+CREATE INDEX follows_since FOR ()-[r:FOLLOWS]-() ON (r.since);                        // 關係屬性也能建索引
+SHOW INDEXES;  SHOW CONSTRAINTS;  DROP INDEX customer_email;
+
+PROFILE MATCH (c:Customer) WHERE c.email = 'user04242@example.com' RETURN c;          // 執行並顯示 db hits
+EXPLAIN MATCH …;                                                                      // 只看計畫，不執行
+```
+
+| 運算子 | 意思 |
+|---|---|
+| `AllNodesScan` | 掃描所有節點（沒寫標籤）—— 最差 |
+| `NodeByLabelScan` | 掃描某個標籤的所有節點（沒有索引可用） |
+| `NodeIndexSeek` / `NodeUniqueIndexSeek` | 用索引找到起點 ✓ |
+| `NodeIndexSeekByRange` / `NodeIndexContainsScan` | 範圍 / TEXT 索引 |
+| `Expand(All)` / `Expand(Into)` | 沿著關係走 |
+| `Filter` | 逐列過濾 |
+| `CartesianProduct` | 兩個沒有連在一起的圖樣 ⚠ |
+| `Eager` | 整批讀完才寫入（避免讀寫衝突），大量資料時耗記憶體 |
+
+- ★ **db hits** = 存取儲存層的次數，比毫秒更穩定的成本指標（實驗室：沒索引 40,003 → 有索引 4）
+- 在屬性上做運算（`c.id + 0 = 4242`、`toString(c.id) = '4242'`）就用不到索引
+- RANGE 索引：=、範圍、STARTS WITH、IS NOT NULL；TEXT 索引：CONTAINS、ENDS WITH
+- 社群版有唯一約束；屬性存在約束、Node Key、屬性型別約束是企業版功能
+
+## 9. 交易與叢集
+
+- ACID 交易，預設隔離等級是 read committed；寫入時對節點 / 關係加鎖，可能發生 deadlock（TransientException，driver 的 managed transaction 會自動重試）
+- ★ 一個交易裡的所有句子要嘛全部 commit、要嘛全部 rollback；有些檢查（例如刪除有關係的節點）在 commit 時才做
+- 叢集（企業版）：primary 伺服器用 Raft 達成多數決寫入，secondary 伺服器負責讀取擴展
+- **bookmark**：寫入後拿到 bookmark，下一次讀取帶著它，保證讀得到自己剛寫的資料（causal consistency），driver 的 session 會自動處理
+- 社群版：單機、只有一個使用者資料庫（neo4j）、沒有角色權限
+
+## 10. 常見陷阱
+
+| 陷阱 | 說明 |
+|---|---|
+| MERGE 整個圖樣 | 找不到完整圖樣就全部重新建立，產生重複節點 |
+| 不寫方向 | 兩個方向都會配對（追蹤 6 + 粉絲 4 = 10） |
+| `= null` | 永遠找不到，要用 `IS NULL` |
+| OPTIONAL MATCH 後面的 WHERE | 寫在 OPTIONAL MATCH 裡是配對條件（列會保留）；寫在後面的 WITH … WHERE 會把 null 濾掉 |
+| 逗號連接兩個不相關的圖樣 | 笛卡兒積（891 × 83 = 73,953 列），伺服器會給警告 |
+| 忘了 DISTINCT | 每一條路徑算一列 |
+| 朋友的朋友包含自己 | 關係唯一、節點可以重複；記得 `fof <> me` |
+| 一條長圖樣漏資料 | 同一條關係不會用兩次 → 拆成兩個 MATCH |
+| 型別不一致 | `{id: '4242'}`（字串）找不到 `id: 4242`，也不報錯 |
+| 整數相除 | `sum(x) / count(x)` 捨去小數 |
+| MATCH 找不到就沒事發生 | 後面的 CREATE 執行 0 次，不報錯 |
+| 沒有上限的 `*` | 大圖上可能走出幾百萬條路徑 |
+
+## 11. Java / Spring Data Neo4j
+
+```java
+try (Driver driver = GraphDatabase.driver("bolt://localhost:7688", AuthTokens.basic("neo4j", "neo4j-lab"));
+     Session session = driver.session(SessionConfig.forDatabase("neo4j"))) {
+    List<String> names = session.executeRead(tx -> tx.run(
+            "MATCH (:Customer {id: $id})-[:FOLLOWS]->(f) RETURN f.name AS name",
+            Map.of("id", 4242)).list(r -> r.get("name").asString()));
+    session.executeWrite(tx -> tx.run("UNWIND $rows AS r MERGE (c:Customer {id: r.id}) SET c.name = r.name",
+            Map.of("rows", rows)).consume());
+}
+```
+
+```java
+@Node("Customer")
+public class Customer {
+    @Id private Long id;                       // 業務 id；或 @Id @GeneratedValue 用內部 id
+    private String name;
+    @Relationship(type = "FOLLOWS", direction = Relationship.Direction.OUTGOING)
+    private Set<Customer> follows;
+}
+
+public interface CustomerRepository extends Neo4jRepository<Customer, Long> {
+    @Query("MATCH (:Customer {id: $id})-[:FOLLOWS]->(f) RETURN f")
+    List<Customer> following(Long id);
+}
+```
+
+- ★ Driver 很重，整個應用程式共用一個；Session 很輕，用完就關
+- `executeRead` / `executeWrite`（managed transaction）遇到暫時性錯誤會自動重試，交易函式要能重複執行（不要在裡面寄信）
+- 一律用參數 `$id`，不要字串串接
+- 大量寫入用 `UNWIND $rows` 一次送一批（本專案載入資料：一批 5,000 筆）
+- Spring Data Neo4j 載入有關係的實體時，可能一次把很大一片圖拉回來；大型查詢用自訂 Cypher 或投影（projection）
+- 不要用 `elementId()` / 內部 id 當業務 id：刪除後可能被重複使用
+
+## 12. ★ 面試題速答
+
+| 問題 | 重點 |
+|---|---|
+| 圖資料庫跟關聯式資料庫差在哪？ | 關係是存起來的（index-free adjacency），走一步的成本跟資料總量無關；JOIN 是查詢時才用索引比對 |
+| 什麼時候用圖資料庫？ | 關係本身是重點、要走好幾層、層數不固定：社群、推薦、詐騙偵測、權限、知識圖譜 |
+| 圖資料庫一定比較快嗎？ | 不一定。實驗室：8 萬條追蹤關係時，「幾步內可到達幾人」PostgreSQL 一樣快；但最短路徑（8 步）SQL 慢了幾十倍 |
+| Cypher 的 MERGE 要注意什麼？ | 整個圖樣一起比對；先 MATCH 兩端再 MERGE 關係；搭配唯一約束 |
+| 什麼是超級節點？怎麼處理？ | 關係非常多的節點；限制方向與型別、拆關係型別、預先計算 |
+| 怎麼看查詢效能？ | PROFILE 看運算子與 db hits；確認起點是 IndexSeek 而不是 LabelScan |
+| 屬性還是節點？ | 會拿來連結、走訪的做成節點；只是描述的當屬性 |
+| 怎麼做推薦？ | 協同過濾：商品 ← 買過的人 → 這些人買的其他商品，依共同購買人數排序 |
+| Neo4j 怎麼擴展？ | 企業版叢集：primary（Raft 寫入）＋ secondary（讀取擴展）；資料量極大時用 Fabric / 複合資料庫分片 |
+
+## 13. 工具與指令
+
+```text
+cypher-shell -a bolt://localhost:7688 -u neo4j -p neo4j-lab     # 命令列
+docker exec -it neo4j-lab cypher-shell -u neo4j -p neo4j-lab
+http://localhost:7475                                            # Neo4j Browser（結果畫成圖）
+
+SHOW INDEXES;  SHOW CONSTRAINTS;  SHOW TRANSACTIONS;
+CALL db.schema.visualization();                                  # 看標籤與關係型別的結構
+CALL db.labels();  CALL db.relationshipTypes();  CALL db.propertyKeys();
+neo4j-admin database import full …                               # 離線大量匯入 CSV（最快）
+```
+
+- APOC：常用的工具程序（匯入匯出、批次、日期處理）；GDS：圖演算法（PageRank、最短路徑、社群偵測）

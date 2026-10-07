@@ -1,0 +1,255 @@
+# Neo4j 陷阱題：先猜結果，再執行對照。
+# 每段 Cypher 各自在一個交易裡執行，最後 ROLLBACK，所以寫入不會留下來。
+# answer 是正確選項的索引（從 0 開始）。
+
+- id: merge-whole-pattern
+  title: "MERGE 整個圖樣"
+  question: "A 和 B 兩個節點都已經存在，但它們之間沒有關係。直接 MERGE (a:Person {name: 'A'})-[:KNOWS]->(b:Person {name: 'B'}) 之後，總共有幾個 Person 節點？"
+  scripts:
+    - label: "A：直接 MERGE 整個圖樣"
+      commands: |
+        CREATE (:Person {name: 'A'}), (:Person {name: 'B'});
+        MERGE (a:Person {name: 'A'})-[:KNOWS]->(b:Person {name: 'B'});
+        MATCH (p:Person) RETURN p.name, count(*) AS nodes ORDER BY p.name
+    - label: "B：先 MATCH 兩端，再 MERGE 關係"
+      commands: |
+        CREATE (:Person {name: 'A'}), (:Person {name: 'B'});
+        MATCH (a:Person {name: 'A'}), (b:Person {name: 'B'})
+        MERGE (a)-[:KNOWS]->(b);
+        MATCH (p:Person) RETURN p.name, count(*) AS nodes ORDER BY p.name
+  options:
+    - "2 個：MERGE 會用既有的 A 和 B"
+    - "4 個：整個圖樣找不到，就把整個圖樣（含兩個節點）都建立一次"
+    - "報錯：A 和 B 已經存在"
+  answer: 1
+  explanation: |
+    MERGE 是「整個圖樣」要嘛全部找到、要嘛全部建立。A 和 B 存在，但 A-[:KNOWS]->B 這個完整圖樣不存在，
+    所以 MERGE 把兩個節點和關係全部重新建立，多出一個 A、一個 B。
+    正確寫法：先 MATCH（或各自 MERGE）兩端的節點，再 MERGE 關係。如果有唯一約束，A 會直接報錯，反而比較容易發現。
+
+- id: direction
+  title: "不寫方向"
+  question: "會員 4242 追蹤了 6 個人、有 4 位粉絲（沒有互相追蹤的）。MATCH (:Customer {id: 4242})-[:FOLLOWS]-(x) 不寫箭頭，會回傳幾列？"
+  scripts:
+    - label: "A：不寫方向"
+      commands: |
+        MATCH (:Customer {id: 4242})-[:FOLLOWS]-(x) RETURN count(x)
+    - label: "B：只看追蹤的人"
+      commands: |
+        MATCH (:Customer {id: 4242})-[:FOLLOWS]->(x) RETURN count(x)
+  options:
+    - "10：兩個方向都算"
+    - "6：預設是往外的方向"
+    - "報錯：關係一定要寫方向"
+  answer: 0
+  explanation: |
+    關係存的時候一定有方向，但查詢時可以不寫方向，兩個方向的關係都會配對到。
+    「追蹤」是有方向的，不寫方向等於把「我追蹤的人」和「追蹤我的人」混在一起；「認識」「朋友」這類對稱的關係，才常用不寫方向的查法。
+
+- id: null-equals
+  title: "用 = null 找沒有生日的會員"
+  question: "有 1,141 位會員沒有填生日（沒有 birthDate 屬性）。WHERE c.birthDate = null 會找到幾位？"
+  scripts:
+    - label: "A：= null"
+      commands: |
+        MATCH (c:Customer) WHERE c.birthDate = null RETURN count(c)
+    - label: "B：IS NULL"
+      commands: |
+        MATCH (c:Customer) WHERE c.birthDate IS NULL RETURN count(c)
+  options:
+    - "1,141"
+    - "20,000（全部）"
+    - "0"
+  answer: 2
+  explanation: |
+    跟 SQL 一樣，任何值和 null 比較的結果都是 null（不是 true），所以 = null 永遠找不到東西。要用 IS NULL / IS NOT NULL。
+    在 Neo4j 裡，「屬性是 null」就是「沒有這個屬性」：SET c.birthDate = null 等於刪掉這個屬性。
+
+- id: optional-match-where
+  title: "OPTIONAL MATCH 的 WHERE"
+  question: "會員 1、2、4242 各有幾筆 5 萬元以上的訂單？（4242 沒有）A 把條件寫在 OPTIONAL MATCH 的 WHERE，B 用 MATCH。A 會回傳幾列？"
+  scripts:
+    - label: "A：OPTIONAL MATCH … WHERE"
+      commands: |
+        MATCH (c:Customer) WHERE c.id IN [1, 2, 4242]
+        OPTIONAL MATCH (c)-[:PLACED]->(o:Order) WHERE o.total >= 50000
+        RETURN c.id, count(o) AS bigOrders ORDER BY c.id
+    - label: "B：MATCH … WHERE"
+      commands: |
+        MATCH (c:Customer)-[:PLACED]->(o:Order) WHERE c.id IN [1, 2, 4242] AND o.total >= 50000
+        RETURN c.id, count(o) AS bigOrders ORDER BY c.id
+  options:
+    - "3 列：沒有大訂單的會員也會出現，數量是 0"
+    - "比 3 列少：沒有大訂單的會員被過濾掉"
+    - "報錯：OPTIONAL MATCH 不能有 WHERE"
+  answer: 0
+  explanation: |
+    OPTIONAL MATCH 的 WHERE 是「配對條件」的一部分，配對不到時那個變數是 null，但會員那一列還在（count(null) = 0），
+    就像 SQL 的 LEFT JOIN … ON o.total >= 50000。
+    如果把條件寫在後面的 WITH … WHERE o.total >= 50000，就會把 null 那幾列過濾掉，等於變回一般的 MATCH（INNER JOIN）。
+
+- id: cartesian
+  title: "用逗號連接兩個沒有關係的圖樣"
+  question: "gold 會員有 891 位，下架商品有 83 件。MATCH (c:Customer {vipLevel: 'gold'}), (p:Product {isActive: false}) RETURN count(*) 是多少？"
+  scripts:
+    - label: "兩個沒有連在一起的圖樣"
+      commands: |
+        MATCH (c:Customer {vipLevel: 'gold'}), (p:Product {isActive: false})
+        RETURN count(*)
+  options:
+    - "73,953（891 × 83），而且會有笛卡兒積的警告"
+    - "974（891 + 83）"
+    - "0：它們之間沒有關係"
+  answer: 0
+  explanation: |
+    逗號分開、彼此沒有關係連接的圖樣，結果是兩邊的所有組合（笛卡兒積），就像 SQL 的 CROSS JOIN。
+    伺服器會回傳提示「This query builds a cartesian product between disconnected patterns」。
+    寫查詢時不小心漏了一段關係（例如 (c), (o) 之間忘了寫 -[:PLACED]->）就會發生，資料量大時會跑不完。
+
+- id: duplicate-paths
+  title: "朋友的朋友要不要 DISTINCT"
+  question: "會員 224 的「朋友的朋友」：count(fof) 和 count(DISTINCT fof) 的結果一樣嗎？"
+  scripts:
+    - label: "A：count(fof)"
+      commands: |
+        MATCH (:Customer {id: 224})-[:FOLLOWS]->()-[:FOLLOWS]->(fof) RETURN count(fof)
+    - label: "B：count(DISTINCT fof)"
+      commands: |
+        MATCH (:Customer {id: 224})-[:FOLLOWS]->()-[:FOLLOWS]->(fof) RETURN count(DISTINCT fof)
+  options:
+    - "一樣：MATCH 不會回傳重複的節點"
+    - "B 比較多"
+    - "A 比較多：同一個人可以經由不同的朋友到達，每一條路徑算一列"
+  answer: 2
+  explanation: |
+    MATCH 回傳的是「每一種配對方式」，也就是每一條路徑。兩個朋友都追蹤同一個人，這個人就會出現兩次（44 vs 42）。
+    算「人數」要 DISTINCT；算「有幾條路徑可以到達」（例如推薦的強度）才用不加 DISTINCT 的 count。
+
+- id: fof-includes-me
+  title: "朋友的朋友會不會是自己"
+  question: "會員 6 和會員 10127 互相追蹤。(me {id: 6})-[:FOLLOWS]->()-[:FOLLOWS]->(fof) 的結果裡，會不會出現 6 自己？"
+  scripts:
+    - label: "A：沒有排除自己"
+      commands: |
+        MATCH (me:Customer {id: 6})-[:FOLLOWS]->()-[:FOLLOWS]->(fof)
+        RETURN count(fof) AS total, sum(CASE WHEN fof = me THEN 1 ELSE 0 END) AS includesMe
+    - label: "B：WHERE fof <> me"
+      commands: |
+        MATCH (me:Customer {id: 6})-[:FOLLOWS]->()-[:FOLLOWS]->(fof)
+        WHERE fof <> me
+        RETURN count(fof) AS total
+  options:
+    - "會：6 → 10127 → 6，兩條關係不同，所以是合法的路徑"
+    - "不會：Cypher 不會走回起點"
+  answer: 0
+  explanation: |
+    Cypher 在一個圖樣裡「同一條關係不會走兩次」（relationship isomorphism），但「同一個節點」可以出現多次。
+    6 → 10127 和 10127 → 6 是兩條不同的關係，所以 6 自己也是「朋友的朋友」。
+    寫推薦查詢時記得 WHERE fof <> me，以及排除已經追蹤的人。
+
+- id: delete-with-relationships
+  title: "DELETE 一個還有關係的節點"
+  question: "4242 有訂單、追蹤關係。在交易裡執行 MATCH (c:Customer {id: 4242}) DELETE c，什麼時候會出錯？"
+  scripts:
+    - label: "A：DELETE（交易裡）"
+      commands: |
+        MATCH (c:Customer {id: 4242}) DELETE c;
+        MATCH ()-[r:PLACED]->(:Order {id: 59901}) RETURN count(r) AS placedStillThere
+    - label: "B：DETACH DELETE"
+      commands: |
+        MATCH (c:Customer {id: 4242}) DETACH DELETE c;
+        MATCH ()-[r:PLACED]->(:Order {id: 59901}) RETURN count(r) AS placedStillThere;
+        MATCH (o:Order {id: 59901}) RETURN count(o) AS orderStillThere
+  options:
+    - "DELETE 那一句就立刻報錯"
+    - "DELETE 看起來成功，關係還留著；要到 commit 時才報錯"
+    - "永遠不會報錯，留下沒有起點的關係"
+  answer: 1
+  explanation: |
+    Neo4j 不允許「懸空的關係」，但這個檢查是在 commit 時才做：交易裡的 DELETE c 看起來成功（nodesDeleted: 1），
+    指向訂單的 PLACED 關係也還在，等到 commit 才會報錯 Neo.ClientError.Schema.ConstraintValidationFailed（
+    Cannot delete node … because it still has relationships），整個交易失敗。展示台一律 ROLLBACK，所以這裡看不到那個錯誤。
+    DETACH DELETE 會先刪掉節點的所有關係，再刪節點。注意它不會刪掉另一端的節點：4242 的訂單還在，只是變成沒有人 PLACED 的孤兒。
+
+- id: match-nothing-create
+  title: "MATCH 找不到，後面的 CREATE 呢？"
+  question: "會員 999999 不存在。MATCH (c:Customer {id: 999999}) CREATE (c)-[:PLACED]->(:Order {id: 900001}) 會怎樣？"
+  scripts:
+    - label: "MATCH 找不到之後 CREATE"
+      commands: |
+        MATCH (c:Customer {id: 999999})
+        CREATE (c)-[:PLACED]->(o:Order {id: 900001})
+        RETURN o;
+        MATCH (o:Order {id: 900001}) RETURN count(o) AS created
+  options:
+    - "報錯：會員不存在"
+    - "建立一筆沒有會員的訂單"
+    - "什麼都沒發生，也不會報錯"
+  answer: 2
+  explanation: |
+    Cypher 是一列一列處理的：MATCH 找到 0 列，後面的 CREATE 就執行 0 次，不會報錯，也沒有任何提示。
+    程式裡常見的 bug：用了錯的 id（例如字串 '999'）呼叫「新增訂單」，結果什麼都沒寫入卻回傳成功。
+    要確認有寫入，看回傳的資料列或寫入統計（nodesCreated）；或改用 MERGE、OPTIONAL MATCH 加上檢查。
+
+- id: integer-division
+  title: "整數相除"
+  question: "會員 4242 的 6 筆訂單總額是 58,033。sum(o.total) / count(o) 會回傳？"
+  scripts:
+    - label: "A：sum / count"
+      commands: |
+        MATCH (:Customer {id: 4242})-[:PLACED]->(o:Order) RETURN sum(o.total) / count(o)
+    - label: "B：avg()"
+      commands: |
+        MATCH (:Customer {id: 4242})-[:PLACED]->(o:Order) RETURN avg(o.total)
+  options:
+    - "9672（整數相除，小數被捨去）"
+    - "9672.17"
+    - "報錯：型別不同"
+  answer: 0
+  explanation: |
+    兩個整數相除的結果還是整數（跟 Java 一樣），小數直接捨去。avg() 一律回傳浮點數。
+    要小數可以寫 toFloat(sum(o.total)) / count(o)。
+
+- id: type-mismatch
+  title: "id 用字串查"
+  question: "會員的 id 存的是整數。MATCH (c:Customer {id: '4242'})（字串）會找到幾位？"
+  scripts:
+    - label: "A：字串 '4242'"
+      commands: |
+        MATCH (c:Customer {id: '4242'}) RETURN count(c)
+    - label: "B：整數 4242"
+      commands: |
+        MATCH (c:Customer {id: 4242}) RETURN count(c)
+  options:
+    - "0：字串和整數不相等，也不會報錯"
+    - "1：Cypher 會自動轉型"
+    - "報錯：型別不符"
+  answer: 0
+  explanation: |
+    Neo4j 沒有 schema 強制屬性型別（社群版也沒有型別約束），比較時不會自動轉型：'4242' 和 4242 不相等，所以找不到，而且不會報錯。
+    常見來源：從網址參數或 JSON 拿到的是字串，直接帶進查詢參數。可以用 toInteger($id) 轉換，或在寫入時統一型別。
+
+- id: same-order-missing
+  title: "一條長路徑漏掉了同一張訂單"
+  question: "「買了商品 540 的人也買了雅漾 保養 C693」有幾人？A 寫成一條長路徑，B 拆成兩個 MATCH。A 的數字會比較少嗎？"
+  scripts:
+    - label: "A：一條路徑"
+      commands: |
+        MATCH (:Product {id: 540})<-[:CONTAINS]-(:Order)<-[:PLACED]-(c:Customer)-[:PLACED]->(:Order)-[:CONTAINS]->(other:Product {name: '雅漾 保養 C693'})
+        RETURN count(DISTINCT c) AS buyers
+    - label: "B：兩個 MATCH"
+      commands: |
+        MATCH (:Product {id: 540})<-[:CONTAINS]-(:Order)<-[:PLACED]-(c:Customer)
+        MATCH (c)-[:PLACED]->(:Order)-[:CONTAINS]->(other:Product {name: '雅漾 保養 C693'})
+        RETURN count(DISTINCT c) AS buyers
+  options:
+    - "一樣：兩種寫法意思相同"
+    - "A 比較少：一條路徑裡兩個 PLACED 不能是同一條關係，同一張訂單一起買的人被排除了"
+    - "A 比較多：一條路徑會重複計算"
+  answer: 1
+  explanation: |
+    Cypher 在同一個 MATCH 圖樣裡，同一條關係只會用一次（relationship isomorphism），這是為了避免在圖上繞圈造成無限多的路徑。
+    副作用：A 的兩個 -[:PLACED]-> 必須是兩條不同的關係，也就是兩張不同的訂單；
+    有人在同一張訂單裡同時買了 540 和雅漾（有 3 張這樣的訂單），在 A 裡就配對不到，所以是 14 人而不是 16 人。
+    拆成兩個 MATCH 時，唯一性只在各自的圖樣裡檢查，兩邊可以用到同一條 PLACED。
+

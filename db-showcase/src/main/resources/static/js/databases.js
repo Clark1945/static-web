@@ -23,7 +23,7 @@ export const DATABASES = [
   {
     id: "neo4j", name: "Neo4j", kind: "圖", mono: "N4", color: "#018BFF", ink: "#FFFFFF",
     tagline: "用節點與關係儲存資料，適合社群關係、推薦、路徑查詢。",
-    status: "planned",
+    status: "ready", page: () => import("./pages/neo4j/index.js"),
   },
   {
     id: "timescaledb", name: "TimescaleDB", kind: "時序", mono: "Ts", color: "#F5B800", ink: "#1E1700",

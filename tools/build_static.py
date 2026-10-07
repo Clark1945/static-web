@@ -223,6 +223,9 @@ DATABASES = [
     {"id": "cassandra", "name": "Cassandra", "dir": "cassandra", "api": "cassandra", "key": "commands", "lang": "cql",
      "lab": "query-lab.yml", "labName": "表設計實驗",
      "labNote": "每一句查詢都開啟查詢追蹤（TRACING），比較「讀取方式」（單一分區、範圍掃描、SAI 索引）與伺服器實際讀了幾列。"},
+    {"id": "neo4j", "name": "Neo4j", "dir": "neo4j", "api": "neo4j", "key": "commands", "lang": "cypher",
+     "lab": "profile-lab.yml", "labName": "PROFILE 實驗",
+     "labNote": "每一句查詢前面加上 PROFILE，比較執行計畫的第一步（NodeByLabelScan 或 IndexSeek）與總 db hits（存取儲存層的次數）。"},
 ]
 
 
@@ -359,12 +362,50 @@ def cql_blocks(results):
     return out
 
 
+COUNTER_NAMES = {"nodesCreated": "建立節點", "nodesDeleted": "刪除節點", "relationshipsCreated": "建立關係",
+                 "relationshipsDeleted": "刪除關係", "propertiesSet": "設定屬性", "labelsAdded": "加上標籤"}
+
+
+def cypher_cell(v):
+    """節點 → (:Label {id: 1, name: '…'})、關係 → [:TYPE]、路徑 → 節點-[:TYPE]->節點…"""
+    if isinstance(v, dict) and "~labels" in v:
+        props = v["~props"]
+        keys = sorted(props, key=lambda k: (["id", "name", "status", "total"].index(k) if k in ["id", "name", "status", "total"] else 9, k))[:3]
+        inner = ", ".join(f"{k}: " + (f"'{props[k]}'" if isinstance(props[k], str) else str(cql_cell(props[k]))) for k in keys)
+        return f"({''.join(':' + l for l in v['~labels'])} {{{inner}{', …' if len(props) > 3 else ''}}})"
+    if isinstance(v, dict) and "~type" in v:
+        return f"[:{v['~type']}]"
+    if isinstance(v, dict) and "~path" in v:
+        return "".join(cypher_cell(x) if i % 2 == 0 else f"-{cypher_cell(x)}->" for i, x in enumerate(v["~path"]))
+    if isinstance(v, list):
+        return "[" + ", ".join(f"'{x}'" if isinstance(x, str) else str(cypher_cell(x)) for x in v) + "]"
+    return cql_cell(v)
+
+
+def cypher_blocks(results):
+    out = []
+    for r in results:
+        b = {"cmd": r["statement"]}
+        if r["kind"] == "rows":
+            b["table"] = {"columns": r["columns"], "rows": [[cypher_cell(v) for v in row] for row in r["rows"][:RESULT_ROWS]],
+                          "total": r["total"]}
+        elif r["kind"] == "error":
+            b["text"], b["error"] = r["message"], True
+        else:
+            counters = r.get("counters") or {}
+            b["text"] = "、".join(f"{COUNTER_NAMES.get(k, k)} {v}" for k, v in counters.items()) or "完成（沒有回傳資料）"
+        if r.get("notifications"):
+            b["warn"] = r["notifications"]
+        out.append(b)
+    return out
+
+
 def blocks(db, run):
     """把一次執行（PostgreSQL 是單一查詢結果，其他是多句指令的結果）轉成共同格式。"""
     if db["id"] == "postgresql":
         return pg_blocks(run)
     results = run["results"]
-    return {"redis": redis_blocks, "mongodb": mongo_blocks, "cassandra": cql_blocks}[db["id"]](results)
+    return {"redis": redis_blocks, "mongodb": mongo_blocks, "cassandra": cql_blocks, "neo4j": cypher_blocks}[db["id"]](results)
 
 
 # ---------- 讀題庫、整理成共同的欄位 ----------
@@ -392,7 +433,7 @@ def normalize(db):
     steps = [{
         "id": s["id"], "title": s["title"], "goal": s["goal"], "question": s.get("question"), "takeaway": s["takeaway"],
         "setup": s.get("ddl") or s.get("indexes") or [],
-        "queries": [{"label": q["label"], "code": q.get("sql") or q.get("command") or q.get("cql")}
+        "queries": [{"label": q["label"], "code": q.get("sql") or q.get("command") or q.get("cql") or q.get("cypher")}
                     for q in (s.get("sqls") or s.get("queries") or [])],
     } for s in step_raw]
     return exercises, traps, steps
@@ -410,8 +451,8 @@ def fetch_results(db, exercises, traps):
         e["result"] = blocks(db, g.get("result"))
         if g.get("checks"):
             checks = g["checks"]
-            e["checks"] = (redis_blocks(checks) if db["id"] == "redis"
-                           else mongo_blocks(checks) if db["id"] == "mongodb" else cql_blocks(checks))
+            e["checks"] = {"redis": redis_blocks, "mongodb": mongo_blocks, "cassandra": cql_blocks,
+                           "neo4j": cypher_blocks}[db["id"]](checks)
     for t in traps:
         r = api(f"{base}/traps/{t['id']}/answer", {"choice": t["answer"]})
         t["results"] = [blocks(db, x) for x in r["results"]]
@@ -457,14 +498,15 @@ def build_index(stats):
   <span class="sub">面試準備 · shop 練習資料庫</span></div></div></header>
 <main class="home">
   <p class="lead">以一個台灣電商「shop」的模擬資料（會員、訂單、明細、商品、分類，約 30 萬筆）為例，
-    練習 PostgreSQL、Redis、MongoDB、Cassandra 四種資料庫的查詢、資料模型與面試常考的觀念。</p>
+    練習 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j 五種資料庫的查詢、資料模型與面試常考的觀念。</p>
   <div class="home-grid">
     <a class="home-card" href="cheatsheet.html">
       <b>CheatSheet</b>
-      <span>PostgreSQL：SQL 執行順序、JOIN、NULL、視窗函數、索引、交易、JSONB / UPSERT。
+      <span>PostgreSQL：SQL 執行順序、JOIN、NULL、視窗函數、交易、JSONB / UPSERT、各種索引（Partial、Expression、GIN、GiST、BRIN）。
         Redis：資料結構、交易與 Lua、快取穿透 / 擊穿 / 雪崩、分散式鎖、持久化、叢集。
         MongoDB：查詢與聚合管線、內嵌 vs 參照、索引與 ESR、交易與分片。
-        Cassandra：分區鍵與叢集鍵、查詢先行的表設計、墓碑、一致性等級、LWT。</span>
+        Cassandra：分區鍵與叢集鍵、查詢先行的表設計、墓碑、一致性等級、LWT。
+        Neo4j：Cypher 圖樣、路徑與最短路徑、MERGE、圖的資料模型、PROFILE。</span>
     </a>
     <a class="home-card" href="question-bank.html">
       <b>題庫</b>

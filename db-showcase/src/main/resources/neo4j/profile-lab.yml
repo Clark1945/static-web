@@ -1,0 +1,85 @@
+# Neo4j 實驗室「PROFILE 與索引」的步驟。每一句查詢前面都會加上 PROFILE，在交易裡執行後 ROLLBACK。
+# 頁面整理出：執行計畫（每個運算子的列數與 db hits）、總 db hits、耗時。
+# indexes：這一步建議先建立的索引（頁面上有按鈕可以直接建立）。
+
+- id: label-scan
+  title: "沒有索引：NodeByLabelScan"
+  goal: "用 email 找會員。Customer 只有 id 的唯一約束（附帶索引），email 沒有索引。先執行一次，再建立索引後重跑。"
+  indexes:
+    - "CREATE INDEX customer_email IF NOT EXISTS FOR (c:Customer) ON (c.email)"
+  queries:
+    - label: "用 email 找會員"
+      cypher: "MATCH (c:Customer) WHERE c.email = 'user04242@example.com' RETURN c.id, c.name"
+  question: "沒有索引時計畫是什麼？db hits 大約多少？建立索引之後呢？"
+  takeaway: |
+    沒有索引：NodeByLabelScan 把 20,000 位會員全部讀一遍（20,001 db hits），再用 Filter 一個一個比對 email（再 20,000），總共約 40,000 db hits。
+    建立索引後：NodeIndexSeek 直接找到那一位，總共 4 db hits。
+    db hits 是 Neo4j 存取儲存層的次數（讀節點、讀屬性、讀關係），是比較查詢成本最穩定的指標；毫秒數會受快取影響。
+    ★ 圖資料庫的索引只用來找「起點」，找到起點之後沿著關係走，不需要索引（index-free adjacency）。
+
+- id: index-defeated
+  title: "在屬性上做運算，索引就用不到"
+  goal: "id 有唯一約束的索引。比較 c.id = 4242 和 c.id + 0 = 4242（結果一樣）。"
+  queries:
+    - label: "A：c.id = 4242"
+      cypher: "MATCH (c:Customer) WHERE c.id = 4242 RETURN c.name"
+    - label: "B：c.id + 0 = 4242"
+      cypher: "MATCH (c:Customer) WHERE c.id + 0 = 4242 RETURN c.name"
+    - label: "C：toString(c.id) = '4242'"
+      cypher: "MATCH (c:Customer) WHERE toString(c.id) = '4242' RETURN c.name"
+  question: "三句的結果一樣，計畫一樣嗎？"
+  takeaway: |
+    A：NodeUniqueIndexSeek，3 db hits。B、C：NodeByLabelScan + Filter，約 40,000 db hits。
+    在屬性上做運算（c.id + 0、toString(c.id)），查詢規劃器就不能用索引，只能把每個節點的屬性算出來再比較。
+    跟 SQL 的道理一樣：WHERE id + 0 = 4242、WHERE lower(email) = … 都會讓索引失效。
+    正確做法是把運算放在「值」那一邊：WHERE c.id = toInteger($id)。
+
+- id: range-index
+  title: "範圍查詢：時間區間"
+  goal: "2026 年 9 月的訂單有幾筆？先在沒有索引的情況下執行，再替 Order.orderDate 建立 RANGE 索引。"
+  indexes:
+    - "CREATE INDEX order_date IF NOT EXISTS FOR (o:Order) ON (o.orderDate)"
+  queries:
+    - label: "2026 年 9 月的訂單"
+      cypher: |
+        MATCH (o:Order)
+        WHERE o.orderDate >= datetime('2026-09-01T00:00:00+08:00') AND o.orderDate < datetime('2026-10-01T00:00:00+08:00')
+        RETURN count(o)
+  question: "索引建立前後，計畫的第一步分別是什麼？db hits 差多少？"
+  takeaway: |
+    沒有索引：NodeByLabelScan 讀過 8 萬筆訂單，再 Filter 比較時間，約 160,000 db hits。
+    有了 RANGE 索引：NodeIndexSeekByRange 直接在索引裡切出 9 月那一段，2,919 筆、約 2,900 db hits。
+    RANGE 索引（Neo4j 5 的預設）支援等號、範圍（< > >= <=）、STARTS WITH、IS NOT NULL。
+
+- id: text-index
+  title: "字串包含：TEXT 索引"
+  goal: "商品名稱包含「Sony」的商品。RANGE 索引只能用在等號、範圍、STARTS WITH；CONTAINS / ENDS WITH 要用 TEXT 索引。"
+  indexes:
+    - "CREATE TEXT INDEX product_name_text IF NOT EXISTS FOR (p:Product) ON (p.name)"
+  queries:
+    - label: "A：CONTAINS 'Sony'"
+      cypher: "MATCH (p:Product) WHERE p.name CONTAINS 'Sony' RETURN count(p)"
+    - label: "B：STARTS WITH 'Sony'"
+      cypher: "MATCH (p:Product) WHERE p.name STARTS WITH 'Sony' RETURN count(p)"
+  question: "建立 TEXT 索引之後，A 和 B 的計畫各是什麼？"
+  takeaway: |
+    沒有索引：兩句都是 NodeByLabelScan + Filter，約 3,000 db hits。
+    建立 TEXT 索引之後：A 變成 NodeIndexContainsScan、B 變成 NodeIndexSeekByRange，都只要 60 db hits。
+    RANGE 索引不能用在 CONTAINS / ENDS WITH，要用 TEXT 索引。真正的全文搜尋（分詞、相關性分數）則用 FULLTEXT 索引：
+    CREATE FULLTEXT INDEX … 再用 db.index.fulltext.queryNodes() 查詢。
+
+- id: supernode
+  title: "從超級節點出發"
+  goal: "「我的粉絲下過幾筆訂單」：會員 4242 有 4 位粉絲，會員 1 有 895 位。同一句查詢，換一個起點。"
+  queries:
+    - label: "A：從會員 4242 出發"
+      cypher: "MATCH (:Customer {id: 4242})<-[:FOLLOWS]-(fan:Customer)-[:PLACED]->(o:Order) RETURN count(o)"
+    - label: "B：從會員 1 出發"
+      cypher: "MATCH (:Customer {id: 1})<-[:FOLLOWS]-(fan:Customer)-[:PLACED]->(o:Order) RETURN count(o)"
+  question: "兩句的計畫一樣，db hits 差多少倍？"
+  takeaway: |
+    兩句的計畫一模一樣：用唯一索引找到起點 → Expand 粉絲 → Expand 訂單。
+    差別在資料：4242 有 4 位粉絲，總共 106 db hits；會員 1 有 895 位粉絲，總共約 18,700 db hits，多了 170 多倍。
+    圖的走訪成本取決於「走過幾條關係」，跟整個資料庫有多大無關；但遇到超級節點（supernode，例如名人帳號、熱門標籤）時，
+    從它出發或經過它的查詢就會很貴。常見對策：加上方向與關係型別的限制、依時間拆分關係（例如 FOLLOWED_2026）、
+    或在超級節點上預先算好統計值。

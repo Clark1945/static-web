@@ -1,0 +1,421 @@
+# Neo4j 練習題。
+# 你的 Cypher 與標準答案各自在一個交易裡執行，最後都 ROLLBACK（寫入題也不會改到資料）。
+# 查詢題比對最後一句的結果（依欄位位置比對值，欄位名稱不算）。
+# 寫入題（有 check）：在同一個交易裡、你的 Cypher 執行完之後執行 check，比對資料狀態。
+# ordered: false 代表順序不拘。
+
+# ================================================================ 基本 MATCH
+
+- id: find-customer
+  chapter: 基本 MATCH
+  title: "找一位會員"
+  prompt: |
+    查會員 4242 的姓名（name）與會員等級（vipLevel）。
+  hints:
+    - "MATCH (變數:標籤 {屬性: 值}) RETURN 變數.屬性"
+  answer: |
+    MATCH (c:Customer {id: 4242})
+    RETURN c.name, c.vipLevel
+  explanation: |
+    MATCH 用「圖樣」描述要找的東西：(c:Customer {id: 4242}) 是一個標籤為 Customer、id 是 4242 的節點。
+    Customer.id 有唯一約束（自帶索引），所以這是一次索引查找（NodeUniqueIndexSeek），不用掃過所有會員。
+
+- id: customer-city
+  chapter: 基本 MATCH
+  title: "沿著關係走一步"
+  prompt: |
+    會員 4242 住在哪個城市？回傳城市名稱。
+  hints:
+    - "城市不是會員的屬性，而是 (:Customer)-[:LIVES_IN]->(:City) 這條關係指向的節點。"
+  answer: |
+    MATCH (:Customer {id: 4242})-[:LIVES_IN]->(city:City)
+    RETURN city.name
+  explanation: |
+    在圖資料庫裡，「關聯」是存起來的關係，不是查詢時才用外鍵比對出來的。
+    從會員節點出發，直接沿著 LIVES_IN 關係走到城市節點（index-free adjacency），成本只跟這個會員有幾條關係有關，跟會員總數無關。
+    沒有用到的節點可以不給變數名稱，例如這裡的 (:Customer {id: 4242})。
+
+- id: customer-orders
+  chapter: 基本 MATCH
+  title: "會員的訂單"
+  prompt: |
+    列出會員 4242 的訂單：訂單 id 與總金額（total），新的在前。
+  hints:
+    - "(:Customer)-[:PLACED]->(:Order)"
+    - "排序用 ORDER BY o.orderDate DESC。"
+  answer: |
+    MATCH (:Customer {id: 4242})-[:PLACED]->(o:Order)
+    RETURN o.id, o.total
+    ORDER BY o.orderDate DESC
+  explanation: |
+    ORDER BY 可以用沒有 RETURN 的屬性排序。orderDate 是含時區的 datetime，比較與排序都依實際的時間點。
+
+- id: order-items
+  chapter: 基本 MATCH
+  title: "關係上的屬性"
+  prompt: |
+    訂單 77621 買了哪些商品？回傳商品名稱與數量（qty）。順序不拘。
+  hints:
+    - "數量不在商品節點上，而是在 CONTAINS 關係上：-[r:CONTAINS]->"
+  answer: |
+    MATCH (:Order {id: 77621})-[r:CONTAINS]->(p:Product)
+    RETURN p.name, r.qty
+  ordered: false
+  explanation: |
+    關係也可以有屬性。訂單明細的數量、單價、折扣描述的是「這張訂單和這件商品之間」的事，所以放在關係上，
+    對應到關聯式資料庫的中間表（order_items）。
+
+- id: gold-in-taipei
+  chapter: 基本 MATCH
+  title: "條件組合"
+  prompt: |
+    住在台北市、會員等級是 gold 的會員有幾位？回傳一個數字。
+  hints:
+    - "會員的條件寫在節點上，城市寫在另一個節點上，兩個用 LIVES_IN 連起來。"
+  answer: |
+    MATCH (c:Customer {vipLevel: 'gold'})-[:LIVES_IN]->(:City {name: '台北市'})
+    RETURN count(c)
+  explanation: |
+    圖樣裡的 {屬性: 值} 等於 WHERE 裡的等號條件；比較複雜的條件（範圍、OR、字串比對）寫在 WHERE。
+    等價寫法：MATCH (c:Customer)-[:LIVES_IN]->(city:City) WHERE c.vipLevel = 'gold' AND city.name = '台北市'。
+
+# ================================================================ 方向與聚合
+
+- id: followers
+  chapter: 方向與聚合
+  title: "粉絲數（反方向）"
+  prompt: |
+    有幾位會員追蹤了會員 4242？回傳一個數字。
+  hints:
+    - "(a)-[:FOLLOWS]->(b) 是 a 追蹤 b。要找追蹤 4242 的人，箭頭要指向 4242。"
+  answer: |
+    MATCH (:Customer {id: 4242})<-[:FOLLOWS]-(fan:Customer)
+    RETURN count(fan)
+  explanation: |
+    關係一定有方向，查詢時可以指定 ->、<-，或不寫方向（-），不寫方向就兩邊都算。
+    追蹤是有方向的關係：4242 追蹤了 6 個人，但只有 4 個人追蹤他。
+
+- id: top-followed
+  chapter: 方向與聚合
+  title: "最多粉絲的會員"
+  prompt: |
+    粉絲最多的 5 位會員：回傳會員 id、姓名、粉絲數，粉絲數由多到少。
+  hints:
+    - "Cypher 沒有 GROUP BY：RETURN 裡不是聚合函式的欄位，就是分組的依據。"
+  answer: |
+    MATCH (c:Customer)<-[:FOLLOWS]-(fan:Customer)
+    RETURN c.id, c.name, count(fan) AS followers
+    ORDER BY followers DESC
+    LIMIT 5
+  explanation: |
+    RETURN c.id, c.name, count(fan) 的分組依據就是 c.id、c.name（隱含的 GROUP BY）。
+    會員 1 有 895 位粉絲，是「超級節點」（supernode）：從它出發的走訪要經過非常多關係，這是圖資料庫設計時要注意的地方。
+
+- id: brand-products
+  chapter: 方向與聚合
+  title: "品牌的商品數"
+  prompt: |
+    商品數最多的 5 個品牌：回傳品牌名稱與商品數，商品數由多到少，同數量依品牌名稱排序。
+  hints:
+    - "(:Product)-[:MADE_BY]->(:Brand)"
+  answer: |
+    MATCH (b:Brand)<-[:MADE_BY]-(p:Product)
+    RETURN b.name, count(p) AS products
+    ORDER BY products DESC, b.name
+    LIMIT 5
+  explanation: |
+    同數量時加上第二個排序欄位，結果才會固定；只寫 ORDER BY products DESC 時，同數量的順序不保證。
+
+- id: city-revenue
+  chapter: 方向與聚合
+  title: "各城市營收"
+  prompt: |
+    2026 年（台灣時間）已送達（status = 'delivered'）的訂單，依寄送城市加總 total，
+    回傳營收前 3 名的城市名稱與營收。
+  hints:
+    - "(:Order)-[:SHIPPED_TO]->(:City)"
+    - "datetime('2026-01-01T00:00:00+08:00') 可以建立一個時間點來比較。"
+  answer: |
+    MATCH (o:Order {status: 'delivered'})-[:SHIPPED_TO]->(city:City)
+    WHERE o.orderDate >= datetime('2026-01-01T00:00:00+08:00')
+    RETURN city.name, sum(o.total) AS revenue
+    ORDER BY revenue DESC
+    LIMIT 3
+  explanation: |
+    datetime() 建立含時區的時間點；也可以用 date('2026-01-01') 跟 date(o.orderDate) 比較日期。
+    這種「整張表彙總」的報表其實不是圖資料庫的強項（要走過所有訂單），關聯式資料庫一樣做得很好。
+
+- id: no-orders
+  chapter: 方向與聚合
+  title: "從沒下過單的會員"
+  prompt: |
+    有幾位會員從來沒有下過訂單？回傳一個數字。
+  hints:
+    - "WHERE NOT (c)-[:PLACED]->() 是「不存在這樣的關係」。"
+  answer: |
+    MATCH (c:Customer)
+    WHERE NOT (c)-[:PLACED]->()
+    RETURN count(c)
+  explanation: |
+    圖樣可以直接當成條件：(c)-[:PLACED]->() 存在就是 true。Cypher 5 也可以寫成 WHERE NOT EXISTS { (c)-[:PLACED]->() }。
+    對照 SQL：LEFT JOIN … WHERE o.id IS NULL，或 NOT EXISTS 子查詢。
+
+- id: collect-names
+  chapter: 方向與聚合
+  title: "收集成清單"
+  prompt: |
+    會員 4242 追蹤的人，依會員 id 由小到大，把姓名收集成「一個清單」回傳（只有一列、一個欄位）。
+  hints:
+    - "collect() 把多列收集成一個 list。"
+    - "要先排序再收集：MATCH … WITH f ORDER BY f.id RETURN collect(f.name)"
+  answer: |
+    MATCH (:Customer {id: 4242})-[:FOLLOWS]->(f:Customer)
+    WITH f ORDER BY f.id
+    RETURN collect(f.name)
+  explanation: |
+    WITH 像是查詢中間的 RETURN：把結果交給下一段，可以在這裡排序、過濾、聚合。
+    collect() 收集的順序就是資料流進來的順序，所以要在 WITH 先排好。
+
+# ================================================================ 路徑與走訪
+
+- id: friends-of-friends
+  chapter: 路徑與走訪
+  title: "朋友的朋友"
+  prompt: |
+    會員 224 追蹤的人「再追蹤的人」，排除 224 自己、也排除 224 已經追蹤的人，有幾位不同的會員？
+  hints:
+    - "(me)-[:FOLLOWS]->()-[:FOLLOWS]->(fof)"
+    - "同一個人可能被好幾個朋友追蹤，要用 count(DISTINCT fof)。"
+    - "有人跟 224 互相追蹤時，224 自己也會出現在結果裡。"
+  answer: |
+    MATCH (me:Customer {id: 224})-[:FOLLOWS]->()-[:FOLLOWS]->(fof:Customer)
+    WHERE fof <> me AND NOT (me)-[:FOLLOWS]->(fof)
+    RETURN count(DISTINCT fof)
+  explanation: |
+    這是「你可能認識的人」的基本做法，每一個條件都會改變答案：
+    不加 DISTINCT 是 44（同一個人經由兩個朋友到達，算兩次）、加了 DISTINCT 是 42、排除自己是 41、再排除已經追蹤的人是 40。
+    在關聯式資料庫要把 follows 表 JOIN 自己兩次；在圖資料庫就是走兩步。步數越多，差別越明顯（實驗室有比較）。
+
+- id: reach-in-three
+  chapter: 路徑與走訪
+  title: "三步之內"
+  prompt: |
+    沿著追蹤的方向，會員 4242 在 1 到 3 步之內可以到達幾位不同的會員（不含 4242 自己）？
+  hints:
+    - "可變長度關係：-[:FOLLOWS*1..3]->"
+  answer: |
+    MATCH (me:Customer {id: 4242})-[:FOLLOWS*1..3]->(x:Customer)
+    WHERE x <> me
+    RETURN count(DISTINCT x)
+  explanation: |
+    *1..3 代表 1 到 3 條關係。一定要給上限：沒有上限的 * 在大圖上可能走到幾百萬條路徑。
+    比對：同一個人可能有好幾條路徑可以到達，所以要 DISTINCT。
+
+- id: shortest-path
+  chapter: 路徑與走訪
+  title: "最短路徑"
+  prompt: |
+    沿著追蹤的方向，會員 4242 到會員 1 最少要經過幾步？回傳一個數字。
+  hints:
+    - "shortestPath((a)-[:FOLLOWS*..10]->(b)) 找一條最短路徑；length(p) 是路徑的關係數。"
+  answer: |
+    MATCH p = shortestPath((:Customer {id: 4242})-[:FOLLOWS*..10]->(:Customer {id: 1}))
+    RETURN length(p)
+  explanation: |
+    shortestPath 用雙向的廣度優先搜尋，找到就停，不會列舉所有路徑。allShortestPaths 則回傳所有一樣短的路徑。
+    這就是「六度分隔」：社群網路裡，大多數人之間只隔幾步。
+
+- id: category-tree
+  chapter: 路徑與走訪
+  title: "整棵分類子樹"
+  prompt: |
+    「3C電子」底下的所有分類（子分類、子分類的子分類…，不含 3C電子 自己），回傳分類名稱。順序不拘。
+  hints:
+    - "(:Category)-[:SUBCATEGORY_OF]->(:Category) 是子分類指向上層。"
+    - "不知道有幾層時用 *1..（或給一個合理的上限）。"
+  answer: |
+    MATCH (c:Category)-[:SUBCATEGORY_OF*1..]->(:Category {name: '3C電子'})
+    RETURN c.name
+  ordered: false
+  explanation: |
+    對照 PostgreSQL：要用 WITH RECURSIVE 才能查整棵樹。在圖資料庫，可變長度關係就是遞迴。
+    分類樹很小（27 個節點），不給上限也沒問題；社群關係這種大圖就一定要給上限。
+
+- id: path-nodes
+  chapter: 路徑與走訪
+  title: "路徑上的節點"
+  prompt: |
+    商品 540 所在的分類，一路往上到最上層分類的「完整路徑」：
+    回傳一個清單，依序是商品所在的分類名稱、上層分類名稱…到最上層。
+  hints:
+    - "MATCH p = (:Product {id: 540})-[:IN_CATEGORY]->(:Category)-[:SUBCATEGORY_OF*0..]->(top:Category)"
+    - "最上層分類沒有再往上的 SUBCATEGORY_OF：WHERE NOT (top)-[:SUBCATEGORY_OF]->()"
+    - "nodes(p) 取出路徑上的節點，[n IN 清單 WHERE … | n.name] 是 list comprehension。"
+  answer: |
+    MATCH p = (:Product {id: 540})-[:IN_CATEGORY]->(:Category)-[:SUBCATEGORY_OF*0..]->(top:Category)
+    WHERE NOT (top)-[:SUBCATEGORY_OF]->()
+    RETURN [n IN nodes(p) WHERE n:Category | n.name]
+  explanation: |
+    *0.. 允許 0 步（商品直接掛在最上層分類時也找得到）。nodes(p)、relationships(p) 取出路徑上的節點與關係；
+    list comprehension [x IN list WHERE 條件 | 運算式] 類似程式語言的 filter + map。
+
+# ================================================================ 推薦
+
+- id: also-bought
+  chapter: 推薦
+  title: "買了這件的人也買了"
+  prompt: |
+    買過商品 540 的會員，還買了哪些其他商品？（同一張訂單一起買的也算）
+    回傳商品名稱與「買過的會員數」（同一位會員只算一次），依會員數由多到少、同數量依商品名稱排序，取前 5 名。
+  hints:
+    - "先找出買過 540 的會員：MATCH (:Product {id: 540})<-[:CONTAINS]-(:Order)<-[:PLACED]-(c:Customer)"
+    - "再找這些會員買過的所有商品：MATCH (c)-[:PLACED]->(:Order)-[:CONTAINS]->(other:Product)"
+    - "★ 為什麼要分成兩個 MATCH？寫成一條長路徑時，同一條關係不會走兩次，兩個 PLACED 就必須是不同的訂單。"
+  answer: |
+    MATCH (:Product {id: 540})<-[:CONTAINS]-(:Order)<-[:PLACED]-(c:Customer)
+    MATCH (c)-[:PLACED]->(:Order)-[:CONTAINS]->(other:Product)
+    WHERE other.id <> 540
+    RETURN other.name, count(DISTINCT c) AS buyers
+    ORDER BY buyers DESC, other.name
+    LIMIT 5
+  explanation: |
+    這就是協同過濾（collaborative filtering）最簡單的版本：商品 → 買過的人 → 這些人買的其他商品。
+    ★ 在「同一個 MATCH 圖樣」裡，同一條關係不會被走兩次（relationship isomorphism）。
+    寫成一條路徑 (:Product)<-[:CONTAINS]-(:Order)<-[:PLACED]-(c)-[:PLACED]->(:Order)-[:CONTAINS]->(other) 時，
+    兩個 PLACED 必須是不同的關係，也就是不同的訂單，「同一張訂單一起買」的會員就被漏掉了（雅漾那件會從 16 人變 14 人）。
+    分成兩個 MATCH，唯一性只在各自的圖樣裡檢查，就不會漏。在 SQL 要 order_items、orders、orders、order_items、products 五張表 JOIN。
+
+- id: friends-bought
+  chapter: 推薦
+  title: "朋友買過、你還沒買過"
+  prompt: |
+    會員 4242 追蹤的人買過、但 4242 自己沒買過的商品，
+    回傳商品 id 與「買過的朋友人數」，依人數由多到少、同人數依商品 id 由小到大，取前 5 名。
+  hints:
+    - "先找朋友買的商品，再用 WHERE NOT (me)-[:PLACED]->(:Order)-[:CONTAINS]->(p) 排除自己買過的。"
+  answer: |
+    MATCH (me:Customer {id: 4242})-[:FOLLOWS]->(f:Customer)-[:PLACED]->(:Order)-[:CONTAINS]->(p:Product)
+    WHERE NOT (me)-[:PLACED]->(:Order)-[:CONTAINS]->(p)
+    RETURN p.id, count(DISTINCT f) AS friends
+    ORDER BY friends DESC, p.id
+    LIMIT 5
+  explanation: |
+    社群推薦：結合「關係」（追蹤）與「行為」（購買）兩種資料，正是圖資料庫最擅長的查詢。
+    WHERE NOT (圖樣) 對每一件候選商品檢查一次，只沿著 4242 自己的訂單走，所以很快。
+
+# ================================================================ 寫入
+
+- id: create-customer
+  chapter: 寫入
+  title: "建立節點與關係"
+  prompt: |
+    新增一位會員：id 99999、name '測試會員'、vipLevel 'normal'，
+    並讓他住在已經存在的「台北市」（建立 LIVES_IN 關係）。
+  hints:
+    - "先 MATCH 找到城市，再 CREATE 會員和關係：MATCH (city:City {name: '台北市'}) CREATE (c:Customer {…})-[:LIVES_IN]->(city)"
+  answer: |
+    MATCH (city:City {name: '台北市'})
+    CREATE (:Customer {id: 99999, name: '測試會員', vipLevel: 'normal'})-[:LIVES_IN]->(city)
+  check: |
+    MATCH (c:Customer {id: 99999})-[:LIVES_IN]->(city:City) RETURN c.name, c.vipLevel, city.name;
+    MATCH (city:City {name: '台北市'}) RETURN count(city)
+  explanation: |
+    CREATE (c)-[:LIVES_IN]->(city) 時，city 是前面 MATCH 到的既有節點。
+    如果寫成 CREATE (:Customer {…})-[:LIVES_IN]->(:City {name: '台北市'})，會多建一個新的「台北市」節點（這裡有唯一約束，會直接報錯）。
+
+- id: merge-follow
+  chapter: 寫入
+  title: "不重複建立關係（MERGE）"
+  prompt: |
+    讓會員 4242 追蹤會員 15084 和會員 1。
+    4242 其實已經追蹤 15084 了，不能因此多出一條重複的關係。
+  hints:
+    - "MERGE 會先找，找不到才建立。"
+    - "先 MATCH 兩端的節點，再 MERGE 關係：MATCH (a …), (b …) MERGE (a)-[:FOLLOWS]->(b)"
+  answer: |
+    MATCH (me:Customer {id: 4242}), (other:Customer)
+    WHERE other.id IN [15084, 1]
+    MERGE (me)-[:FOLLOWS]->(other)
+  check: |
+    MATCH (:Customer {id: 4242})-[r:FOLLOWS]->(other:Customer) WHERE other.id IN [15084, 1]
+    RETURN other.id, count(r) ORDER BY other.id
+  explanation: |
+    MERGE = 「有就用，沒有就建立」。用 CREATE 會在 4242 和 15084 之間再建一條 FOLLOWS（關係沒有唯一約束），
+    之後計算粉絲數就會重複計算。
+    ★ MERGE 一定要先 MATCH 兩端，只 MERGE 關係；陷阱題會示範直接 MERGE 整個圖樣的後果。
+    執行時會看到「cartesian product」的伺服器提示：(me), (other) 兩個沒有連在一起的圖樣會產生所有組合，
+    這裡只有 1 × 2 = 2 種，正是我們要的，可以忽略；組合數很大時才要小心（陷阱題有示範）。
+
+- id: set-props
+  chapter: 寫入
+  title: "修改屬性與清單"
+  prompt: |
+    商品 540 賣完了：stock 改成 0，tags 清單加上 '缺貨'（保留原本的標籤）。
+  hints:
+    - "SET p.屬性 = 值；清單可以用 + 串接：p.tags + '缺貨'"
+  answer: |
+    MATCH (p:Product {id: 540})
+    SET p.stock = 0, p.tags = p.tags + '缺貨'
+  check: |
+    MATCH (p:Product {id: 540}) RETURN p.stock, p.tags
+  explanation: |
+    list + 元素會在清單後面加上一個元素。SET p.tags = ['缺貨'] 會把整個清單換掉。
+    SET p += {stock: 0} 可以一次更新多個屬性、保留其他屬性；SET p = {…} 則會把所有屬性換掉（小心）。
+
+- id: merge-on-create
+  chapter: 寫入
+  title: "MERGE 的 ON CREATE / ON MATCH"
+  prompt: |
+    記錄會員登入：對會員 4242 與會員 99999 各執行一次「登入」：
+    會員已存在就設定 lastLogin = date('2026-10-07')；不存在就建立會員，name 設成 '新會員'，lastLogin 也設成同一天。
+  hints:
+    - "MERGE (c:Customer {id: …}) ON CREATE SET … ON MATCH SET …"
+    - "兩位會員可以用 UNWIND [4242, 99999] AS id 一次處理。"
+  answer: |
+    UNWIND [4242, 99999] AS id
+    MERGE (c:Customer {id: id})
+    ON CREATE SET c.name = '新會員', c.lastLogin = date('2026-10-07')
+    ON MATCH SET c.lastLogin = date('2026-10-07')
+  check: |
+    MATCH (c:Customer) WHERE c.id IN [4242, 99999] RETURN c.id, c.name, c.lastLogin ORDER BY c.id
+  explanation: |
+    ON CREATE SET 只在這次 MERGE 建立新節點時執行，ON MATCH SET 只在找到既有節點時執行，
+    所以 4242 的姓名不會被改成「新會員」。UNWIND 把清單展開成多列，常用來批次寫入（載入資料時也是這樣做）。
+
+- id: unfollow
+  chapter: 寫入
+  title: "刪除關係"
+  prompt: |
+    會員 4242 取消追蹤會員 15084（只刪掉這條關係，兩位會員都要留著）。
+  hints:
+    - "給關係一個變數，再 DELETE 它：MATCH (…)-[r:FOLLOWS]->(…) DELETE r"
+  answer: |
+    MATCH (:Customer {id: 4242})-[r:FOLLOWS]->(:Customer {id: 15084})
+    DELETE r
+  check: |
+    MATCH (:Customer {id: 4242})-[:FOLLOWS]->(f:Customer) RETURN f.id ORDER BY f.id;
+    MATCH (c:Customer) WHERE c.id IN [4242, 15084] RETURN count(c)
+  explanation: |
+    DELETE 可以刪節點或關係。刪節點之前必須先刪掉它所有的關係，或用 DETACH DELETE 一起刪（下一題）。
+
+- id: detach-delete
+  chapter: 寫入
+  title: "刪除節點（DETACH DELETE）"
+  prompt: |
+    清理資料：刪除所有「從來沒有下過訂單」的會員。
+    這些會員可能還有追蹤、被追蹤、住在哪個城市的關係。
+  hints:
+    - "有關係的節點不能直接 DELETE。"
+    - "DETACH DELETE 會先刪掉節點的所有關係，再刪節點。"
+  answer: |
+    MATCH (c:Customer)
+    WHERE NOT (c)-[:PLACED]->()
+    DETACH DELETE c
+  check: |
+    MATCH (c:Customer) RETURN count(c);
+    MATCH (c:Customer) WHERE NOT (c)-[:PLACED]->() RETURN count(c);
+    MATCH ()-[r:LIVES_IN]->(:City) RETURN count(r)
+  explanation: |
+    DETACH DELETE 一次刪掉 1,629 位會員和他們的所有關係（追蹤、被追蹤、LIVES_IN）。
+    只寫 DELETE c 的話，在交易裡看起來成功了，但那些會員的關係還留著（第三個檢查查詢的 LIVES_IN 數量沒有變少），
+    commit 時 Neo4j 會報錯拒絕，因為不允許「懸空的關係」。展示台一律 ROLLBACK，所以由檢查查詢抓出這個差別。

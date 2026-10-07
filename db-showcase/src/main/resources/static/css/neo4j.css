@@ -1,0 +1,46 @@
+/* Neo4j 頁面：關係圖、執行計畫、寫入統計、schema 總覽
+   表格、警告、cqlsh 風格的執行紀錄（.cql-*）、資料表卡片（.coll-card）沿用 cassandra.css、mongo.css */
+
+/* ---------- 圖的結構 ---------- */
+.neo-schema { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; margin-top: 14px; }
+.neo-schema h3 { margin: 6px 0 8px; font-size: 1rem; }
+.neo-schema h3 small { font-weight: 400; font-size: .78rem; }
+.neo-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 8px; }
+
+/* ---------- 關係圖 ---------- */
+.graph-box { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 8px; min-width: 0; }
+.graph-box svg { width: 100%; height: auto; display: block; }
+.g-edge path { fill: none; stroke: var(--muted); stroke-width: 1.2; opacity: .7; }
+.g-edge text { font-size: 9px; fill: var(--muted); text-anchor: middle; font-family: var(--font-mono); }
+.g-arrow { fill: var(--muted); }
+.g-vertex circle { stroke: var(--surface); stroke-width: 2; cursor: default; }
+.g-vertex text { font-size: 10px; fill: var(--ink); text-anchor: middle; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .78rem; padding: 4px 6px 2px; align-items: center; }
+.graph-legend span { display: inline-flex; gap: 5px; align-items: center; }
+.graph-legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.graph-toggle summary { cursor: pointer; color: var(--accent); font-size: .85rem; margin-bottom: 6px; }
+
+/* ---------- 表格裡的節點與關係 ---------- */
+.g-node b, .g-rel b { font-weight: 600; }
+.g-rel b { color: var(--accent); }
+
+/* ---------- 寫入統計 ---------- */
+.g-counters { display: flex; flex-wrap: wrap; gap: 6px; }
+.g-counters span { font-size: .8rem; background: var(--fk-soft); color: var(--fk); border-radius: 6px; padding: 2px 10px; }
+.g-counters b { font-family: var(--font-mono); }
+
+/* ---------- 執行計畫 ---------- */
+.plan { display: grid; gap: 6px; min-width: 0; }
+.plan-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; font-size: .88rem; }
+.plan-table td { font-size: .8rem; vertical-align: top; }
+.plan-op { font-family: var(--font-mono); font-weight: 600; padding: 1px 8px; border-radius: 6px; border: 1px solid var(--line); display: inline-block; white-space: nowrap; }
+.plan-op.good { color: var(--fk); background: var(--fk-soft); border-color: var(--fk); }
+.plan-op.bad { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); }
+.plan-details { font-family: var(--font-mono); font-size: .74rem; color: var(--muted); overflow-wrap: anywhere; min-width: 12em; }
+.plan-table td.num { white-space: nowrap; }
+.hit-bar { display: inline-block; height: 6px; width: calc(var(--w) * .5); max-width: 50px; background: var(--pk); border-radius: 3px; margin-right: 6px; vertical-align: middle; opacity: .7; }
+
+/* ---------- 圖 vs SQL ---------- */
+.mini-bar { display: inline-block; width: 90px; height: 8px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
+.mini-bar i { display: block; height: 100%; background: var(--accent); }
+.mini-bar.sql i { background: #336791; }

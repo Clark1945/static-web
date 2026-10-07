@@ -70,6 +70,31 @@ function highlightMongo(text) {
   return out + esc(text.slice(last));
 }
 
+/** Cypher：關鍵字、// 註解、字串、:標籤 / :關係型別、$參數。 */
+const CYPHER_KEYWORDS = new Set(`
+  match optional where return with order by skip limit create merge set remove delete detach on unwind as and or not
+  xor in is null exists count call yield distinct case when then else end asc desc union all profile explain index
+  constraint for require unique drop if show indexes constraints transactions true false starts ends contains
+  shortestpath allshortestpaths collect`.trim().split(/\s+/));
+
+function highlightCypher(text) {
+  const TOKEN = /(\/\/[^\n]*)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|(:[A-Za-z_][A-Za-z0-9_]*)|(\$[A-Za-z_][A-Za-z0-9_]*)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
+  let out = "", last = 0, m;
+  while ((m = TOKEN.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    const [tok, cmt, str, label, param, num, word] = m;
+    if (cmt) out += `<span class="hl-cmt">${esc(tok)}</span>`;
+    else if (str) out += `<span class="hl-str">${esc(tok)}</span>`;
+    else if (label) out += `<span class="hl-fn">${esc(tok)}</span>`;
+    else if (param) out += `<span class="hl-op">${esc(tok)}</span>`;
+    else if (num) out += `<span class="hl-num">${esc(tok)}</span>`;
+    else if (CYPHER_KEYWORDS.has(word.toLowerCase())) out += `<span class="hl-kw">${esc(tok)}</span>`;
+    else out += esc(tok);
+    last = m.index + tok.length;
+  }
+  return out + esc(text.slice(last));
+}
+
 /** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
 function enhanceCode(root) {
   root.querySelectorAll("pre.code").forEach((pre) => {
@@ -80,6 +105,7 @@ function enhanceCode(root) {
     if (pre.dataset.lang === "redis") code.innerHTML = highlightRedis(raw);
     else if (pre.dataset.lang === "mongo") code.innerHTML = highlightMongo(raw);
     else if (pre.dataset.lang === "cql") code.innerHTML = highlightSQL(raw, CQL_KEYWORDS);
+    else if (pre.dataset.lang === "cypher") code.innerHTML = highlightCypher(raw);
     else if (pre.dataset.lang === "sql" || pre.dataset.lang === undefined && !pre.closest(".doc")) code.innerHTML = highlightSQL(raw);
     const btn = document.createElement("button");
     btn.type = "button";

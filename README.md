@@ -1,15 +1,15 @@
 # 資料庫面試練習庫（shop）
 
-以一間台灣電商「shop」的模擬資料（約 30 萬筆，彼此有關聯）練習各種資料庫。目前有 PostgreSQL、Redis、MongoDB、Cassandra。
+以一間台灣電商「shop」的模擬資料（約 30 萬筆，彼此有關聯）練習各種資料庫。目前有 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j。
 
 ## 連線資訊
 
-| | PostgreSQL | Redis | MongoDB | Cassandra |
-|---|---|---|---|---|
-| 容器 | `pg-lab` | `redis-lab` | `mongo-lab` | `cassandra-lab` |
-| Host / Port | localhost:5434 | localhost:6380 | localhost:27018 | localhost:9043 |
-| 資料庫 | shop | db 0（練習資料）、db 1（批改用的隔離區） | shop（練習資料）、scratch（批改用的隔離區）、lab（實驗室） | keyspace shop（練習資料）、scratch（批改用的隔離區）、lab / lab_rf3（實驗室） |
-| 帳號 | lab / lab | `default` / admin-lab（管理）、`learner` / learner-lab（受限） | `admin` / admin-lab（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫） | `cassandra` / cassandra（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫 shop）、`sandbox` / sandbox-lab（只能碰 scratch） |
+| | PostgreSQL | Redis | MongoDB | Cassandra | Neo4j |
+|---|---|---|---|---|---|
+| 容器 | `pg-lab` | `redis-lab` | `mongo-lab` | `cassandra-lab` | `neo4j-lab` |
+| Host / Port | localhost:5434 | localhost:6380 | localhost:27018 | localhost:9043 | Bolt localhost:7688、Browser http://localhost:7475 |
+| 資料庫 | shop | db 0（練習資料）、db 1（批改用的隔離區） | shop（練習資料）、scratch（批改用的隔離區）、lab（實驗室） | keyspace shop（練習資料）、scratch（批改用的隔離區）、lab / lab_rf3（實驗室） | neo4j（社群版只有一個使用者資料庫） |
+| 帳號 | lab / lab | `default` / admin-lab（管理）、`learner` / learner-lab（受限） | `admin` / admin-lab（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫） | `cassandra` / cassandra（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫 shop）、`sandbox` / sandbox-lab（只能碰 scratch） | `neo4j` / neo4j-lab（社群版沒有角色權限：展示台的 Cypher 一律 ROLLBACK） |
 
 ```bash
 docker exec -it pg-lab psql -U lab -d shop
@@ -27,17 +27,21 @@ docker exec -it mongo-lab mongosh "mongodb://learner:learner-lab@localhost/shop?
 docker exec -it cassandra-lab cqlsh -u learner -p learner-lab -k shop
 ```
 
-圖形介面：PostgreSQL 用 DBeaver 或 pgAdmin；Redis 用 RedisInsight；MongoDB 用 Compass；Cassandra 用 DBeaver。
+```bash
+docker exec -it neo4j-lab cypher-shell -u neo4j -p neo4j-lab
+```
+
+圖形介面：PostgreSQL 用 DBeaver 或 pgAdmin；Redis 用 RedisInsight；MongoDB 用 Compass；Cassandra 用 DBeaver；Neo4j 用內建的 Neo4j Browser（http://localhost:7475，結果畫成圖）。
 
 ## 常用指令
 
 ```bash
-docker compose up -d          # 啟動 PostgreSQL、Redis、MongoDB、Cassandra（Cassandra 要等將近一分鐘）
+docker compose up -d          # 啟動 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j（Cassandra 要等將近一分鐘）
 docker compose stop           # 停止（資料保留）
 docker compose down -v        # 刪掉資料庫，下次 up 會重新產生一模一樣的資料
 ```
 
-Redis、MongoDB、Cassandra 的練習資料都是從 PostgreSQL 轉進去的：Redis 每次啟動都重新轉入（約 1 秒、4 萬個 key）；MongoDB 在 shop 是空的時候才轉入（約 3 秒、10 萬份文件）；Cassandra 在 shop 是空的時候才在背景轉入（9 張表、約 48 萬次寫入、10 秒左右），第一次啟動時展示台會先建立 keyspace、資料表與角色（約 30 秒）。都可以在頁面上按「重置資料」或「重新載入資料」。
+Redis、MongoDB、Cassandra 的練習資料都是從 PostgreSQL 轉進去的：Redis 每次啟動都重新轉入（約 1 秒、4 萬個 key）；MongoDB 在 shop 是空的時候才轉入（約 3 秒、10 萬份文件）；Cassandra 在 shop 是空的時候才在背景轉入（9 張表、約 48 萬次寫入、10 秒左右），第一次啟動時展示台會先建立 keyspace、資料表與角色（約 30 秒）。Neo4j 在沒有訂單節點時才在背景轉入（10 萬個節點、46 萬條關係，約 12 秒）；追蹤關係（FOLLOWS）是用固定亂數種子產生的模擬社群資料，同一份也會寫進 PostgreSQL 的 `graphlab.follows`，給實驗室比較遞迴 CTE。都可以在頁面上按「重置資料」或「重新載入資料」。
 
 Cassandra 的映像檔預設不需要密碼；`docker-compose.yml` 在啟動前改了設定檔，開啟 `PasswordAuthenticator` 與 `CassandraAuthorizer`，並關閉 TRUNCATE 時的自動快照。
 
@@ -86,7 +90,7 @@ erDiagram
 
 ## 展示台 APP
 
-[db-showcase/](db-showcase/) 是 Spring Boot 寫的多資料庫展示台（http://localhost:8081），目前已串接 PostgreSQL、Redis、MongoDB、Cassandra。
+[db-showcase/](db-showcase/) 是 Spring Boot 寫的多資料庫展示台（http://localhost:8081），目前已串接 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j。
 
 **PostgreSQL**
 
@@ -125,7 +129,16 @@ erDiagram
 | 實驗室 | 查詢與表設計（查詢追蹤：分區鍵 vs ALLOW FILTERING、SAI 索引）、墓碑（佇列反模式）、一致性等級與 LWT（庫存超賣） |
 | cqlsh 主控台 | 用 learner 角色執行 CQL，可以開查詢追蹤 |
 
-題目內容放在 `db-showcase/src/main/resources/` 的 `postgres/`、`redis/`、`mongo/`、`cassandra/` YAML 檔，加題目不用改程式。
+**Neo4j**（(:Customer)-[:PLACED]->(:Order)-[:CONTAINS]->(:Product)、分類樹、城市、品牌、會員之間的 FOLLOWS；查詢結果裡的節點與關係會畫成圖）
+
+| 分頁 | 內容 |
+|---|---|
+| 練習題 | 24 題：基本 MATCH、方向與聚合、路徑與走訪（朋友的朋友、最短路徑、分類樹）、推薦、寫入（CREATE、MERGE、SET、DELETE）；寫入題在交易裡用檢查查詢比對，最後 ROLLBACK |
+| 陷阱題 | 12 題：MERGE 整個圖樣、不寫方向、`= null`、OPTIONAL MATCH 的 WHERE、笛卡兒積、關係唯一性漏掉同一張訂單、DELETE 在 commit 時才報錯… |
+| 實驗室 | PROFILE 與索引（LabelScan vs IndexSeek、db hits、TEXT / RANGE 索引、超級節點）、圖 vs SQL（推薦、幾步內可到達幾人、最短路徑，與 PostgreSQL 實測比較） |
+| Cypher 主控台 | 所有句子在同一個交易裡執行後 ROLLBACK；擋掉 LOAD CSV、CALL dbms.*、使用者與資料庫管理 |
+
+題目內容放在 `db-showcase/src/main/resources/` 的 `postgres/`、`redis/`、`mongo/`、`cassandra/`、`neo4j/` YAML 檔，加題目不用改程式。
 
 ```bash
 cd db-showcase
@@ -140,7 +153,7 @@ mvn spring-boot:run
 |---|---|
 | `docs/index.html` | 首頁 |
 | `docs/cheatsheet.html` | CheatSheet：目錄、搜尋、SQL 上色、一鍵複製 |
-| `docs/question-bank.html` | 題庫：PostgreSQL、Redis、MongoDB、Cassandra 各一個分頁，每個分頁有練習題、陷阱題、實驗，附提示、答案與正確答案的實際執行結果 |
+| `docs/question-bank.html` | 題庫：PostgreSQL、Redis、MongoDB、Cassandra、Neo4j 各一個分頁，每個分頁有練習題、陷阱題、實驗，附提示、答案與正確答案的實際執行結果 |
 
 改了 `CHEATSHEET.md` 或題庫 YAML 之後，重新產生（展示台有在執行時，會順便更新執行結果）：
 

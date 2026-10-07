@@ -37,6 +37,19 @@ public class ApiExceptionHandler {
                 "連不上 Cassandra：" + e.getMessage() + "\n請確認 cassandra-lab 容器有在執行（docker compose up -d cassandra），剛啟動的話要等將近一分鐘。"));
     }
 
+    /** Neo4j 連不上（容器沒啟動）。 */
+    @ExceptionHandler(org.neo4j.driver.exceptions.ServiceUnavailableException.class)
+    public ResponseEntity<Map<String, String>> neo4jDown(org.neo4j.driver.exceptions.ServiceUnavailableException e) {
+        return ResponseEntity.status(503).body(Map.of("error",
+                "連不上 Neo4j：" + e.getMessage() + "\n請確認 neo4j-lab 容器有在執行（docker compose up -d neo4j）。"));
+    }
+
+    /** 後端自己寫的 Cypher 出錯時（例如實驗室建索引的語法錯誤），把 Neo4j 的訊息回給前端。 */
+    @ExceptionHandler(org.neo4j.driver.exceptions.Neo4jException.class)
+    public ResponseEntity<Map<String, String>> neo4j(org.neo4j.driver.exceptions.Neo4jException e) {
+        return ResponseEntity.badRequest().body(Map.of("error", e.code() + "：" + e.getMessage()));
+    }
+
     /** 實驗室裡後端自己組的 CQL 出錯時（例如權限、逾時），把 Cassandra 的訊息回給前端。 */
     @ExceptionHandler(com.datastax.oss.driver.api.core.DriverException.class)
     public ResponseEntity<Map<String, String>> cassandra(com.datastax.oss.driver.api.core.DriverException e) {

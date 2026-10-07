@@ -7,8 +7,10 @@ spring:
     username: lab
     password: lab
   autoconfigure:
-    # Cassandra 的連線自己管理（CassandraSessions），不要讓 Spring Boot 另外建一個連到 9042 的
-    exclude: org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration
+    # Cassandra、Neo4j 的連線自己管理，不要讓 Spring Boot 另外建一個連到預設 port 的
+    exclude:
+      - org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration
+      - org.springframework.boot.autoconfigure.neo4j.Neo4jAutoConfiguration
   web:
     resources:
       cache:
@@ -40,4 +42,8 @@ showcase:
     reader-password: reader-lab   # 只能讀 shop：批改查詢題
     learner-password: learner-lab # 可讀寫 shop：指令主控台
     sandbox-password: sandbox-lab # 只能讀寫 scratch：批改寫入題
-  # 之後串接其他資料庫時，各自的設定加在這裡（neo4j…）
+  neo4j:                          # neo4j-lab 容器（社群版：只有一個帳號，沒有角色權限）
+    uri: bolt://localhost:7688
+    user: neo4j
+    password: neo4j-lab
+  # 之後串接其他資料庫時，各自的設定加在這裡
