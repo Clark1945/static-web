@@ -140,7 +140,7 @@ mvn spring-boot:run
 |---|---|
 | `docs/index.html` | 首頁 |
 | `docs/cheatsheet.html` | CheatSheet：目錄、搜尋、SQL 上色、一鍵複製 |
-| `docs/question-bank.html` | 題庫：練習題、陷阱題、索引實驗，附答案與正確答案的實際執行結果 |
+| `docs/question-bank.html` | 題庫：PostgreSQL、Redis、MongoDB、Cassandra 各一個分頁，每個分頁有練習題、陷阱題、實驗，附提示、答案與正確答案的實際執行結果 |
 
 改了 `CHEATSHEET.md` 或題庫 YAML 之後，重新產生（展示台有在執行時，會順便更新執行結果）：
 

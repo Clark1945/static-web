@@ -1,0 +1,31 @@
+/* CheatSheet 與題庫共用：大標題 ＋ 每個資料庫一個分頁（顏色是各資料庫的品牌色） */
+.title-block { display: grid; gap: 2px; }
+.page-title { margin: 0; font-size: 1.9rem; letter-spacing: .01em; line-height: 1.15; }
+.db-tabs { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; gap: 6px; overflow-x: auto; }
+.db-tabs a {
+  --db: var(--accent);
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px 10px; white-space: nowrap;
+  color: var(--muted); text-decoration: none; font-weight: 500; border-bottom: 3px solid transparent;
+}
+.db-tabs a::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--db); opacity: .45; }
+.db-tabs a[data-tab="postgresql"] { --db: #336791; }
+.db-tabs a[data-tab="redis"] { --db: #D82C20; }
+.db-tabs a[data-tab="mongodb"] { --db: #13AA52; }
+.db-tabs a[data-tab="cassandra"] { --db: #1287B1; }
+.db-tabs a:hover { color: var(--ink); }
+.db-tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--db); }
+.db-tabs a[aria-current="page"]::before { opacity: 1; }
+.db-tabs a.no-hit { opacity: .45; }
+.db-tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.db-tabs .n:not(:empty) { font-size: .72rem; font-weight: 600; padding: 0 7px; border-radius: 999px; background: var(--mark); color: var(--ink); }
+@media (prefers-color-scheme: dark) {
+  .db-tabs a[data-tab="postgresql"] { --db: #6FA3D3; }
+  .db-tabs a[data-tab="redis"] { --db: #FF7B6E; }
+  .db-tabs a[data-tab="mongodb"] { --db: #4FD18A; }
+  .db-tabs a[data-tab="cassandra"] { --db: #5CC3E8; }
+}
+
+@media (max-width: 900px) {
+  .page-title { font-size: 1.5rem; }
+  .db-tabs { padding-inline: 16px; }
+}
