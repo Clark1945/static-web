@@ -120,19 +120,21 @@ pre.code:hover .copy, .copy:focus-visible { opacity: 1; }
   <span class="sub">面試準備 · shop 練習資料庫</span></div></div></header>
 <main class="home">
   <p class="lead">以一個台灣電商「shop」的模擬資料（會員、訂單、明細、商品、分類，約 30 萬筆）為例，
-    練習 PostgreSQL 的 SQL 與索引，以及 Redis 的資料結構與快取、鎖、限流等實戰場景。</p>
+    練習 PostgreSQL、Redis、MongoDB、Cassandra 四種資料庫的查詢、資料模型與面試常考的觀念。</p>
   <div class="home-grid">
     <a class="home-card" href="cheatsheet.html">
       <b>CheatSheet</b>
       <span>PostgreSQL：SQL 執行順序、JOIN、NULL、視窗函數、索引、交易、JSONB / UPSERT。
-        Redis：資料結構、交易與 Lua、快取穿透 / 擊穿 / 雪崩、分散式鎖、持久化、叢集。</span>
+        Redis：資料結構、交易與 Lua、快取穿透 / 擊穿 / 雪崩、分散式鎖、持久化、叢集。
+        MongoDB：查詢與聚合管線、內嵌 vs 參照、索引與 ESR、交易與分片。
+        Cassandra：分區鍵與叢集鍵、查詢先行的表設計、墓碑、一致性等級、LWT。</span>
     </a>
     <a class="home-card" href="question-bank.html">
       <b>PostgreSQL 題庫</b>
       <span>練習題 43 題、陷阱題 10 題、索引實驗 11 步。附提示、答案、解說與正確答案的實際執行結果。</span>
     </a>
   </div>
-  <p class="foot">更新於 2026-10-06</p>
+  <p class="foot">更新於 2026-10-07</p>
 </main>
 <script>
 // 兩份靜態頁共用：SQL 上色、複製按鈕、HTML 跳脫
@@ -148,9 +150,15 @@ const SQL_KEYWORDS = new Set(`
   gin btree hash concurrently if only like ilike any array for share zone at time cast varchar char smallint
   identity generated always schema role grant usage to owner vacuum`.trim().split(/\s+/));
 
+// CQL：SQL 的關鍵字再加上 Cassandra 特有的
+const CQL_KEYWORDS = new Set([...SQL_KEYWORDS, ...`
+  keyspace keyspaces allow filtering ttl writetime token clustering frozen counter batch apply logged unlogged
+  static list map type contains key per describe consistency tracing materialized view custom timeuuid uuid
+  double float decimal varint tinyint blob inet replication quorum serial truncate expand copy`.trim().split(/\s+/)]);
+
 const SQL_TOKEN = /(--[^\n]*)|(\/\*[\s\S]*?\*\/)|('(?:[^']|'')*')|("(?:[^"]|"")*")|(->>|->|#>>|#>|@>|<@|&&|\|\||::|\?\||\?&)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
 
-function highlightSQL(text) {
+function highlightSQL(text, keywords = SQL_KEYWORDS) {
   let out = "", last = 0, m;
   SQL_TOKEN.lastIndex = 0;
   while ((m = SQL_TOKEN.exec(text))) {
@@ -163,7 +171,7 @@ function highlightSQL(text) {
     else if (num) out += `<span class="hl-num">${esc(tok)}</span>`;
     else if (word) {
       const isCall = /^\s*\(/.test(text.slice(m.index + tok.length));
-      if (SQL_KEYWORDS.has(word.toLowerCase()) && !(isCall && !/^(in|exists|any|values|over|filter|on|using|as|array|interval)$/i.test(word))) {
+      if (keywords.has(word.toLowerCase()) && !(isCall && !/^(in|exists|any|values|over|filter|on|using|as|array|interval)$/i.test(word))) {
         out += `<span class="hl-kw">${esc(tok)}</span>`;
       } else if (isCall) out += `<span class="hl-fn">${esc(tok)}</span>`;
       else out += esc(tok);
@@ -210,6 +218,7 @@ function enhanceCode(root) {
     const raw = code.textContent;
     if (pre.dataset.lang === "redis") code.innerHTML = highlightRedis(raw);
     else if (pre.dataset.lang === "mongo") code.innerHTML = highlightMongo(raw);
+    else if (pre.dataset.lang === "cql") code.innerHTML = highlightSQL(raw, CQL_KEYWORDS);
     else if (pre.dataset.lang === "sql" || pre.dataset.lang === undefined && !pre.closest(".doc")) code.innerHTML = highlightSQL(raw);
     const btn = document.createElement("button");
     btn.type = "button";

@@ -1,15 +1,15 @@
 # 資料庫面試練習庫（shop）
 
-以一間台灣電商「shop」的模擬資料（約 30 萬筆，彼此有關聯）練習各種資料庫。目前有 PostgreSQL、Redis、MongoDB。
+以一間台灣電商「shop」的模擬資料（約 30 萬筆，彼此有關聯）練習各種資料庫。目前有 PostgreSQL、Redis、MongoDB、Cassandra。
 
 ## 連線資訊
 
-| | PostgreSQL | Redis | MongoDB |
-|---|---|---|---|
-| 容器 | `pg-lab` | `redis-lab` | `mongo-lab` |
-| Host / Port | localhost:5434 | localhost:6380 | localhost:27018 |
-| 資料庫 | shop | db 0（練習資料）、db 1（批改用的隔離區） | shop（練習資料）、scratch（批改用的隔離區）、lab（實驗室） |
-| 帳號 | lab / lab | `default` / admin-lab（管理）、`learner` / learner-lab（受限） | `admin` / admin-lab（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫） |
+| | PostgreSQL | Redis | MongoDB | Cassandra |
+|---|---|---|---|---|
+| 容器 | `pg-lab` | `redis-lab` | `mongo-lab` | `cassandra-lab` |
+| Host / Port | localhost:5434 | localhost:6380 | localhost:27018 | localhost:9043 |
+| 資料庫 | shop | db 0（練習資料）、db 1（批改用的隔離區） | shop（練習資料）、scratch（批改用的隔離區）、lab（實驗室） | keyspace shop（練習資料）、scratch（批改用的隔離區）、lab / lab_rf3（實驗室） |
+| 帳號 | lab / lab | `default` / admin-lab（管理）、`learner` / learner-lab（受限） | `admin` / admin-lab（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫） | `cassandra` / cassandra（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫 shop）、`sandbox` / sandbox-lab（只能碰 scratch） |
 
 ```bash
 docker exec -it pg-lab psql -U lab -d shop
@@ -23,17 +23,23 @@ docker exec -it redis-lab redis-cli --user learner --pass learner-lab
 docker exec -it mongo-lab mongosh "mongodb://learner:learner-lab@localhost/shop?authSource=admin"
 ```
 
-圖形介面：PostgreSQL 用 DBeaver 或 pgAdmin；Redis 用 RedisInsight；MongoDB 用 Compass。
+```bash
+docker exec -it cassandra-lab cqlsh -u learner -p learner-lab -k shop
+```
+
+圖形介面：PostgreSQL 用 DBeaver 或 pgAdmin；Redis 用 RedisInsight；MongoDB 用 Compass；Cassandra 用 DBeaver。
 
 ## 常用指令
 
 ```bash
-docker compose up -d          # 啟動 PostgreSQL、Redis、MongoDB
+docker compose up -d          # 啟動 PostgreSQL、Redis、MongoDB、Cassandra（Cassandra 要等將近一分鐘）
 docker compose stop           # 停止（資料保留）
 docker compose down -v        # 刪掉資料庫，下次 up 會重新產生一模一樣的資料
 ```
 
-Redis 與 MongoDB 的練習資料都是從 PostgreSQL 轉進去的：Redis 每次啟動都重新轉入（約 1 秒、4 萬個 key）；MongoDB 在 shop 是空的時候才轉入（約 3 秒、10 萬份文件）。兩者都可以在頁面上按「重置資料」。
+Redis、MongoDB、Cassandra 的練習資料都是從 PostgreSQL 轉進去的：Redis 每次啟動都重新轉入（約 1 秒、4 萬個 key）；MongoDB 在 shop 是空的時候才轉入（約 3 秒、10 萬份文件）；Cassandra 在 shop 是空的時候才在背景轉入（9 張表、約 48 萬次寫入、10 秒左右），第一次啟動時展示台會先建立 keyspace、資料表與角色（約 30 秒）。都可以在頁面上按「重置資料」或「重新載入資料」。
+
+Cassandra 的映像檔預設不需要密碼；`docker-compose.yml` 在啟動前改了設定檔，開啟 `PasswordAuthenticator` 與 `CassandraAuthorizer`，並關閉 TRUNCATE 時的自動快照。
 
 ## 資料表關聯
 
@@ -80,7 +86,7 @@ erDiagram
 
 ## 展示台 APP
 
-[db-showcase/](db-showcase/) 是 Spring Boot 寫的多資料庫展示台（http://localhost:8081），目前已串接 PostgreSQL、Redis、MongoDB。
+[db-showcase/](db-showcase/) 是 Spring Boot 寫的多資料庫展示台（http://localhost:8081），目前已串接 PostgreSQL、Redis、MongoDB、Cassandra。
 
 **PostgreSQL**
 
@@ -110,7 +116,16 @@ erDiagram
 | 實驗室 | 內嵌 vs 參照（$lookup 有無索引）、索引與 explain（6 步，含 ESR 規則）、聚合管線逐步看 |
 | 指令主控台 | mongosh 寫法：find、aggregate、update…、explain |
 
-題目內容放在 `db-showcase/src/main/resources/` 的 `postgres/`、`redis/`、`mongo/` YAML 檔，加題目不用改程式。
+**Cassandra**（同一份資料依查詢寫成 9 張表：orders、orders_by_customer、orders_by_day、products_by_category、計數器表…；指令就是 CQL，主控台另外支援 cqlsh 的 `CONSISTENCY` 與 `TRACING`）
+
+| 分頁 | 內容 |
+|---|---|
+| 練習題 | 28 題：主鍵查詢、叢集鍵與時間分桶、集合與函式、寫入（BATCH、計數器、LWT、TTL、範圍刪除）；查詢題用唯讀角色批改，寫入題在 scratch keyspace 比對資料狀態 |
+| 陷阱題 | 11 題：INSERT 是 upsert、ORDER BY 只能用叢集鍵、AVG(int)、舊時間戳記的寫入被忽略、TTL 是設在欄位上、寫 null 會產生墓碑… |
+| 實驗室 | 查詢與表設計（查詢追蹤：分區鍵 vs ALLOW FILTERING、SAI 索引）、墓碑（佇列反模式）、一致性等級與 LWT（庫存超賣） |
+| cqlsh 主控台 | 用 learner 角色執行 CQL，可以開查詢追蹤 |
+
+題目內容放在 `db-showcase/src/main/resources/` 的 `postgres/`、`redis/`、`mongo/`、`cassandra/` YAML 檔，加題目不用改程式。
 
 ```bash
 cd db-showcase

@@ -266,12 +266,14 @@ def build_index(n_exercises, n_traps, n_steps):
   <span class="sub">面試準備 · shop 練習資料庫</span></div></div></header>
 <main class="home">
   <p class="lead">以一個台灣電商「shop」的模擬資料（會員、訂單、明細、商品、分類，約 30 萬筆）為例，
-    練習 PostgreSQL 的 SQL 與索引，以及 Redis 的資料結構與快取、鎖、限流等實戰場景。</p>
+    練習 PostgreSQL、Redis、MongoDB、Cassandra 四種資料庫的查詢、資料模型與面試常考的觀念。</p>
   <div class="home-grid">
     <a class="home-card" href="cheatsheet.html">
       <b>CheatSheet</b>
       <span>PostgreSQL：SQL 執行順序、JOIN、NULL、視窗函數、索引、交易、JSONB / UPSERT。
-        Redis：資料結構、交易與 Lua、快取穿透 / 擊穿 / 雪崩、分散式鎖、持久化、叢集。</span>
+        Redis：資料結構、交易與 Lua、快取穿透 / 擊穿 / 雪崩、分散式鎖、持久化、叢集。
+        MongoDB：查詢與聚合管線、內嵌 vs 參照、索引與 ESR、交易與分片。
+        Cassandra：分區鍵與叢集鍵、查詢先行的表設計、墓碑、一致性等級、LWT。</span>
     </a>
     <a class="home-card" href="question-bank.html">
       <b>PostgreSQL 題庫</b>
