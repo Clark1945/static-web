@@ -1,10 +1,10 @@
 // 陷阱題：先選答案，再執行兩段 SQL 對照，最後看解說
 import { api, postJson, esc, fmt, renderTable, store } from "../../lib.js";
 
-const API = "/api/postgres";
-const RESULT_KEY = "pg-traps";
 
-export function mount(el) {
+/** options：api（API 路徑）、prefix（瀏覽器儲存結果用的前綴），TimescaleDB 頁面也共用這個模組。 */
+export function mount(el, { api: API = "/api/postgres", prefix = "pg" } = {}) {
+  const RESULT_KEY = `${prefix}-traps`;
   el.innerHTML = `
     <div class="lab">
       <nav class="qlist" aria-label="陷阱題">

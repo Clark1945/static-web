@@ -100,7 +100,24 @@ services:
       retries: 20
       start_period: 30s
 
+  timescale:
+    image: timescale/timescaledb:2.22.1-pg16
+    container_name: timescale-lab
+    restart: unless-stopped        # Docker 啟動時自動跟著啟動（手動 stop 的除外）
+    environment:
+      POSTGRES_USER: tsadmin
+      POSTGRES_PASSWORD: timescale-lab
+      POSTGRES_DB: metrics
+      TZ: Asia/Taipei
+      PGTZ: Asia/Taipei
+      TIMESCALEDB_TELEMETRY: "off"
+    ports:
+      - "5435:5432"                  # 5434 是 pg-lab；資料表、角色、資料由展示台第一次啟動時建立
+    volumes:
+      - timescaledata:/var/lib/postgresql/data
+
 volumes:
+  timescaledata:
   cassandradata:
   pgdata:
   neo4jdata:

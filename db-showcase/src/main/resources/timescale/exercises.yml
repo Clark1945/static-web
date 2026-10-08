@@ -1,0 +1,370 @@
+# TimescaleDB 練習題。TimescaleDB 就是 PostgreSQL，所以跟 PostgreSQL 頁面用同一套批改方式：
+# 查詢題在唯讀交易裡以 learner 角色執行；mode: write 的題目在寫入沙盒執行（一律 ROLLBACK），比對最後回傳的資料列。
+# 時間一律寫成台灣時間（+08），資料：page_views 2026-04 ～ 09、sensor_readings 2026-09、orders 2022-01 ～ 2026-09。
+
+# ================================================================ time_bucket 基礎
+
+- id: daily-views
+  chapter: time_bucket 基礎
+  title: "每天的瀏覽數（台灣時間）"
+  prompt: |
+    2026-09-08 到 2026-09-10（台灣時間，三天）每天各有幾筆瀏覽？
+    回傳「當天的開始時間」與筆數，依日期排序。
+  hints:
+    - "time_bucket('1 day', view_time, 'Asia/Taipei') 依台灣時間切成一天一段。"
+    - "不加第三個參數時，time_bucket 依 UTC 切，一天會從台灣時間早上 8 點開始。"
+  ordered: true
+  answer: |
+    SELECT time_bucket('1 day', view_time, 'Asia/Taipei') AS day, count(*) AS views
+    FROM page_views
+    WHERE view_time >= '2026-09-08 00:00+08' AND view_time < '2026-09-11 00:00+08'
+    GROUP BY day
+    ORDER BY day;
+  explanation: |
+    time_bucket 是 TimescaleDB 最常用的函式：把時間切成固定長度的區間（類似 date_trunc，但可以是任意長度，例如 5 分鐘、15 分鐘）。
+    ★ timestamptz 預設依 UTC 切；台灣的「一天」要加上時區參數。9/9 是購物節，瀏覽數是平常的 3 倍。
+
+- id: peak-hours
+  chapter: time_bucket 基礎
+  title: "一天裡最熱門的時段"
+  prompt: |
+    2026-09-01（台灣時間）這一天，瀏覽數最多的 3 個小時：
+    回傳該小時的開始時間與瀏覽數，瀏覽數由多到少。
+  hints:
+    - "time_bucket('1 hour', view_time)：一小時一段，整點在 UTC 和台灣時間是一樣的。"
+  ordered: true
+  answer: |
+    SELECT time_bucket('1 hour', view_time) AS hour, count(*) AS views
+    FROM page_views
+    WHERE view_time >= '2026-09-01 00:00+08' AND view_time < '2026-09-02 00:00+08'
+    GROUP BY hour
+    ORDER BY views DESC
+    LIMIT 3;
+  explanation: |
+    晚上 8～10 點是電商的流量高峰。一小時、一分鐘這種「不跨日」的區間，UTC 與台灣時間的邊界一樣，不需要時區參數；
+    一天、一週、一個月這種會跨日的區間才要。
+
+- id: monthly-views
+  chapter: time_bucket 基礎
+  title: "每個月的瀏覽數"
+  prompt: |
+    page_views 每個月（台灣時間）各有幾筆？回傳月份開始時間與筆數，依月份排序。
+  hints:
+    - "time_bucket 也接受 '1 month'（依日曆月份切）。"
+  ordered: true
+  answer: |
+    SELECT time_bucket('1 month', view_time, 'Asia/Taipei') AS month, count(*) AS views
+    FROM page_views
+    GROUP BY month
+    ORDER BY month;
+  explanation: |
+    '1 month' 會依日曆月份切（每段長度不同）；'30 days' 則是固定 30 天，跟月份對不齊（陷阱題有示範）。
+    這句要讀過全部 190 萬筆，連續聚合（後面的題目）就是為了讓這種報表不必每次都重算。
+
+- id: device-share
+  chapter: time_bucket 基礎
+  title: "各裝置的瀏覽佔比"
+  prompt: |
+    2026 年 9 月（台灣時間）各裝置（device）的瀏覽數，以及佔當月總瀏覽數的百分比（四捨五入到小數 1 位），
+    依瀏覽數由多到少。
+  hints:
+    - "佔比可以用視窗函數：count(*) * 100.0 / sum(count(*)) OVER ()"
+  ordered: true
+  answer: |
+    SELECT device, count(*) AS views,
+           round(count(*) * 100.0 / sum(count(*)) OVER (), 1) AS pct
+    FROM page_views
+    WHERE view_time >= '2026-09-01 00:00+08' AND view_time < '2026-10-01 00:00+08'
+    GROUP BY device
+    ORDER BY views DESC;
+  explanation: |
+    TimescaleDB 完全是 PostgreSQL：視窗函數、JOIN、CTE 都照常使用。hypertable 對使用者來說就是一張普通的表。
+
+- id: weekly-orders
+  chapter: time_bucket 基礎
+  title: "每週訂單數與營收"
+  prompt: |
+    2026 年第三季（7/1 ～ 9/30，台灣時間）每週的訂單數與營收（total 加總），依週排序。
+    一週從星期一開始。
+  hints:
+    - "time_bucket('1 week', …) 預設就是從星期一開始。"
+  ordered: true
+  answer: |
+    SELECT time_bucket('1 week', order_time, 'Asia/Taipei') AS week, count(*) AS orders, sum(total) AS revenue
+    FROM orders
+    WHERE order_time >= '2026-07-01 00:00+08' AND order_time < '2026-10-01 00:00+08'
+    GROUP BY week
+    ORDER BY week;
+  explanation: |
+    time_bucket 的起點（origin）預設是 2000-01-03（星期一），所以週的區間從星期一開始。
+    第一週的開始時間是 6/29：7/1 是星期三，那一週只有 7/1 之後的訂單（被 WHERE 篩掉了前兩天）。
+    要從星期日開始可以指定 origin：time_bucket('1 week', order_time, 'Asia/Taipei', origin => '2000-01-02')。
+
+# ================================================================ 時間序列分析
+
+- id: last-reading
+  chapter: 時間序列分析
+  title: "每個感測器的最後一筆讀數"
+  prompt: |
+    每個感測器在 2026-09-30（台灣時間）這一天的最後一筆溫度。
+    回傳 sensor_id 與溫度，依 sensor_id 排序。
+  hints:
+    - "last(值, 時間)：依時間排序後取最後一筆的值；first() 則是第一筆。"
+  ordered: true
+  answer: |
+    SELECT sensor_id, last(temperature, time) AS temperature
+    FROM sensor_readings
+    WHERE time >= '2026-09-30 00:00+08' AND time < '2026-10-01 00:00+08'
+    GROUP BY sensor_id
+    ORDER BY sensor_id;
+  explanation: |
+    first() / last() 是 TimescaleDB 的聚合函式，「每個裝置最新的值」這種查詢一句就寫完。
+    純 PostgreSQL 的寫法是 DISTINCT ON (sensor_id) … ORDER BY sensor_id, time DESC，或視窗函數 ROW_NUMBER()。
+
+- id: cold-alarm
+  chapter: 時間序列分析
+  title: "冷藏室溫度異常"
+  prompt: |
+    冷藏區（sensors.kind = '冷藏'）的感測器，溫度超過 8°C 的讀數：
+    依感測器分組，回傳 sensor_id、倉庫、第一次超標的時間、最後一次超標的時間、超標的筆數、最高溫度。
+  hints:
+    - "sensor_readings JOIN sensors USING (sensor_id)"
+    - "min(time)、max(time)、count(*)、max(temperature)"
+  ordered: true
+  answer: |
+    SELECT r.sensor_id, s.warehouse, min(r.time) AS first_alarm, max(r.time) AS last_alarm,
+           count(*) AS readings, max(r.temperature) AS max_temp
+    FROM sensor_readings r
+    JOIN sensors s USING (sensor_id)
+    WHERE s.kind = '冷藏' AND r.temperature > 8
+    GROUP BY r.sensor_id, s.warehouse
+    ORDER BY r.sensor_id;
+  explanation: |
+    hypertable 可以跟一般的表 JOIN（感測器的基本資料放在一般表 sensors）。
+    9/18 凌晨 2:10～2:30，桃園倉 B 區冷藏溫度一度到 12.5°C，大概是門沒關好。
+
+- id: gapfill
+  chapter: 時間序列分析
+  title: "補上沒有資料的時段"
+  prompt: |
+    感測器 7 在 2026-09-10 08:00 ～ 16:00（台灣時間）每小時的平均溫度。
+    沒有資料的小時也要列出來（平均溫度是 NULL），依時間排序，共 8 列。
+  hints:
+    - "一般的 time_bucket 只會列出「有資料」的區間。"
+    - "time_bucket_gapfill 會把範圍內每一個區間都列出來；範圍從 WHERE 條件推算。"
+  ordered: true
+  answer: |
+    SELECT time_bucket_gapfill('1 hour', time) AS hour, avg(temperature) AS avg_temp
+    FROM sensor_readings
+    WHERE sensor_id = 7
+      AND time >= '2026-09-10 08:00+08' AND time < '2026-09-10 16:00+08'
+    GROUP BY hour
+    ORDER BY hour;
+  explanation: |
+    感測器 7 在 10:00～14:00 離線，一般的 time_bucket 只會回傳 4 列，畫成圖表時中間的空白就「消失」了。
+    time_bucket_gapfill 把空的區間補成 NULL，前端畫圖、或後續計算才不會被誤導。
+
+- id: locf
+  chapter: 時間序列分析
+  title: "用前一個值補空缺（LOCF）"
+  prompt: |
+    同上一題（感測器 7，9/10 08:00 ～ 16:00 每小時平均溫度），
+    但沒有資料的小時用「前一個有資料的值」補上。回傳時間與補好的溫度，共 8 列。
+  hints:
+    - "locf(avg(temperature))：Last Observation Carried Forward。"
+  ordered: true
+  answer: |
+    SELECT time_bucket_gapfill('1 hour', time) AS hour, locf(avg(temperature)) AS avg_temp
+    FROM sensor_readings
+    WHERE sensor_id = 7
+      AND time >= '2026-09-10 08:00+08' AND time < '2026-09-10 16:00+08'
+    GROUP BY hour
+    ORDER BY hour;
+  explanation: |
+    locf() 用最後一個觀測值往後補，適合「狀態」類的資料（溫度設定、庫存量、開關狀態）。
+    另一個選擇是 interpolate()：用前後兩個值做線性內插，適合連續變化的量。
+
+- id: moving-average
+  chapter: 時間序列分析
+  title: "3 日移動平均"
+  prompt: |
+    2026-09-01 到 2026-09-14（台灣時間）每天的瀏覽數，以及「含當天在內的前 3 天」平均瀏覽數（四捨五入到整數）。
+    回傳日期開始時間、當天瀏覽數、3 日平均，依日期排序。
+  hints:
+    - "先用 time_bucket 算出每天的數量，再用視窗函數 avg(…) OVER (ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)。"
+  ordered: true
+  answer: |
+    SELECT day, views,
+           round(avg(views) OVER (ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)) AS avg_3d
+    FROM (
+      SELECT time_bucket('1 day', view_time, 'Asia/Taipei') AS day, count(*) AS views
+      FROM page_views
+      WHERE view_time >= '2026-09-01 00:00+08' AND view_time < '2026-09-15 00:00+08'
+      GROUP BY day
+    ) d
+    ORDER BY day;
+  explanation: |
+    移動平均可以把單日的尖峰（9/9 購物節）平滑掉，看出趨勢。前兩天因為不滿 3 天，平均的是 1 天、2 天。
+    視窗函數加 time_bucket 是時間序列分析最常見的組合。
+
+- id: day-over-day
+  chapter: 時間序列分析
+  title: "跟前一天比"
+  prompt: |
+    2026-09-08 到 2026-09-11（台灣時間）每天的瀏覽數，以及跟前一天相比增加多少（第一天是 NULL）。
+    回傳日期開始時間、瀏覽數、差額，依日期排序。
+  hints:
+    - "lag(views) OVER (ORDER BY day)"
+  ordered: true
+  answer: |
+    SELECT day, views, views - lag(views) OVER (ORDER BY day) AS diff
+    FROM (
+      SELECT time_bucket('1 day', view_time, 'Asia/Taipei') AS day, count(*) AS views
+      FROM page_views
+      WHERE view_time >= '2026-09-08 00:00+08' AND view_time < '2026-09-12 00:00+08'
+      GROUP BY day
+    ) d
+    ORDER BY day;
+  explanation: |
+    lag() 取前一列的值。注意第一天沒有「前一天」所以是 NULL；如果要跟範圍外的 9/7 比，查詢範圍就要多抓一天再篩掉。
+
+# ================================================================ 連續聚合
+
+- id: cagg-hourly
+  chapter: 連續聚合
+  title: "從連續聚合查每小時統計"
+  prompt: |
+    連續聚合 sensor_hourly 已經算好每個感測器每小時的平均、最低、最高溫度。
+    用它查感測器 2 在 2026-09-18 00:00 ～ 06:00（台灣時間）每小時的最高溫度，依時間排序。
+  hints:
+    - "連續聚合用起來就是一個 view：SELECT hour, max_temp FROM sensor_hourly WHERE …"
+  ordered: true
+  answer: |
+    SELECT hour, max_temp
+    FROM sensor_hourly
+    WHERE sensor_id = 2 AND hour >= '2026-09-18 00:00+08' AND hour < '2026-09-18 06:00+08'
+    ORDER BY hour;
+  explanation: |
+    連續聚合（continuous aggregate）是「會自動增量更新的物化視圖」：原始資料每分鐘一筆，聚合後每小時一筆，
+    查詢只要讀 6 列，不必掃 360 筆原始資料。資料量越大、報表越常查，差距越明顯（實驗室有比較）。
+
+- id: cagg-top-products
+  chapter: 連續聚合
+  title: "熱門商品（從每日聚合）"
+  prompt: |
+    用連續聚合 page_views_daily，查 2026-09-01 到 2026-09-22（台灣時間，含）瀏覽次數最多的 5 件商品：
+    回傳 product_id 與總瀏覽數，瀏覽數由多到少。
+  hints:
+    - "page_views_daily 是「每天 × 每件商品」一列，要再 sum(views)。"
+  ordered: true
+  answer: |
+    SELECT product_id, sum(views) AS views
+    FROM page_views_daily
+    WHERE day >= '2026-09-01 00:00+08' AND day < '2026-09-23 00:00+08'
+    GROUP BY product_id
+    ORDER BY views DESC
+    LIMIT 5;
+  explanation: |
+    從每日聚合再往上彙總（每日 → 每月、每件商品 → 每個分類）很便宜。
+    ★ 可以 sum 的是 count、sum；平均值不能直接再平均（每天的筆數不同），要存 sum 和 count，最後再相除。
+
+# ================================================================ hypertable 與 chunk
+
+- id: chunk-count
+  chapter: hypertable 與 chunk
+  title: "有幾個 chunk"
+  prompt: |
+    page_views 這個 hypertable 被切成幾個 chunk？回傳一個數字。
+  hints:
+    - "show_chunks('page_views') 列出所有 chunk；或查 timescaledb_information.chunks。"
+  ordered: true
+  answer: |
+    SELECT count(*) FROM show_chunks('page_views');
+  explanation: |
+    hypertable 在底層是很多張小表（chunk），每個 chunk 存一段時間的資料（這裡是 7 天）。
+    查詢時只會讀到時間範圍相關的 chunk（chunk exclusion）；刪除舊資料時直接丟掉整個 chunk（drop_chunks），不必一筆一筆 DELETE。
+
+- id: chunk-range
+  chapter: hypertable 與 chunk
+  title: "某個時間點在哪個 chunk"
+  prompt: |
+    2026-09-01 12:00（台灣時間）的瀏覽紀錄，存在 page_views 的哪一個 chunk？
+    回傳那個 chunk 的時間範圍（range_start、range_end）。
+  hints:
+    - "timescaledb_information.chunks 有每個 chunk 的 hypertable_name、range_start、range_end。"
+  ordered: true
+  answer: |
+    SELECT range_start, range_end
+    FROM timescaledb_information.chunks
+    WHERE hypertable_name = 'page_views'
+      AND range_start <= '2026-09-01 12:00+08' AND range_end > '2026-09-01 12:00+08';
+  explanation: |
+    chunk 的邊界是依「UTC 的固定間隔」對齊的，所以範圍是 8/27 08:00 ～ 9/3 08:00（台灣時間，星期四早上 8 點），
+    不是從月初或星期一開始。chunk 的大小建議：最近的資料（正在寫入的 chunk 與它的索引）能放進記憶體的 25% 左右。
+
+# ================================================================ 寫入
+
+- id: insert-reading
+  chapter: 寫入
+  mode: write
+  title: "寫入一筆新的讀數"
+  prompt: |
+    感測器 2 在 2026-10-01 00:00（台灣時間）回報：溫度 4.2、濕度 85.0。
+    寫入 sensor_readings，並用 RETURNING 回傳 time、sensor_id、temperature、humidity。
+  hints:
+    - "INSERT INTO sensor_readings (time, sensor_id, temperature, humidity) VALUES (…) RETURNING …"
+  ordered: true
+  answer: |
+    INSERT INTO sensor_readings (time, sensor_id, temperature, humidity)
+    VALUES ('2026-10-01 00:00+08', 2, 4.2, 85.0)
+    RETURNING time, sensor_id, temperature, humidity;
+  explanation: |
+    寫入 hypertable 跟寫入一般的表一模一樣。這筆資料的時間超出現有的 chunk 範圍，TimescaleDB 會自動建立新的 chunk
+    （在這個交易裡；沙盒最後會 ROLLBACK）。時間序列的寫入大多是「附加在最後面」，正在寫入的 chunk 很小、索引在記憶體裡，所以寫入很快。
+
+- id: late-data
+  chapter: 寫入
+  mode: write
+  title: "補寫遲到的資料"
+  prompt: |
+    感測器 7 恢復連線後，補傳了一筆 2026-09-10 11:00（台灣時間）的讀數：溫度 21.5、濕度 61.0。
+    寫入之後，查詢感測器 7 在 9/10（台灣時間）一共有幾筆讀數。
+  hints:
+    - "先 INSERT，再 SELECT count(*) …（沙盒可以一次執行多句）"
+  ordered: true
+  answer: |
+    INSERT INTO sensor_readings (time, sensor_id, temperature, humidity)
+    VALUES ('2026-09-10 11:00+08', 7, 21.5, 61.0);
+
+    SELECT count(*)
+    FROM sensor_readings
+    WHERE sensor_id = 7 AND time >= '2026-09-10 00:00+08' AND time < '2026-09-11 00:00+08';
+  explanation: |
+    遲到的資料（late data）會寫進舊的 chunk。如果那個時段已經被連續聚合物化過，聚合不會自動知道：
+    要等下一次 refresh（refresh 會重算「有資料變動的區間」，TimescaleDB 會記錄被修改過的時間範圍）。
+    如果舊 chunk 已經壓縮，寫入的成本也比較高。
+
+- id: retention-delete
+  chapter: 寫入
+  mode: write
+  title: "刪除舊資料"
+  prompt: |
+    最舊的一週資料不要了：刪除 2026-04-08（台灣時間）以前的 page_views，
+    並回傳刪掉了幾筆（一列、一個數字）。
+  hints:
+    - "WITH removed AS (DELETE … RETURNING 1) SELECT count(*) FROM removed"
+  ordered: true
+  answer: |
+    WITH removed AS (
+      DELETE FROM page_views
+      WHERE view_time < '2026-04-08 00:00+08'
+      RETURNING 1
+    )
+    SELECT count(*) FROM removed;
+  explanation: |
+    這題要好幾秒：DELETE 要一筆一筆刪、更新索引、寫 WAL，之後還要 VACUUM。實測刪 7 萬筆約 5 秒，
+    刪一個月（30 萬筆）就超過展示台的 15 秒上限。
+    ★ TimescaleDB 的做法是直接丟掉整個 chunk：SELECT drop_chunks('page_views', older_than => '2026-05-01'::timestamptz)，
+    實測丟掉 5 個 chunk 只要幾毫秒（就像 DROP TABLE），也不會留下要 VACUUM 的死資料。
+    也可以設定自動保留政策：add_retention_policy('page_views', INTERVAL '5 months')。
+    注意 drop_chunks 只會丟「整個範圍都早於條件」的 chunk，邊界那個 chunk 會留著。

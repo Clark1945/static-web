@@ -1,10 +1,8 @@
 // 寫入沙盒：可以 INSERT / UPDATE / DELETE、可以一次送多句，最後一律 ROLLBACK
 import { postJson, esc, runQuery, renderSandbox, sandboxSummary, onCtrlEnter, store } from "../../lib.js";
 
-const API = "/api/postgres";
-const DRAFT_KEY = "pg-sandbox-draft";
 
-const EXAMPLES = [
+const PG_EXAMPLES = [
   {
     label: "INSERT … RETURNING",
     sql: `INSERT INTO customers (name, email, signup_date)
@@ -60,7 +58,9 @@ RETURNING id, specs, tags;`,
   },
 ];
 
-export function mount(el) {
+/** options：api、prefix、examples（範例按鈕），TimescaleDB 頁面也共用這個模組。 */
+export function mount(el, { api: API = "/api/postgres", prefix = "pg", examples: EXAMPLES = PG_EXAMPLES } = {}) {
+  const DRAFT_KEY = `${prefix}-sandbox-draft`;
   el.innerHTML = `
     <div class="panel">
       <div>

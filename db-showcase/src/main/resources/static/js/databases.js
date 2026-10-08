@@ -28,7 +28,7 @@ export const DATABASES = [
   {
     id: "timescaledb", name: "TimescaleDB", kind: "時序", mono: "Ts", color: "#F5B800", ink: "#1E1700",
     tagline: "PostgreSQL 的時序擴充：自動依時間分區，照樣寫 SQL。",
-    status: "planned",
+    status: "ready", page: () => import("./pages/timescale/index.js"),
   },
   {
     id: "influxdb", name: "InfluxDB", kind: "時序", mono: "If", color: "#7A65F2", ink: "#FFFFFF",

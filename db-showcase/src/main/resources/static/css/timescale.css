@@ -1,0 +1,6 @@
+/* TimescaleDB 頁面：hypertable 卡片的 chunk 資訊、執行計畫
+   練習題、陷阱題、寫入沙盒沿用 postgres.css；卡片、統計、表格沿用 mongo.css、cassandra.css */
+.ts-schema { margin-top: 14px; }
+.ts-chunks { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .8rem; color: var(--muted); }
+.ts-chunks b { color: var(--ink); }
+pre.code.ts-plan { white-space: pre; overflow-x: auto; font-size: .76rem; max-height: 360px; }

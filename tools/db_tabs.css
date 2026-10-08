@@ -13,6 +13,7 @@
 .db-tabs a[data-tab="mongodb"] { --db: #13AA52; }
 .db-tabs a[data-tab="cassandra"] { --db: #1287B1; }
 .db-tabs a[data-tab="neo4j"] { --db: #018BFF; }
+.db-tabs a[data-tab="timescaledb"] { --db: #F5B800; }
 .db-tabs a:hover { color: var(--ink); }
 .db-tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--db); }
 .db-tabs a[aria-current="page"]::before { opacity: 1; }
@@ -25,6 +26,7 @@
   .db-tabs a[data-tab="mongodb"] { --db: #4FD18A; }
   .db-tabs a[data-tab="cassandra"] { --db: #5CC3E8; }
   .db-tabs a[data-tab="neo4j"] { --db: #5AA9F5; }
+  .db-tabs a[data-tab="timescaledb"] { --db: #F5C842; }
 }
 
 @media (max-width: 900px) {

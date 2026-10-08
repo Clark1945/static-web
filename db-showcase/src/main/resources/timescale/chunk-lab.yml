@@ -1,0 +1,64 @@
+# TimescaleDB 實驗室「chunk 與 chunk exclusion」的步驟。
+# 每一句會加上 EXPLAIN (ANALYZE) 在唯讀交易裡執行，頁面整理出：讀了幾個 chunk、執行時間、計畫。
+
+- id: time-range
+  title: "有時間條件 vs 沒有"
+  goal: "page_views 有 27 個 chunk（每個 7 天）。同樣算瀏覽數，一個只要 9/1 一天，一個是全部。"
+  queries:
+    - label: "A：9/1 一天"
+      sql: "SELECT count(*) FROM page_views WHERE view_time >= '2026-09-01 00:00+08' AND view_time < '2026-09-02 00:00+08'"
+    - label: "B：全部"
+      sql: "SELECT count(*) FROM page_views"
+  question: "A 和 B 各讀了幾個 chunk？"
+  takeaway: |
+    A 只讀了 1 個 chunk（0.6 ms），B 讀了全部 27 個（約 30 ms）。
+    hypertable 依時間切成 chunk，每個 chunk 記著自己的時間範圍；查詢有時間條件時，規劃器直接跳過範圍外的 chunk（chunk exclusion），
+    連索引都不必看。這就是時間序列資料庫「資料越來越多，查最近的資料還是一樣快」的原因。
+
+- id: cast-defeats
+  title: "在時間欄位上做轉型"
+  goal: "結果一樣的兩種寫法：時間範圍，或把 view_time 轉成日期再比較。"
+  queries:
+    - label: "A：view_time >= … AND view_time < …"
+      sql: "SELECT count(*) FROM page_views WHERE view_time >= '2026-09-01 00:00+08' AND view_time < '2026-09-02 00:00+08'"
+    - label: "B：view_time::date = '2026-09-01'"
+      sql: "SELECT count(*) FROM page_views WHERE view_time::date = '2026-09-01'"
+    - label: "C：date_trunc('day', view_time) = …"
+      sql: "SELECT count(*) FROM page_views WHERE date_trunc('day', view_time) = '2026-09-01 00:00+08'"
+  question: "三句的結果一樣，讀的 chunk 數一樣嗎？"
+  takeaway: |
+    A 讀 1 個 chunk（0.6 ms）；B、C 結果一樣，卻讀了全部 27 個 chunk（約 60 ms，慢了 100 倍）。
+    在時間欄位上做轉型或函式（::date、date_trunc、AT TIME ZONE）之後，規劃器沒辦法拿 chunk 的時間範圍來比，只好每個都讀。
+    ★ 一律寫成 time >= 開始 AND time < 結束 的半開區間，把運算放在「值」那一邊。
+
+- id: now-relative
+  title: "相對時間：now() - interval"
+  goal: "儀表板最常見的「最近 N 天」。now() 不是常數，看看 TimescaleDB 還能不能排除 chunk。"
+  queries:
+    - label: "A：固定時間（9/30 往前 30 天）"
+      sql: "SELECT count(*) FROM page_views WHERE view_time > '2026-10-01 00:00+08'::timestamptz - interval '30 days'"
+    - label: "B：now() - interval '30 days'（依今天的日期，結果會不一樣）"
+      sql: "SELECT count(*) FROM page_views WHERE view_time > now() - interval '30 days'"
+  question: "B 用了 now()，讀的 chunk 有沒有變少？展開執行計畫，看 Index Cond 裡多了什麼條件。"
+  takeaway: |
+    A 的時間是常數，規劃時就排除了 chunk。
+    B 也只讀了相關的 chunk：TimescaleDB 在規劃階段把 now() - interval '30 days' 先算成一個常數，
+    計畫的 Index Cond 會同時出現原本的條件和算好的時間（例如 view_time > '2026-09-08 …'），chunk 就能照樣排除。
+    （純 PostgreSQL 的分區表遇到 now() 要等到執行開始才排除分區，計畫裡看得到「Subplans Removed」。）
+    資料到 9/30 為止，B 的結果依今天的日期而定：今天距離 9/30 超過 30 天時，所有 chunk 都會被排除、回傳 0。
+    結論：儀表板常見的「最近 N 天」寫法完全沒問題，不必改成常數。
+
+- id: other-column
+  title: "只有非時間欄位的條件"
+  goal: "只看商品 540 的瀏覽數。page_views 有 (product_id, view_time DESC) 的索引，但沒有時間條件。"
+  queries:
+    - label: "A：只有 product_id"
+      sql: "SELECT count(*) FROM page_views WHERE product_id = 540"
+    - label: "B：product_id ＋ 時間範圍"
+      sql: "SELECT count(*) FROM page_views WHERE product_id = 540 AND view_time >= '2026-09-01 00:00+08'"
+  question: "A 讀了幾個 chunk？每個 chunk 怎麼找到商品 540？"
+  takeaway: |
+    A 沒有時間條件，所以 27 個 chunk 都要看，但每個 chunk 都有自己的 (product_id, view_time) 索引，每個只要查一次索引，還是很快（不到 1 ms）。
+    B 加上時間範圍，只看 5 個 chunk。
+    hypertable 上建的索引，會自動建到每一個 chunk 上；查詢時是「每個 chunk 各查一次索引」。
+    chunk 越多，沒有時間條件的查詢就要查越多次索引，所以 chunk 的大小不要切太小（建議讓最近一個 chunk 和它的索引能放進記憶體的 25%）。

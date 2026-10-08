@@ -1,11 +1,11 @@
 // 練習題：只給題目，自己寫 SQL；後端同時跑你的 SQL 與標準答案並比對結果
 import { api, postJson, esc, renderTable, runQuery, renderSandbox, sandboxSummary, store, onCtrlEnter } from "../../lib.js";
 
-const API = "/api/postgres";
-const PROGRESS_KEY = "pg-practice";
 const NO_ROWS = { columns: [], rows: [], rowCount: 0, truncated: false, elapsedMs: 0 };
 
-export function mount(el) {
+/** options：api（API 路徑）、prefix（瀏覽器儲存進度用的前綴），TimescaleDB 頁面也共用這個模組。 */
+export function mount(el, { api: API = "/api/postgres", prefix = "pg" } = {}) {
+  const PROGRESS_KEY = `${prefix}-practice`;
   el.innerHTML = `
     <div class="lab">
       <nav class="qlist" aria-label="練習題">
@@ -51,7 +51,7 @@ export function mount(el) {
     exercises = list;
     renderList();
     const firstUnsolved = exercises.find((e) => !progress.solved[e.id]) ?? exercises[0];
-    select(store.get("pg-practice-current", firstUnsolved.id));
+    select(store.get(`${prefix}-practice-current`, firstUnsolved.id));
   });
 
   function renderList() {
@@ -77,7 +77,7 @@ export function mount(el) {
 
   function select(id) {
     current = exercises.find((e) => e.id === id) ?? exercises[0];
-    store.set("pg-practice-current", current.id);
+    store.set(`${prefix}-practice-current`, current.id);
     renderList();
     $("chapter").textContent = current.chapter;
     $("title").textContent = current.title;

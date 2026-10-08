@@ -1,15 +1,15 @@
 # 資料庫面試練習庫（shop）
 
-以一間台灣電商「shop」的模擬資料（約 30 萬筆，彼此有關聯）練習各種資料庫。目前有 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j。
+以一間台灣電商「shop」的模擬資料（約 30 萬筆，彼此有關聯）練習各種資料庫。目前有 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB。
 
 ## 連線資訊
 
-| | PostgreSQL | Redis | MongoDB | Cassandra | Neo4j |
-|---|---|---|---|---|---|
-| 容器 | `pg-lab` | `redis-lab` | `mongo-lab` | `cassandra-lab` | `neo4j-lab` |
-| Host / Port | localhost:5434 | localhost:6380 | localhost:27018 | localhost:9043 | Bolt localhost:7688、Browser http://localhost:7475 |
-| 資料庫 | shop | db 0（練習資料）、db 1（批改用的隔離區） | shop（練習資料）、scratch（批改用的隔離區）、lab（實驗室） | keyspace shop（練習資料）、scratch（批改用的隔離區）、lab / lab_rf3（實驗室） | neo4j（社群版只有一個使用者資料庫） |
-| 帳號 | lab / lab | `default` / admin-lab（管理）、`learner` / learner-lab（受限） | `admin` / admin-lab（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫） | `cassandra` / cassandra（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫 shop）、`sandbox` / sandbox-lab（只能碰 scratch） | `neo4j` / neo4j-lab（社群版沒有角色權限：展示台的 Cypher 一律 ROLLBACK） |
+| | PostgreSQL | Redis | MongoDB | Cassandra | Neo4j | TimescaleDB |
+|---|---|---|---|---|---|---|
+| 容器 | `pg-lab` | `redis-lab` | `mongo-lab` | `cassandra-lab` | `neo4j-lab` | `timescale-lab` |
+| Host / Port | localhost:5434 | localhost:6380 | localhost:27018 | localhost:9043 | Bolt localhost:7688、Browser http://localhost:7475 | localhost:5435 |
+| 資料庫 | shop | db 0（練習資料）、db 1（批改用的隔離區） | shop（練習資料）、scratch（批改用的隔離區）、lab（實驗室） | keyspace shop（練習資料）、scratch（批改用的隔離區）、lab / lab_rf3（實驗室） | neo4j（社群版只有一個使用者資料庫） | metrics（hypertable：page_views、sensor_readings、orders） |
+| 帳號 | lab / lab | `default` / admin-lab（管理）、`learner` / learner-lab（受限） | `admin` / admin-lab（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫） | `cassandra` / cassandra（管理）、`reader` / reader-lab（唯讀）、`learner` / learner-lab（讀寫 shop）、`sandbox` / sandbox-lab（只能碰 scratch） | `neo4j` / neo4j-lab（社群版沒有角色權限：展示台的 Cypher 一律 ROLLBACK） | `tsadmin` / timescale-lab（管理；使用者的 SQL 一律 `SET LOCAL ROLE learner`） |
 
 ```bash
 docker exec -it pg-lab psql -U lab -d shop
@@ -31,19 +31,23 @@ docker exec -it cassandra-lab cqlsh -u learner -p learner-lab -k shop
 docker exec -it neo4j-lab cypher-shell -u neo4j -p neo4j-lab
 ```
 
-圖形介面：PostgreSQL 用 DBeaver 或 pgAdmin；Redis 用 RedisInsight；MongoDB 用 Compass；Cassandra 用 DBeaver；Neo4j 用內建的 Neo4j Browser（http://localhost:7475，結果畫成圖）。
+```bash
+docker exec -it timescale-lab psql -U tsadmin -d metrics
+```
+
+圖形介面：PostgreSQL 用 DBeaver 或 pgAdmin；Redis 用 RedisInsight；MongoDB 用 Compass；Cassandra 用 DBeaver；Neo4j 用內建的 Neo4j Browser（http://localhost:7475，結果畫成圖）；TimescaleDB 跟 PostgreSQL 一樣用 DBeaver 或 pgAdmin。
 
 ## 常用指令
 
 ```bash
-docker compose up -d          # 啟動 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j（Cassandra 要等將近一分鐘）
+docker compose up -d          # 啟動全部 6 個資料庫（Cassandra 要等將近一分鐘）
 docker compose stop           # 停止（資料保留；手動停止的容器，Docker 重啟後不會自動啟動）
 docker compose down -v        # 刪掉資料庫，下次 up 會重新產生一模一樣的資料
 ```
 
-五個容器都設定了 `restart: unless-stopped`：Docker Desktop 啟動時會自動跟著啟動。Redis 的資料是展示台啟動時才載入，所以 Docker 比展示台晚起來時，要重啟展示台。
+六個容器都設定了 `restart: unless-stopped`：Docker Desktop 啟動時會自動跟著啟動。Redis 的資料是展示台啟動時才載入，所以 Docker 比展示台晚起來時，要重啟展示台。
 
-Redis、MongoDB、Cassandra 的練習資料都是從 PostgreSQL 轉進去的：Redis 每次啟動都重新轉入（約 1 秒、4 萬個 key）；MongoDB 在 shop 是空的時候才轉入（約 3 秒、10 萬份文件）；Cassandra 在 shop 是空的時候才在背景轉入（9 張表、約 48 萬次寫入、10 秒左右），第一次啟動時展示台會先建立 keyspace、資料表與角色（約 30 秒）。Neo4j 在沒有訂單節點時才在背景轉入（10 萬個節點、46 萬條關係，約 12 秒）；追蹤關係（FOLLOWS）是用固定亂數種子產生的模擬社群資料，同一份也會寫進 PostgreSQL 的 `graphlab.follows`，給實驗室比較遞迴 CTE。都可以在頁面上按「重置資料」或「重新載入資料」。
+Redis、MongoDB、Cassandra 的練習資料都是從 PostgreSQL 轉進去的：Redis 每次啟動都重新轉入（約 1 秒、4 萬個 key）；MongoDB 在 shop 是空的時候才轉入（約 3 秒、10 萬份文件）；Cassandra 在 shop 是空的時候才在背景轉入（9 張表、約 48 萬次寫入、10 秒左右），第一次啟動時展示台會先建立 keyspace、資料表與角色（約 30 秒）。Neo4j 在沒有訂單節點時才在背景轉入（10 萬個節點、46 萬條關係，約 12 秒）；追蹤關係（FOLLOWS）是用固定亂數種子產生的模擬社群資料，同一份也會寫進 PostgreSQL 的 `graphlab.follows`，給實驗室比較遞迴 CTE。TimescaleDB 在 orders 是空的時候才載入（約 30 秒）：訂單從 PostgreSQL 複製，商品瀏覽紀錄（191 萬筆）與倉庫感測器讀數（52 萬筆）在 TimescaleDB 裡用雜湊值產生，每次都一樣。都可以在頁面上按「重置資料」或「重新載入資料」。
 
 Cassandra 的映像檔預設不需要密碼；`docker-compose.yml` 在啟動前改了設定檔，開啟 `PasswordAuthenticator` 與 `CassandraAuthorizer`，並關閉 TRUNCATE 時的自動快照。
 
@@ -92,7 +96,7 @@ erDiagram
 
 ## 展示台 APP
 
-[db-showcase/](db-showcase/) 是 Spring Boot 寫的多資料庫展示台（http://localhost:8081），目前已串接 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j。
+[db-showcase/](db-showcase/) 是 Spring Boot 寫的多資料庫展示台（http://localhost:8081），目前已串接 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB。
 
 **PostgreSQL**
 
@@ -140,7 +144,17 @@ erDiagram
 | 實驗室 | PROFILE 與索引（LabelScan vs IndexSeek、db hits、TEXT / RANGE 索引、超級節點）、圖 vs SQL（推薦、幾步內可到達幾人、最短路徑，與 PostgreSQL 實測比較） |
 | Cypher 主控台 | 所有句子在同一個交易裡執行後 ROLLBACK；擋掉 LOAD CSV、CALL dbms.*、使用者與資料庫管理 |
 
-題目內容放在 `db-showcase/src/main/resources/` 的 `postgres/`、`redis/`、`mongo/`、`cassandra/`、`neo4j/` YAML 檔，加題目不用改程式。
+**TimescaleDB**（PostgreSQL 的時序擴充；練習題、陷阱題、寫入沙盒直接共用 PostgreSQL 頁面的程式，只換 API 路徑）
+
+| 分頁 | 內容 |
+|---|---|
+| 練習題 | 18 題：time_bucket（含時區）、first / last、gapfill / locf、移動平均、連續聚合、chunk、寫入與刪除舊資料 |
+| 陷阱題 | 6 題：time_bucket 預設依 UTC、'30 days' 不是一個月、轉型讓 chunk exclusion 失效、gapfill 沒給範圍、連續聚合沒有最新資料、聚合表的 count(*) |
+| 寫入沙盒 | 多句 INSERT / UPDATE / DELETE，最後一律 ROLLBACK |
+| 實驗室 | chunk exclusion（EXPLAIN ANALYZE 看讀了幾個 chunk）、壓縮（不同 segmentby 的壓縮率與查詢速度）、連續聚合（即時聚合與 refresh） |
+| SQL 主控台 | 範例與自由查詢 |
+
+題目內容放在 `db-showcase/src/main/resources/` 的 `postgres/`、`redis/`、`mongo/`、`cassandra/`、`neo4j/`、`timescale/` YAML 檔，加題目不用改程式。
 
 ```bash
 cd db-showcase
@@ -155,7 +169,7 @@ mvn spring-boot:run
 |---|---|
 | `docs/index.html` | 首頁 |
 | `docs/cheatsheet.html` | CheatSheet：目錄、搜尋、SQL 上色、一鍵複製 |
-| `docs/question-bank.html` | 題庫：PostgreSQL、Redis、MongoDB、Cassandra、Neo4j 各一個分頁，每個分頁有練習題、陷阱題、實驗，附提示、答案與正確答案的實際執行結果 |
+| `docs/question-bank.html` | 題庫：PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB 各一個分頁，每個分頁有練習題、陷阱題、實驗，附提示、答案與正確答案的實際執行結果 |
 
 改了 `CHEATSHEET.md` 或題庫 YAML 之後，重新產生（展示台有在執行時，會順便更新執行結果）：
 

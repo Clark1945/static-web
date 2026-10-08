@@ -1905,3 +1905,186 @@ neo4j-admin database import full …                               # 離線大�
 ```
 
 - APOC：常用的工具程序（匯入匯出、批次、日期處理）；GDS：圖演算法（PageRank、最短路徑、社群偵測）
+
+# TimescaleDB
+
+> 範例都來自練習環境（`timescale-lab` 容器，port 5435，資料庫 `metrics`），可以直接貼到展示台的「SQL 主控台」執行。page_views 是 2026-04 ～ 09 的商品瀏覽紀錄（191 萬筆），sensor_readings 是 2026-09 的倉庫感測器讀數（每分鐘一筆）。
+
+## 1. ★ 基本觀念
+
+- **TimescaleDB = PostgreSQL 的擴充**：照樣寫 SQL、JOIN、交易、索引，PostgreSQL 的工具（psql、JDBC、Spring Data JPA）都能直接用
+- **hypertable**：看起來是一張表，底層依時間自動切成很多個 **chunk**（一般的 PostgreSQL 表），寫入時自動建新的 chunk
+- 時間序列資料的特性：大量寫入、幾乎只「附加在最後」、很少修改舊資料、查詢大多是「某段時間」「依時間彙總」、舊資料要降精度或刪掉
+- TimescaleDB 針對這些特性加上：**chunk exclusion**、**time_bucket** 等時間函式、**連續聚合**、**壓縮（columnstore）**、**資料保留政策**
+
+| | PostgreSQL 原生分區 | TimescaleDB hypertable |
+|---|---|---|
+| 建立分區 | 要自己（或用 pg_partman）先建好每個分區 | 寫入時自動建立 chunk |
+| 分區大小 | 自己設計 | `chunk_time_interval`（預設 7 天） |
+| 時間函式 | `date_trunc` | `time_bucket`（任意長度）、gapfill、first / last |
+| 預先彙總 | MATERIALIZED VIEW（每次整個重算） | 連續聚合（增量更新、可即時合併最新資料） |
+| 壓縮 | 沒有（只有 TOAST） | 欄式壓縮，常見 90% 以上 |
+| 刪舊資料 | DROP 分區 | `drop_chunks`、保留政策自動執行 |
+
+## 2. Hypertable 與 chunk
+
+```sql
+CREATE TABLE page_views (
+  view_time   timestamptz NOT NULL,
+  product_id  int         NOT NULL,
+  customer_id int,
+  device      text        NOT NULL
+);
+SELECT create_hypertable('page_views', by_range('view_time', INTERVAL '7 days'));   -- 2.13 起的寫法
+-- 舊寫法：SELECT create_hypertable('page_views', 'view_time', chunk_time_interval => INTERVAL '7 days');
+SELECT set_chunk_time_interval('page_views', INTERVAL '1 day');                    -- 之後新建的 chunk 生效
+
+SELECT show_chunks('page_views');
+SELECT * FROM timescaledb_information.chunks WHERE hypertable_name = 'page_views';
+SELECT hypertable_size('page_views'), approximate_row_count('page_views');
+```
+
+- ★ **chunk exclusion**：查詢有時間範圍時，只讀相關的 chunk（實驗室：9/1 一天只讀 1 / 27 個 chunk，0.6 ms；全部要 30 ms）
+- ★ 在時間欄位上做運算（`view_time::date = …`、`date_trunc('day', view_time) = …`）就無法排除 chunk，27 個全讀（慢 100 倍）；一律寫 `time >= 開始 AND time < 結束`
+- `now() - interval '7 days'` 一樣能排除 chunk：TimescaleDB 在規劃時把它先算成常數（計畫的 Index Cond 會多一個算好的時間）
+- 在 hypertable 上建的索引會自動建到每個 chunk；`create_hypertable` 預設會建 `(time DESC)` 的索引
+- ★ **唯一索引 / 主鍵一定要包含時間欄位**（每個 chunk 各自檢查唯一性）
+- chunk 大小建議：最近一個 chunk（和它的索引）能放進記憶體的 25% 左右；太小 → chunk 太多，沒有時間條件的查詢要查很多次索引；太大 → 排除效果差
+- chunk 的邊界依 UTC 對齊（7 天的 chunk 從星期四 00:00 UTC 開始）
+- 可以加第二個維度（空間分區）：`add_dimension('t', by_hash('device_id', 4))`，多數情況不需要
+
+## 3. ★ time_bucket 與時間序列函式
+
+```sql
+SELECT time_bucket('1 day', view_time, 'Asia/Taipei') AS day, count(*)       -- ★ 天以上要給時區
+FROM page_views
+WHERE view_time >= '2026-09-01 00:00+08' AND view_time < '2026-10-01 00:00+08'
+GROUP BY day ORDER BY day;
+
+SELECT time_bucket('15 minutes', time) AS t, avg(temperature) FROM sensor_readings … GROUP BY t;
+SELECT time_bucket('1 month', view_time, 'Asia/Taipei') AS month, count(*) …;   -- 依日曆月份
+SELECT time_bucket('1 week', time, 'Asia/Taipei', origin => '2000-01-02') …;     -- 從星期日開始
+
+SELECT sensor_id, first(temperature, time), last(temperature, time)            -- 依時間的第一筆 / 最後一筆
+FROM sensor_readings WHERE time >= … GROUP BY sensor_id;
+
+SELECT time_bucket_gapfill('1 hour', time) AS hour,                            -- 沒有資料的區間也列出來
+       avg(temperature),
+       locf(avg(temperature)),                                                  -- 用前一個值補
+       interpolate(avg(temperature))                                            -- 線性內插
+FROM sensor_readings
+WHERE sensor_id = 7 AND time >= '2026-09-10 08:00+08' AND time < '2026-09-10 16:00+08'
+GROUP BY hour ORDER BY hour;
+```
+
+- ★ timestamptz 的 time_bucket **預設依 UTC 切**：台灣的一天會從早上 8 點開始；`'1 day'`、`'1 week'`、`'1 month'` 都要加時區參數（資料庫的 timezone 設定不影響 time_bucket）
+- `'30 days'` ≠ 一個月：固定長度的區間從 origin（2000-01-03）開始切，跟月份對不齊
+- `'1 week'` 預設從星期一開始
+- ★ `time_bucket_gapfill` 一定要能從 WHERE 推算出開始與結束，否則報錯
+- 一般 time_bucket 只回傳「有資料」的區間，畫圖表時中間的空白會消失；監控資料常用 gapfill
+- 移動平均、與前一期比較：time_bucket 加上視窗函數（`avg() OVER (ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)`、`lag()`）
+- 進階函式（approx_percentile、time_weight、counter_agg、HyperLogLog）在 timescaledb-toolkit 擴充
+
+## 4. ★ 連續聚合（Continuous Aggregate）
+
+```sql
+CREATE MATERIALIZED VIEW sensor_hourly WITH (timescaledb.continuous) AS
+SELECT time_bucket('1 hour', time) AS hour, sensor_id,
+       avg(temperature) AS avg_temp, max(temperature) AS max_temp, count(*) AS readings
+FROM sensor_readings
+GROUP BY hour, sensor_id
+WITH NO DATA;
+
+CALL refresh_continuous_aggregate('sensor_hourly', '2026-09-01', '2026-10-01');   -- 手動 refresh 一段時間
+SELECT add_continuous_aggregate_policy('sensor_hourly',
+  start_offset => INTERVAL '3 days', end_offset => INTERVAL '1 hour', schedule_interval => INTERVAL '30 minutes');
+ALTER MATERIALIZED VIEW sensor_hourly SET (timescaledb.materialized_only = false);  -- 即時聚合
+```
+
+- 增量更新：只重算「有資料變動的時間範圍」（PostgreSQL 的 MATERIALIZED VIEW 每次整個重算）
+- ★ **2.13 起預設 `materialized_only = true`**：還沒 refresh 的最新資料查不到（陷阱題：9/24 之後是 0）
+- 即時聚合（`materialized_only = false`）：已物化的部分 + watermark 之後的原始資料即時算，資料最新，但查詢比較慢
+- 實驗室：同一份報表，原始資料 40 ms、讀連續聚合 7 ms
+- ★ 聚合後的數字再彙總：count、sum 可以再 sum；**平均值不能再平均**（存 sum 與 count，最後相除）；聚合表的 `count(*)` 是組數不是原始筆數
+- 限制：聚合要能分段計算再合併，`count(DISTINCT …)` 不能用；可以在連續聚合上再建連續聚合（分層：分鐘 → 小時 → 天）
+- 刪除原始資料（保留政策）不會刪掉已物化的聚合：常見做法是「原始資料留 30 天、每小時聚合留 2 年」
+
+## 5. ★ 壓縮（columnstore）
+
+```sql
+ALTER TABLE page_views SET (
+  timescaledb.compress,
+  timescaledb.compress_segmentby = 'device',
+  timescaledb.compress_orderby   = 'view_time DESC'
+);
+SELECT compress_chunk(c) FROM show_chunks('page_views', older_than => INTERVAL '7 days') c;
+SELECT add_compression_policy('page_views', INTERVAL '7 days');   -- 自動壓縮 7 天前的 chunk
+SELECT * FROM chunk_compression_stats('page_views');              -- 壓縮前後的大小
+-- 2.18 起也叫 columnstore：ALTER TABLE … SET (timescaledb.enable_columnstore, timescaledb.segmentby = …)、add_columnstore_policy
+```
+
+| segmentby（實驗室實測，9 月的 33 萬筆） | 壓縮率 | 說明 |
+|---|---:|---|
+| 不分組 | 7.6 倍 | |
+| `device`（3 種值） | 9.6 倍 | ★ 依裝置的查詢 45 ms → 4 ms |
+| `product_id`（1,500 種值） | 1.9 倍 | 每組只有幾列，湊不滿一批，壓縮率很差 |
+
+- 壓縮後的 chunk 改成欄式存放：每 1,000 列打包成一筆、每個欄位用適合的演算法（delta-of-delta、字典、Gorilla…）
+- ★ **segmentby** 選「常拿來過濾、值的種類不多」的欄位（裝置、感測器 id、地區）；**orderby** 通常放時間
+- 適合壓縮「不再常變動的舊資料」；壓縮後仍可 INSERT / UPDATE / DELETE（2.11 起），但成本較高
+- 只讀少數欄位的分析查詢在壓縮後通常更快（讀的資料少）；只要一兩列的點查詢可能變慢一點
+
+## 6. 資料保留
+
+```sql
+SELECT drop_chunks('page_views', older_than => '2026-05-01'::timestamptz);     -- 直接丟掉整個 chunk
+SELECT add_retention_policy('page_views', INTERVAL '6 months');                -- 自動執行
+SELECT * FROM timescaledb_information.jobs;                                    -- 所有背景工作（壓縮、refresh、保留）
+```
+
+- ★ DELETE 一筆一筆刪、寫 WAL、還要 VACUUM：實測刪 7 萬筆要 5 秒；`drop_chunks` 丟 5 個 chunk 只要幾毫秒
+- 只會丟「整個範圍都早於條件」的 chunk，邊界的 chunk 會留著
+- 常見的分層：原始資料 30 天 → 壓縮 → 保留政策刪除；連續聚合保留更久
+
+## 7. 寫入
+
+- 寫入跟一般的表一樣（INSERT、COPY、批次）；時間序列大多附加在最後，正在寫入的 chunk 小、索引在記憶體裡，所以寫入很快
+- 批次寫入：多筆 VALUES、`COPY`、JDBC batch（`reWriteBatchedInserts=true`）
+- 遲到的資料（late data）會寫進舊 chunk；已物化的連續聚合要等下一次 refresh 才會更新；寫進已壓縮的 chunk 成本較高
+- UPSERT：`INSERT … ON CONFLICT (sensor_id, time) DO UPDATE`（唯一索引要包含時間欄位）
+
+## 8. 常見陷阱
+
+| 陷阱 | 說明 |
+|---|---|
+| time_bucket 沒給時區 | 依 UTC 切，台灣的一天從早上 8 點開始，每天的數字都錯 |
+| `'30 days'` 當成一個月 | 跟月份對不齊，要用 `'1 month'` |
+| 在時間欄位上轉型 | `time::date = …` 讓 chunk exclusion 失效 |
+| gapfill 沒給範圍 | 報錯：could not infer start from WHERE clause |
+| 連續聚合查不到最新資料 | materialized_only 預設 true，要 refresh 政策或打開即時聚合 |
+| 聚合表的 count(*) | 數的是組數，要 sum(views) |
+| 平均值再平均 | 每組筆數不同時結果錯誤 |
+| 唯一索引沒有時間欄位 | 建不起來 |
+| segmentby 選了值很多的欄位 | 壓縮率很差 |
+| 用 DELETE 刪舊資料 | 慢、產生死資料；用 drop_chunks / 保留政策 |
+| chunk 切太小 | chunk 太多，規劃與沒有時間條件的查詢都變慢 |
+
+## 9. ★ 面試題速答
+
+| 問題 | 重點 |
+|---|---|
+| TimescaleDB 是什麼？ | PostgreSQL 的時序擴充：hypertable 依時間自動分 chunk，加上時間函式、連續聚合、壓縮、保留政策 |
+| 為什麼資料越來越多，查最近的資料還是快？ | chunk exclusion：只讀相關時間範圍的 chunk；最近的 chunk 和索引在記憶體裡 |
+| chunk 大小怎麼決定？ | 最近一個 chunk 能放進記憶體的 25%；依寫入量調整 chunk_time_interval |
+| 連續聚合跟物化視圖差在哪？ | 增量更新（只算變動的部分）、可以排程、可以即時合併最新資料 |
+| 壓縮怎麼設定？ | segmentby 放常過濾、值少的欄位，orderby 放時間；只壓縮舊 chunk |
+| 舊資料怎麼處理？ | 壓縮 → 降精度（連續聚合）→ drop_chunks / 保留政策 |
+| TimescaleDB vs InfluxDB？ | TimescaleDB 是 SQL、可以 JOIN 關聯資料、PostgreSQL 生態系；InfluxDB 專門為指標設計，寫入與 tag 模型更簡單 |
+| 什麼時候不需要 TimescaleDB？ | 資料量小（幾百萬筆以內）、不需要依時間大量彙總，PostgreSQL 加上 BRIN 或原生分區就夠 |
+
+## 10. Java / Spring
+
+- 就是 PostgreSQL：JDBC URL、JPA、JdbcTemplate、Flyway 都照用；hypertable 在 Flyway migration 裡用 `SELECT create_hypertable(…)` 建立
+- JPA 實體的主鍵要包含時間欄位（複合主鍵 `@IdClass` / `@EmbeddedId`），或不在 hypertable 上用 JPA，改用 JdbcTemplate
+- 大量寫入：`reWriteBatchedInserts=true` + JDBC batch，或 PostgreSQL 的 `CopyManager`（COPY）
+- time_bucket 這類函式在 JPQL 不能直接用：用原生 SQL（`@Query(nativeQuery = true)`）或 JdbcTemplate

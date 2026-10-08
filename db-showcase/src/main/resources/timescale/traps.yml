@@ -1,0 +1,138 @@
+# TimescaleDB 陷阱題：先猜結果，再執行對照（都在唯讀交易裡執行）。answer 是 options 的索引（從 0 開始）。
+
+- id: utc-bucket
+  title: "time_bucket 的「一天」從幾點開始"
+  question: "查 9/8 ～ 9/10（台灣時間）三天的每日瀏覽數。A 沒有給時區參數，會回傳幾列？"
+  sqls:
+    - label: "A：time_bucket('1 day', view_time)"
+      sql: |
+        SELECT time_bucket('1 day', view_time) AS day, count(*)
+        FROM page_views
+        WHERE view_time >= '2026-09-08 00:00+08' AND view_time < '2026-09-11 00:00+08'
+        GROUP BY day ORDER BY day;
+    - label: "B：加上 'Asia/Taipei'"
+      sql: |
+        SELECT time_bucket('1 day', view_time, 'Asia/Taipei') AS day, count(*)
+        FROM page_views
+        WHERE view_time >= '2026-09-08 00:00+08' AND view_time < '2026-09-11 00:00+08'
+        GROUP BY day ORDER BY day;
+  options:
+    - "3 列，跟 B 一樣"
+    - "4 列：依 UTC 切，每一天從台灣時間早上 8 點開始，頭尾各切出一段"
+    - "報錯：timestamptz 一定要給時區"
+  answer: 1
+  explanation: |
+    timestamptz 的 time_bucket 預設依 UTC 切：台灣時間的「一天」被切成兩段（00:00～08:00 屬於前一個 UTC 日）。
+    結果多出一列，而且每一天的數字都不對（9/9 購物節的 3 倍流量被分到兩天）。
+    只要區間是「天、週、月」，就一定要加時區參數；資料庫的 timezone 設定不會影響 time_bucket。
+
+- id: thirty-days
+  title: "'30 days' 等於一個月嗎"
+  question: "time_bucket('30 days', view_time, 'Asia/Taipei') 每段的開始日期是每個月 1 號嗎？"
+  sqls:
+    - label: "A：'30 days'"
+      sql: |
+        SELECT time_bucket('30 days', view_time, 'Asia/Taipei') AS bucket, count(*)
+        FROM page_views GROUP BY bucket ORDER BY bucket;
+    - label: "B：'1 month'"
+      sql: |
+        SELECT time_bucket('1 month', view_time, 'Asia/Taipei') AS bucket, count(*)
+        FROM page_views GROUP BY bucket ORDER BY bucket;
+  options:
+    - "不是：從固定的起點每 30 天切一段，開始日期是 3/17、4/16…，而且分成 7 段"
+    - "是，30 days 會自動對齊每個月"
+  answer: 0
+  explanation: |
+    固定長度的區間（'30 days'）從起點（origin，預設 2000-01-03）開始每 30 天切一段，跟日曆月份對不齊，
+    頭尾還會各多出半段。要依月份統計就用 '1 month'（time_bucket 支援以月、年為單位的區間）。
+
+- id: chunk-exclusion
+  title: "在時間欄位上做轉型"
+  question: "兩句都只要 9/1 那一天的資料。B 在 view_time 上做了 ::date 轉型，B 的執行計畫會讀幾個 chunk？"
+  sqls:
+    - label: "A：時間範圍"
+      sql: |
+        EXPLAIN (COSTS OFF)
+        SELECT count(*) FROM page_views
+        WHERE view_time >= '2026-09-01 00:00+08' AND view_time < '2026-09-02 00:00+08';
+    - label: "B：view_time::date ="
+      sql: |
+        EXPLAIN (COSTS OFF)
+        SELECT count(*) FROM page_views
+        WHERE view_time::date = '2026-09-01';
+  options:
+    - "1 個，跟 A 一樣"
+    - "2 個（跨了兩個 chunk）"
+    - "全部 27 個：轉型之後無法判斷 chunk 的範圍，每個 chunk 都要讀"
+  answer: 2
+  explanation: |
+    chunk exclusion（只讀相關的 chunk）靠的是「時間欄位本身」的範圍條件。在欄位上做轉型或函式（::date、date_trunc(…)、AT TIME ZONE）
+    之後，規劃器就沒辦法用 chunk 的時間範圍排除，只好每個 chunk 都讀一遍。跟一般索引失效的道理一樣。
+    ★ 一律寫成 time >= 開始 AND time < 結束 的半開區間。
+
+- id: gapfill-range
+  title: "time_bucket_gapfill 沒有給範圍"
+  question: "WHERE 裡沒有時間範圍，time_bucket_gapfill 會怎樣？"
+  sqls:
+    - label: "沒有時間範圍的 gapfill"
+      sql: |
+        SELECT time_bucket_gapfill('1 hour', time) AS hour, avg(temperature)
+        FROM sensor_readings
+        WHERE sensor_id = 7
+        GROUP BY hour;
+  options:
+    - "自動用資料的最早、最晚時間當範圍"
+    - "只回傳有資料的時段，跟 time_bucket 一樣"
+    - "報錯：要從 WHERE 推算開始與結束，推算不出來就失敗"
+  answer: 2
+  explanation: |
+    gapfill 要知道「從哪裡補到哪裡」，所以 WHERE 一定要有時間欄位的開始與結束條件（或在函式參數直接給 start、finish）。
+    錯誤訊息：missing time_bucket_gapfill argument: could not infer start from WHERE clause。
+
+- id: cagg-stale
+  title: "連續聚合沒有最新的資料"
+  question: "page_views 在 9/24 之後還有 7 萬多筆瀏覽。從連續聚合 page_views_daily 查 9/24 之後的瀏覽數，會得到多少？"
+  sqls:
+    - label: "A：從連續聚合查"
+      sql: |
+        SELECT coalesce(sum(views), 0) AS views
+        FROM page_views_daily
+        WHERE day >= '2026-09-24 00:00+08';
+    - label: "B：從原始資料查"
+      sql: |
+        SELECT count(*) AS views
+        FROM page_views
+        WHERE view_time >= '2026-09-24 00:00+08';
+  options:
+    - "跟 B 一樣：連續聚合會自動包含最新的資料"
+    - "0：還沒 refresh 的區間不在連續聚合裡"
+    - "報錯"
+  answer: 1
+  explanation: |
+    page_views_daily 只 refresh 到 9/24。TimescaleDB 2.13 起，新建的連續聚合預設 materialized_only = true：只回傳已經物化的資料。
+    實務上會加上 refresh 政策：add_continuous_aggregate_policy('page_views_daily', start_offset => …, end_offset => …, schedule_interval => …)，
+    或打開即時聚合：ALTER MATERIALIZED VIEW page_views_daily SET (timescaledb.materialized_only = false)
+    （查詢時把「還沒物化的部分」從原始資料即時算出來合併，實驗室有示範）。
+
+- id: cagg-count-rows
+  title: "連續聚合的 count(*)"
+  question: "page_views_daily 是「每天 × 每件商品」一列。查 9/1 ～ 9/22 的 count(*) 跟 sum(views)，哪一個等於這段期間的瀏覽數？"
+  sqls:
+    - label: "從連續聚合查"
+      sql: |
+        SELECT count(*) AS rows, sum(views) AS views
+        FROM page_views_daily
+        WHERE day >= '2026-09-01 00:00+08' AND day < '2026-09-23 00:00+08';
+    - label: "從原始資料查（正確答案）"
+      sql: |
+        SELECT count(*) AS views
+        FROM page_views
+        WHERE view_time >= '2026-09-01 00:00+08' AND view_time < '2026-09-23 00:00+08';
+  options:
+    - "sum(views)"
+    - "count(*)"
+    - "兩個都一樣"
+  answer: 0
+  explanation: |
+    聚合表的一列已經是「一組」的結果，count(*) 數的是組數（3 萬多組：天數 × 有被瀏覽的商品），不是原始的瀏覽數。
+    要把聚合後的數字再彙總，用 sum(views)。同理，平均值不能再取平均：要存 sum 與 count，最後再相除。

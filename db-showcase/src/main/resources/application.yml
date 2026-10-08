@@ -46,4 +46,8 @@ showcase:
     uri: bolt://localhost:7688
     user: neo4j
     password: neo4j-lab
+  timescale:                      # timescale-lab 容器（TimescaleDB 2.22 / PostgreSQL 16）
+    url: jdbc:postgresql://localhost:5435/metrics
+    user: tsadmin                 # 超級使用者：建結構、載入資料、實驗室；使用者的 SQL 一律 SET LOCAL ROLE learner
+    password: timescale-lab
   # 之後串接其他資料庫時，各自的設定加在這裡

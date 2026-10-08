@@ -5,16 +5,19 @@
 .bank[data-db="mongodb"] { --accent: #0F7A3C; --accent-soft: #E1F3E8; }
 .bank[data-db="cassandra"] { --accent: #0F6E93; --accent-soft: #E0F0F6; }
 .bank[data-db="neo4j"] { --accent: #0A6BC2; --accent-soft: #E1EEFA; }
+.bank[data-db="timescaledb"] { --accent: #946B00; --accent-soft: #FBF1D6; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .bank[data-db="redis"] { --accent: #FF7B6E; --accent-soft: #3A1A17; }
   :root:not([data-theme="light"]) .bank[data-db="mongodb"] { --accent: #4FD18A; --accent-soft: #123222; }
   :root:not([data-theme="light"]) .bank[data-db="cassandra"] { --accent: #5CC3E8; --accent-soft: #10303D; }
   :root:not([data-theme="light"]) .bank[data-db="neo4j"] { --accent: #5AA9F5; --accent-soft: #10273D; }
+  :root:not([data-theme="light"]) .bank[data-db="timescaledb"] { --accent: #F5C842; --accent-soft: #33290A; }
 }
 :root[data-theme="dark"] .bank[data-db="redis"] { --accent: #FF7B6E; --accent-soft: #3A1A17; }
 :root[data-theme="dark"] .bank[data-db="mongodb"] { --accent: #4FD18A; --accent-soft: #123222; }
 :root[data-theme="dark"] .bank[data-db="cassandra"] { --accent: #5CC3E8; --accent-soft: #10303D; }
 :root[data-theme="dark"] .bank[data-db="neo4j"] { --accent: #5AA9F5; --accent-soft: #10273D; }
+:root[data-theme="dark"] .bank[data-db="timescaledb"] { --accent: #F5C842; --accent-soft: #33290A; }
 
 /* 題型切換（練習題 / 陷阱題 / 實驗） */
 .kinds { display: inline-flex; gap: 4px; padding: 4px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); justify-self: start; max-width: 100%; overflow-x: auto; }
