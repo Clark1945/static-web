@@ -1,10 +1,11 @@
 # 資料庫練習環境（與 anime-tagger 的資料庫完全分開）
-# 啟動：docker compose up -d
+# 啟動：docker compose up -d（之後 Docker Desktop 啟動時，這些容器會自動跟著啟動）
 # 重建 PostgreSQL 資料：docker compose down -v && docker compose up -d
 services:
   db:
     image: pgvector/pgvector:pg16   # 本機已有的 PostgreSQL 16 映像，免下載
     container_name: pg-lab
+    restart: unless-stopped        # Docker 啟動時自動跟著啟動（手動 stop 的除外）
     environment:
       POSTGRES_USER: lab
       POSTGRES_PASSWORD: lab
@@ -20,6 +21,7 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: redis-lab
+    restart: unless-stopped        # Docker 啟動時自動跟著啟動（手動 stop 的除外）
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     ports:
       - "6380:6379"                  # 6379 留給本機可能另外安裝的 Redis
@@ -29,6 +31,7 @@ services:
   mongo:
     image: mongo:8.0
     container_name: mongo-lab
+    restart: unless-stopped        # Docker 啟動時自動跟著啟動（手動 stop 的除外）
     # --noscripting：關閉伺服器端 JavaScript（$where、$function、$accumulator 都不能用）
     command: ["mongod", "--noscripting"]
     environment:
@@ -43,6 +46,7 @@ services:
   cassandra:
     image: cassandra:5.0
     container_name: cassandra-lab
+    restart: unless-stopped        # Docker 啟動時自動跟著啟動（手動 stop 的除外）
     # 啟動前改設定檔：開啟帳號密碼與權限（預設是誰都能做任何事）、TRUNCATE / DROP 不留快照
     entrypoint: ["bash", "-c"]
     command:
@@ -72,6 +76,7 @@ services:
   neo4j:
     image: neo4j:5.26-community
     container_name: neo4j-lab
+    restart: unless-stopped        # Docker 啟動時自動跟著啟動（手動 stop 的除外）
     environment:
       NEO4J_AUTH: neo4j/neo4j-lab
       # 社群版沒有角色權限，所以展示台把使用者的 Cypher 一律放在交易裡執行後 ROLLBACK；

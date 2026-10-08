@@ -37,9 +37,11 @@ docker exec -it neo4j-lab cypher-shell -u neo4j -p neo4j-lab
 
 ```bash
 docker compose up -d          # 啟動 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j（Cassandra 要等將近一分鐘）
-docker compose stop           # 停止（資料保留）
+docker compose stop           # 停止（資料保留；手動停止的容器，Docker 重啟後不會自動啟動）
 docker compose down -v        # 刪掉資料庫，下次 up 會重新產生一模一樣的資料
 ```
+
+五個容器都設定了 `restart: unless-stopped`：Docker Desktop 啟動時會自動跟著啟動。Redis 的資料是展示台啟動時才載入，所以 Docker 比展示台晚起來時，要重啟展示台。
 
 Redis、MongoDB、Cassandra 的練習資料都是從 PostgreSQL 轉進去的：Redis 每次啟動都重新轉入（約 1 秒、4 萬個 key）；MongoDB 在 shop 是空的時候才轉入（約 3 秒、10 萬份文件）；Cassandra 在 shop 是空的時候才在背景轉入（9 張表、約 48 萬次寫入、10 秒左右），第一次啟動時展示台會先建立 keyspace、資料表與角色（約 30 秒）。Neo4j 在沒有訂單節點時才在背景轉入（10 萬個節點、46 萬條關係，約 12 秒）；追蹤關係（FOLLOWS）是用固定亂數種子產生的模擬社群資料，同一份也會寫進 PostgreSQL 的 `graphlab.follows`，給實驗室比較遞迴 CTE。都可以在頁面上按「重置資料」或「重新載入資料」。
 
