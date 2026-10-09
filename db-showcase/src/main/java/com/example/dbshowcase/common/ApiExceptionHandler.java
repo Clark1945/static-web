@@ -55,4 +55,11 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, String>> cassandra(com.datastax.oss.driver.api.core.DriverException e) {
         return ResponseEntity.badRequest().body(Map.of("error", com.example.dbshowcase.cassandra.CqlShell.describe(e)));
     }
+
+    /** Elasticsearch 連不上（容器沒啟動，或還在啟動中）。 */
+    @ExceptionHandler(com.example.dbshowcase.elastic.EsClient.UnavailableException.class)
+    public ResponseEntity<Map<String, String>> elasticDown(com.example.dbshowcase.elastic.EsClient.UnavailableException e) {
+        return ResponseEntity.status(503).body(Map.of("error",
+                e.getMessage() + "\n請確認 es-lab 容器有在執行（docker compose up -d elasticsearch），剛啟動的話要等半分鐘左右。"));
+    }
 }

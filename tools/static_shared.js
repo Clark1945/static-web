@@ -95,6 +95,23 @@ function highlightCypher(text) {
   return out + esc(text.slice(last));
 }
 
+/** Elasticsearch（Kibana Dev Tools 寫法）：方法 + 路徑、# 註解、JSON 的 key / 字串 / 數字。 */
+function highlightES(text) {
+  const TOKEN = /^(\s*)(GET|POST|PUT|DELETE|HEAD)(\s+)(\S+)|(^\s*#[^\n]*)|("(?:[^"\\]|\\.)*")(\s*:)?|(\b(?:true|false|null)\b)|(-?\b\d+(?:\.\d+)?\b)/gm;
+  let out = "", last = 0, m;
+  while ((m = TOKEN.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    const [tok, indent, method, gap, path, cmt, str, colon, lit, num] = m;
+    if (method) out += `${esc(indent)}<span class="hl-kw">${method}</span>${esc(gap)}<span class="hl-fn">${esc(path)}</span>`;
+    else if (cmt) out += `<span class="hl-cmt">${esc(tok)}</span>`;
+    else if (str) out += colon ? `<span class="hl-op">${esc(str)}</span>${esc(colon)}` : `<span class="hl-str">${esc(str)}</span>`;
+    else if (lit) out += `<span class="hl-kw">${esc(tok)}</span>`;
+    else if (num) out += `<span class="hl-num">${esc(tok)}</span>`;
+    last = m.index + tok.length;
+  }
+  return out + esc(text.slice(last));
+}
+
 /** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
 function enhanceCode(root) {
   root.querySelectorAll("pre.code").forEach((pre) => {
@@ -106,6 +123,7 @@ function enhanceCode(root) {
     else if (pre.dataset.lang === "mongo") code.innerHTML = highlightMongo(raw);
     else if (pre.dataset.lang === "cql") code.innerHTML = highlightSQL(raw, CQL_KEYWORDS);
     else if (pre.dataset.lang === "cypher") code.innerHTML = highlightCypher(raw);
+    else if (pre.dataset.lang === "es") code.innerHTML = highlightES(raw);
     else if (pre.dataset.lang === "sql" || pre.dataset.lang === undefined && !pre.closest(".doc")) code.innerHTML = highlightSQL(raw);
     const btn = document.createElement("button");
     btn.type = "button";

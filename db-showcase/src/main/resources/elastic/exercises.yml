@@ -1,0 +1,617 @@
+# Elasticsearch 練習題：Kibana Dev Tools 寫法（GET /索引/_search 加上 JSON）。
+# 查詢題用 reader（唯讀）直接在練習資料執行，比對最後一個請求的回應：
+#   有 hits 時比對 _id（ordered: false 時順序不拘），有 aggregations 時比對聚合結果（聚合名稱自己取），_count 比對數字。
+# 寫入題（有 fixture）在 scratch_* 副本上用 learner 執行，再用 check 請求比對資料狀態。
+# 時間一律寫成台灣時間（+08:00）。
+
+# ================================================================ 查詢基礎
+
+- id: get-doc
+  chapter: 查詢基礎
+  title: "用 _id 取得一份文件"
+  prompt: |
+    取得 products 索引裡 _id 為 806 的商品。
+  hints:
+    - "GET /索引/_doc/_id"
+  answer: |
+    GET /products/_doc/806
+  explanation: |
+    用 _id 取得文件是「即時」的（realtime GET）：就算剛寫入、還沒 refresh，也拿得到（_search 就不一定，見實驗室）。
+    回應裡的 _version、_seq_no、_primary_term 用來做樂觀鎖（if_seq_no / if_primary_term）。
+
+- id: match-basic
+  chapter: 查詢基礎
+  title: "全文檢索：match"
+  prompt: |
+    商品描述（description）裡提到「降噪」的商品，依相關性排序，取前 5 筆。
+  hints:
+    - "GET /products/_search，body 用 { \"size\": 5, \"query\": { \"match\": { 欄位: 文字 } } }"
+  answer: |
+    GET /products/_search
+    {
+      "size": 5,
+      "query": { "match": { "description": "降噪" } }
+    }
+  explanation: |
+    match 會先用欄位的分析器（description 是 cjk）把「降噪」分析成詞，再到倒排索引找含有這些詞的文件，用 BM25 算相關性分數（_score）。
+    分數一樣時，依文件在索引裡的順序排列。回應的 hits.total 是符合的總數（超過 1 萬時預設只回報「≥ 10000」）。
+
+- id: term-keyword
+  chapter: 查詢基礎
+  title: "精確比對：term"
+  prompt: |
+    品牌（brand）是 Sony 的商品有幾件？用 _count 回傳數量。
+  hints:
+    - "brand 是 keyword 型別：整個值原封不動存成一個詞，用 term 精確比對。"
+    - "GET /products/_count { \"query\": { \"term\": { … } } }"
+  answer: |
+    GET /products/_count
+    {
+      "query": { "term": { "brand": "Sony" } }
+    }
+  explanation: |
+    term 不會分析查詢文字，直接拿「Sony」去倒排索引找；keyword 欄位存的也是原本的「Sony」，所以對得上。
+    ★ 對 text 欄位用 term 常常找不到：text 欄位存的是分析後的詞（小寫、切開），例如 name 裡存的是「sony」（陷阱題有示範）。
+
+- id: bool-filter
+  chapter: 查詢基礎
+  title: "bool + filter：多個條件"
+  prompt: |
+    類別（category）是「無線耳機」、價格 3000～6000（含）、標籤（tags）有「熱銷」的商品，依價格由低到高全部列出。
+  hints:
+    - "bool 的 filter 放「是或不是」的條件：不計分、可以快取。"
+    - "價格用 range：{ \"range\": { \"price\": { \"gte\": 3000, \"lte\": 6000 } } }"
+    - "排序：\"sort\": [{ \"price\": \"asc\" }]"
+  answer: |
+    GET /products/_search
+    {
+      "query": {
+        "bool": {
+          "filter": [
+            { "term": { "category": "無線耳機" } },
+            { "range": { "price": { "gte": 3000, "lte": 6000 } } },
+            { "term": { "tags": "熱銷" } }
+          ]
+        }
+      },
+      "sort": [{ "price": "asc" }]
+    }
+  explanation: |
+    bool 有四種子句：must（要符合、計分）、filter（要符合、不計分）、should（加分；沒有 must / filter 時至少要符合一個）、must_not（不能符合、不計分）。
+    ★ 不需要相關性的條件（類別、價格、狀態、時間）一律放 filter：不用算分數，而且結果會被快取，重複查詢更快。
+    tags 是 keyword 陣列，term 只要陣列裡有一個值符合就算符合。
+
+- id: time-range
+  chapter: 查詢基礎
+  title: "時間範圍 + 數值範圍"
+  prompt: |
+    logs 裡，2026-09-18 14:00 到 14:40（台灣時間，不含 14:40）之間，status 大於等於 500 的紀錄有幾筆？
+  hints:
+    - "時間可以直接寫 ISO 8601 加時區：\"2026-09-18T14:00:00+08:00\""
+    - "兩個 range 都放在 bool 的 filter。"
+  answer: |
+    GET /logs/_count
+    {
+      "query": {
+        "bool": {
+          "filter": [
+            { "range": { "@timestamp": { "gte": "2026-09-18T14:00:00+08:00", "lt": "2026-09-18T14:40:00+08:00" } } },
+            { "range": { "status": { "gte": 500 } } }
+          ]
+        }
+      }
+    }
+  explanation: |
+    date 欄位在 Elasticsearch 裡存成 UTC 的毫秒數；查詢時寫上時區（+08:00），或用 range 的 "time_zone" 參數。
+    這 40 分鐘就是金流的事故時段：付款逾時（504）與下單失敗（500）。
+
+- id: sort-source
+  chapter: 查詢基礎
+  title: "排序與只回傳部分欄位"
+  prompt: |
+    評分（rating）最高的 5 件商品；評分相同時，評論數（review_count）多的排前面；評論數也相同時，價格低的排前面。
+    只回傳 name、rating、review_count 三個欄位。
+  hints:
+    - "\"sort\": [{ \"rating\": \"desc\" }, { \"review_count\": \"desc\" }, …]"
+    - "\"_source\": [\"name\", \"rating\", \"review_count\"] 只回傳這些欄位。"
+  answer: |
+    GET /products/_search
+    {
+      "size": 5,
+      "_source": ["name", "rating", "review_count"],
+      "sort": [
+        { "rating": "desc" },
+        { "review_count": "desc" },
+        { "price": "asc" }
+      ]
+    }
+  explanation: |
+    有 sort 時就不算相關性分數（_score 是 null），依欄位值排序（用 doc values，欄式儲存）。
+    ★ 評分 5.0 的商品可能只有 1 則評論。實務上的「熱門排序」會把評論數也考慮進去（例如貝氏平均），或用 function_score 調整分數。
+
+# ================================================================ 全文檢索
+
+- id: analyze-cjk
+  chapter: 全文檢索與分析器
+  title: "看分析器切出哪些詞"
+  prompt: |
+    用 cjk 分析器分析「主動降噪耳機」，看看它切出了哪些詞。
+  hints:
+    - "POST /_analyze { \"analyzer\": \"cjk\", \"text\": \"…\" }"
+  answer: |
+    POST /_analyze
+    {
+      "analyzer": "cjk",
+      "text": "主動降噪耳機"
+    }
+  explanation: |
+    cjk 分析器把中日韓文字兩個字一組（bigram）：主動、動降、降噪、噪耳、耳機。
+    standard 分析器則是一個字一個詞（主、動、降、噪、耳、機），「降噪」會被拆開，搜尋時容易找到一堆不相干的文件。
+    兩種都不是真的「斷詞」：中文斷詞要用外掛（IK、smartcn、jieba），才能切出「主動 / 降噪 / 耳機」。
+    也可以指定索引的欄位：POST /products/_analyze { "field": "name", "text": "…" }，會用那個欄位設定的分析器。
+
+- id: match-and
+  chapter: 全文檢索與分析器
+  title: "所有詞都要出現：operator and"
+  prompt: |
+    評論內容（content）同時提到「音質」和「降噪」的評論有幾筆？
+  hints:
+    - "match 預設是 OR：任何一個詞符合就算。"
+    - "{ \"match\": { \"content\": { \"query\": \"音質 降噪\", \"operator\": \"and\" } } }"
+  answer: |
+    GET /reviews/_count
+    {
+      "query": {
+        "match": { "content": { "query": "音質 降噪", "operator": "and" } }
+      }
+    }
+  explanation: |
+    match 預設 operator 是 or：「音質 降噪」只要有「音質」或「降噪」任一個就符合，結果多很多。
+    operator and 要每個詞都出現；中間地帶用 minimum_should_match（例如 "75%"、"2"）。
+
+- id: match-phrase
+  chapter: 全文檢索與分析器
+  title: "片語：match_phrase"
+  prompt: |
+    內容裡有完整片語「通勤戴很舒服」的評論有幾筆？
+  hints:
+    - "match_phrase：每個詞都要出現，而且順序、位置要相鄰。"
+  answer: |
+    GET /reviews/_count
+    {
+      "query": { "match_phrase": { "content": "通勤戴很舒服" } }
+    }
+  explanation: |
+    match 只要任何一個詞（通勤、勤戴、戴很、很舒、舒服）出現就符合，會找到兩千多筆；match_phrase 要求這些詞依序相鄰，才是真正含有這句話的評論。
+    倒排索引除了記錄「哪些文件有這個詞」，還記錄詞在文件裡的位置（position），match_phrase 就是用位置判斷。
+    slop 參數可以容許中間隔幾個詞。
+
+- id: multi-match
+  chapter: 全文檢索與分析器
+  title: "多個欄位 + 權重"
+  prompt: |
+    搜尋「Sony 耳機」：同時搜 name 與 description，name 的權重是 description 的 3 倍，取前 5 筆。
+  hints:
+    - "multi_match 的 fields 可以寫 \"name^3\" 表示乘上 3 倍。"
+  answer: |
+    GET /products/_search
+    {
+      "size": 5,
+      "query": {
+        "multi_match": {
+          "query": "Sony 耳機",
+          "fields": ["name^3", "description"]
+        }
+      }
+    }
+  explanation: |
+    multi_match 預設是 best_fields：每個欄位各算一次分數，取最高的那個（再加上其他欄位的 tie_breaker 倍）。
+    其他類型：most_fields（各欄位分數相加）、cross_fields（把多個欄位當成一個大欄位，適合姓、名分開存的情況）、phrase。
+    權重（boost）是調整相關性最常用的工具：標題、名稱通常比內文重要。
+
+- id: fuzzy
+  chapter: 全文檢索與分析器
+  title: "打錯字也找得到：fuzziness"
+  prompt: |
+    使用者把 Samsung 打成「Samsng」。用 match 搭配 fuzziness（"AUTO"）在 name 欄位搜尋，有幾件商品？
+  hints:
+    - "{ \"match\": { \"name\": { \"query\": \"Samsng\", \"fuzziness\": \"AUTO\" } } }"
+  answer: |
+    GET /products/_count
+    {
+      "query": {
+        "match": { "name": { "query": "Samsng", "fuzziness": "AUTO" } }
+      }
+    }
+  explanation: |
+    fuzziness 用編輯距離（Levenshtein）找相近的詞：samsng → samsung 只差插入一個字母（距離 1）。
+    AUTO：1～2 個字元不容許錯、3～5 個字元容許 1 個、更長容許 2 個。
+    ★ 對中文的 bigram 幫助不大（兩個字的詞錯一個字就是另一個詞）；中文的錯字、同音字通常靠同義詞表或拼音外掛。
+
+- id: should-minimum
+  chapter: 全文檢索與分析器
+  title: "至少符合其中幾個：minimum_should_match"
+  prompt: |
+    評論內容提到「音質」「續航」「降噪」這三個詞「至少兩個」的評論有幾筆？
+  hints:
+    - "bool 的 should 放三個 match_phrase，再加上 \"minimum_should_match\": 2"
+  answer: |
+    GET /reviews/_count
+    {
+      "query": {
+        "bool": {
+          "should": [
+            { "match_phrase": { "content": "音質" } },
+            { "match_phrase": { "content": "續航" } },
+            { "match_phrase": { "content": "降噪" } }
+          ],
+          "minimum_should_match": 2
+        }
+      }
+    }
+  explanation: |
+    should 預設是「加分」：符合越多分數越高。沒有 must / filter 時至少要符合一個；加上 minimum_should_match 就變成「至少符合幾個」。
+    寫成 match 也可以：「音質」「續航」「降噪」都是兩個字，cjk 分析出來剛好就是一個詞。
+
+# ================================================================ 聚合
+
+- id: terms-agg
+  chapter: 聚合
+  title: "分組計數：terms"
+  prompt: |
+    商品數最多的 5 個品牌（brand），以及各自的商品數。只要聚合結果，不需要文件（size: 0）。
+  hints:
+    - "\"aggs\": { \"by_brand\": { \"terms\": { \"field\": \"brand\", \"size\": 5 } } }"
+  answer: |
+    GET /products/_search
+    {
+      "size": 0,
+      "aggs": {
+        "by_brand": { "terms": { "field": "brand", "size": 5 } }
+      }
+    }
+  explanation: |
+    terms 聚合 ≈ SQL 的 GROUP BY … ORDER BY count(*) DESC LIMIT 5。預設依 doc_count 由多到少，數量相同時依 key 排序。
+    ★ 分片很多時 terms 的數量是近似值：每個分片先各自取前 shard_size 名再合併，可能漏算（doc_count_error_upper_bound 就是可能的誤差）。
+    terms 只能用在 keyword、數字這類有 doc values 的欄位；text 欄位不行（要用它的 .keyword 子欄位）。
+
+- id: avg-by-category
+  chapter: 聚合
+  title: "分組平均 + 依子聚合排序"
+  prompt: |
+    每個類別（category）的平均價格，依平均價格由高到低排序（全部類別，共 19 個）。
+  hints:
+    - "terms 裡面再放一個 avg 子聚合。"
+    - "terms 的 \"order\": { \"子聚合名稱\": \"desc\" } 可以依子聚合的值排序。"
+  answer: |
+    GET /products/_search
+    {
+      "size": 0,
+      "aggs": {
+        "by_category": {
+          "terms": { "field": "category", "size": 30, "order": { "avg_price": "desc" } },
+          "aggs": {
+            "avg_price": { "avg": { "field": "price" } }
+          }
+        }
+      }
+    }
+  explanation: |
+    聚合可以一層一層巢狀：外層分組（bucket aggregation：terms、date_histogram、range…），內層計算（metric aggregation：avg、sum、max、percentiles、cardinality…）。
+    依子聚合排序在分片多的時候誤差更大（每個分片的前幾名不一定是整體的前幾名）。
+
+- id: orders-per-day
+  chapter: 聚合
+  title: "依時間分組：date_histogram"
+  prompt: |
+    2026 年 9 月 1 日到 9 月 7 日（台灣時間，7 天）每天的訂單數。
+  hints:
+    - "先用 range 篩出這 7 天，再用 date_histogram 的 calendar_interval: day。"
+    - "date_histogram 加上 \"time_zone\": \"+08:00\"，一天才會從台灣時間 0 點開始。"
+  answer: |
+    GET /orders/_search
+    {
+      "size": 0,
+      "query": {
+        "range": { "order_date": { "gte": "2026-09-01T00:00:00+08:00", "lt": "2026-09-08T00:00:00+08:00" } }
+      },
+      "aggs": {
+        "per_day": {
+          "date_histogram": { "field": "order_date", "calendar_interval": "day", "time_zone": "+08:00" }
+        }
+      }
+    }
+  explanation: |
+    date_histogram ≈ TimescaleDB 的 time_bucket：calendar_interval（day、week、month，依日曆）或 fixed_interval（1h、10m，固定長度）。
+    ★ 沒有 time_zone 時依 UTC 切，台灣的一天從早上 8 點開始，每天的數字都錯（跟 time_bucket 一樣的陷阱）。
+    Kibana 的長條圖、折線圖背後就是 date_histogram。
+
+- id: p95-latency
+  chapter: 聚合
+  title: "各服務的 P95 延遲"
+  prompt: |
+    logs 裡每個服務（service）的請求數與 latency_ms 的第 95 百分位數（P95）。服務依請求數由多到少，全部列出（7 個）。
+  hints:
+    - "terms 子聚合放 percentiles：{ \"percentiles\": { \"field\": \"latency_ms\", \"percents\": [95] } }"
+  answer: |
+    GET /logs/_search
+    {
+      "size": 0,
+      "aggs": {
+        "by_service": {
+          "terms": { "field": "service", "size": 10 },
+          "aggs": {
+            "p95": { "percentiles": { "field": "latency_ms", "percents": [95] } }
+          }
+        }
+      }
+    }
+  explanation: |
+    監控看的是 P95、P99，不是平均：平均值會被大量的快速請求拉低，看不出「少數使用者等很久」。
+    payment 的 P95 將近 30 秒，就是 9/18 那次事故的逾時拖出來的。
+    percentiles 是近似值（TDigest 演算法），用很少的記憶體算出很準的百分位數。
+
+- id: incident-hours
+  chapter: 聚合
+  title: "找出事故：每小時的 5xx"
+  prompt: |
+    9 月裡 status ≥ 500 的紀錄，依小時分組（台灣時間），只列出超過 20 筆的小時（min_doc_count: 21）。
+  hints:
+    - "query 用 range 篩 status，aggs 用 date_histogram（fixed_interval: 1h，time_zone: +08:00，min_doc_count: 21）。"
+  answer: |
+    GET /logs/_search
+    {
+      "size": 0,
+      "query": { "range": { "status": { "gte": 500 } } },
+      "aggs": {
+        "per_hour": {
+          "date_histogram": {
+            "field": "@timestamp",
+            "fixed_interval": "1h",
+            "time_zone": "+08:00",
+            "min_doc_count": 21
+          }
+        }
+      }
+    }
+  explanation: |
+    兩個事故一目了然：9/18 14 點（金流逾時）與 9/25 凌晨 3 點（購物車連不上 Redis）。
+    min_doc_count 預設是 0（沒有資料的區間也會列出來，畫圖時才不會斷掉）；找異常時調高它，只看「量很大」的區間。
+
+- id: top-404-ip
+  chapter: 聚合
+  title: "誰在掃描網站"
+  prompt: |
+    status 是 404 的紀錄裡，次數最多的 3 個 IP 與次數。
+  hints:
+    - "ip 欄位是 ip 型別，也可以用 terms 聚合。"
+  answer: |
+    GET /logs/_search
+    {
+      "size": 0,
+      "query": { "term": { "status": 404 } },
+      "aggs": {
+        "top_ip": { "terms": { "field": "ip", "size": 3 } }
+      }
+    }
+  explanation: |
+    198.51.100.66 一個 IP 就有一千五百多次 404（9/12 凌晨在找 /.env、/wp-login.php 這類網址），一般使用者只有個位數。
+    這就是 SIEM（資安事件管理）常做的事：用聚合找出異常的來源。
+
+- id: unique-users
+  chapter: 聚合
+  title: "有多少不同的使用者：cardinality"
+  prompt: |
+    logs 裡有多少個不同的 user_id？
+  hints:
+    - "{ \"cardinality\": { \"field\": \"user_id\" } }"
+  answer: |
+    GET /logs/_search
+    {
+      "size": 0,
+      "aggs": {
+        "users": { "cardinality": { "field": "user_id" } }
+      }
+    }
+  explanation: |
+    cardinality ≈ count(DISTINCT …)，但是近似值（HyperLogLog++）：不管有幾百萬個不同的值，記憶體用量都固定。
+    precision_threshold（預設 3000）以下幾乎精確，以上誤差約 1～2%。要精確的數字只能用 composite 聚合把所有值翻過一遍。
+
+# ================================================================ 巢狀文件
+
+- id: nested-query
+  chapter: 巢狀文件
+  title: "同一個明細同時符合：nested"
+  prompt: |
+    orders 的 items 是 nested 型別。有幾筆訂單含有「類別是手機、而且數量 ≥ 2」的同一個明細？
+  hints:
+    - "{ \"nested\": { \"path\": \"items\", \"query\": { \"bool\": { \"filter\": [ … ] } } } }"
+    - "nested 裡的欄位要寫完整路徑：items.category、items.quantity"
+  answer: |
+    GET /orders/_count
+    {
+      "query": {
+        "nested": {
+          "path": "items",
+          "query": {
+            "bool": {
+              "filter": [
+                { "term": { "items.category": "手機" } },
+                { "range": { "items.quantity": { "gte": 2 } } }
+              ]
+            }
+          }
+        }
+      }
+    }
+  explanation: |
+    nested 型別的每個明細都是一份獨立的隱藏文件，nested 查詢在「同一個明細」裡比對兩個條件。
+    ★ 如果 items 是一般的 object（orders_object），明細會被攤平成 items.category = [手機, 男裝]、items.quantity = [1, 3]，
+    「手機」與「數量 3」來自不同明細也會符合（陷阱題有示範）。
+    代價：每個明細都是一份 Lucene 文件（_cat/indices 的 docs.count 是 28 萬，不是 8 萬），更新訂單要整份重寫。
+
+- id: nested-agg
+  chapter: 巢狀文件
+  title: "明細的聚合：nested aggregation"
+  prompt: |
+    所有訂單明細依類別（items.category）分組，計算每個類別賣出的總數量（items.quantity 加總），取數量最多的 5 個類別。
+  hints:
+    - "外層用 { \"nested\": { \"path\": \"items\" } } 聚合，裡面才能對 items.* 欄位分組。"
+    - "terms 依子聚合排序：\"order\": { \"qty\": \"desc\" }"
+  answer: |
+    GET /orders/_search
+    {
+      "size": 0,
+      "aggs": {
+        "items": {
+          "nested": { "path": "items" },
+          "aggs": {
+            "by_category": {
+              "terms": { "field": "items.category", "size": 5, "order": { "qty": "desc" } },
+              "aggs": {
+                "qty": { "sum": { "field": "items.quantity" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  explanation: |
+    要對 nested 欄位聚合，一定要先用 nested 聚合「進入」明細；直接對 items.category 做 terms 會得到空的結果。
+    要從明細回到訂單層級（例如每個類別有幾筆「訂單」），再用 reverse_nested。
+
+# ================================================================ 寫入（scratch 副本）
+
+- id: index-doc
+  chapter: 寫入
+  title: "新增一份文件"
+  fixture:
+    scratch_reviews: { source: reviews, query: { range: { created_at: { gte: "2026-09-20T00:00:00+08:00" } } } }
+  prompt: |
+    在 scratch_reviews 新增一則評論，_id 指定為 review-1：
+    product_id 806、rating 5、title「很滿意」、content「降噪效果很棒，通勤戴很舒服」、verified true。
+  hints:
+    - "PUT /scratch_reviews/_doc/review-1 加上 JSON 文件（指定 _id 用 PUT，讓 Elasticsearch 自動產生 _id 用 POST /索引/_doc）。"
+  answer: |
+    PUT /scratch_reviews/_doc/review-1
+    {
+      "product_id": 806,
+      "rating": 5,
+      "title": "很滿意",
+      "content": "降噪效果很棒，通勤戴很舒服",
+      "verified": true
+    }
+  check: |
+    GET /scratch_reviews/_doc/review-1
+  explanation: |
+    PUT 指定 _id：已經存在就整份覆蓋（_version + 1）；只想「不存在才新增」用 PUT /索引/_create/review-1。
+    寫入後要等 refresh（預設 1 秒）才搜得到；用 _id 取得則是即時的。大量寫入用 _bulk。
+
+- id: partial-update
+  chapter: 寫入
+  title: "部分更新：_update"
+  fixture:
+    scratch_products: { source: products, query: { term: { brand: Sony } } }
+  prompt: |
+    把 scratch_products 裡商品 806 的價格改成 2990、庫存改成 0，其他欄位不變。
+  hints:
+    - "POST /scratch_products/_update/806 { \"doc\": { … } }"
+  answer: |
+    POST /scratch_products/_update/806
+    {
+      "doc": { "price": 2990, "stock": 0 }
+    }
+  check: |
+    GET /scratch_products/_doc/806
+  explanation: |
+    Elasticsearch 的文件不能修改：_update 其實是「讀出整份 → 合併 → 整份重新寫入、把舊的標記刪除」，跟 PUT 整份覆蓋的成本差不多，只是少傳了資料。
+    舊版本要等 segment 合併才真的清掉，所以頻繁更新同一份文件的工作負載（例如計數器）不適合 Elasticsearch。
+
+- id: update-by-query
+  chapter: 寫入
+  title: "批次更新：_update_by_query"
+  fixture:
+    scratch_products: { source: products, query: { term: { brand: Sony } } }
+  prompt: |
+    scratch_products 裡類別是「無線耳機」的商品，tags 全部加上「週年慶」。
+  hints:
+    - "POST /scratch_products/_update_by_query，body 有 query 與 script。"
+    - "\"script\": { \"source\": \"ctx._source.tags.add(params.tag)\", \"params\": { \"tag\": \"週年慶\" } }"
+  answer: |
+    POST /scratch_products/_update_by_query
+    {
+      "query": { "term": { "category": "無線耳機" } },
+      "script": {
+        "source": "ctx._source.tags.add(params.tag)",
+        "params": { "tag": "週年慶" }
+      }
+    }
+  check: |
+    POST /scratch_products/_refresh
+
+    GET /scratch_products/_count
+    {
+      "query": { "term": { "tags": "週年慶" } }
+    }
+  explanation: |
+    _update_by_query 對符合條件的每一份文件執行 painless 腳本（ctx._source 是文件內容），回應裡的 updated 是更新了幾份。
+    ★ 值用 params 傳，不要串進腳本字串：腳本會被編譯並快取，內容一直變會一直重新編譯（還可能觸發編譯次數上限）。
+    遇到版本衝突（別人同時在改）預設會中止；加上 conflicts=proceed 會略過衝突的文件繼續。
+
+- id: bulk
+  chapter: 寫入
+  title: "一次寫入多筆：_bulk"
+  fixture:
+    scratch_reviews: { source: reviews, query: { range: { created_at: { gte: "2026-09-20T00:00:00+08:00" } } } }
+  prompt: |
+    用「一個」_bulk 請求在 scratch_reviews 做三件事：
+    新增 _id 為 b1 的評論（rating 5）、新增 _id 為 b2 的評論（rating 1），再把 b1 的 helpful 更新為 10。
+    content 自己寫，product_id 用 806。
+  hints:
+    - "_bulk 是 NDJSON：一行動作（index / create / update / delete），下一行是內容（delete 沒有內容）。"
+    - "{\"index\": {\"_id\": \"b1\"}} 下一行接文件；{\"update\": {\"_id\": \"b1\"}} 下一行接 {\"doc\": {…}}"
+  answer: |
+    POST /scratch_reviews/_bulk
+    {"index": {"_id": "b1"}}
+    {"product_id": 806, "rating": 5, "content": "音質很好", "helpful": 0}
+    {"index": {"_id": "b2"}}
+    {"product_id": 806, "rating": 1, "content": "用沒多久就壞了", "helpful": 0}
+    {"update": {"_id": "b1"}}
+    {"doc": {"helpful": 10}}
+  check: |
+    GET /scratch_reviews/_doc/b1?_source=rating,helpful
+
+    GET /scratch_reviews/_doc/b2?_source=rating
+  explanation: |
+    _bulk 把很多個寫入動作放在一個請求裡，省掉每次的網路來回，是大量寫入的標準做法（每批 5～15 MB 左右）。
+    ★ _bulk 不是交易：每個動作各自成功或失敗，回應的 errors 是 true 時要逐一檢查 items 找出失敗的那幾個。
+    這題的 check 只看 b1 的 rating、helpful 與 b2 的 rating，所以 content 寫什麼都可以。
+
+- id: delete-by-query
+  chapter: 寫入
+  title: "依條件刪除：_delete_by_query"
+  fixture:
+    scratch_reviews: { source: reviews, query: { range: { created_at: { gte: "2026-09-20T00:00:00+08:00" } } } }
+  prompt: |
+    刪除 scratch_reviews 裡所有 1 星（rating 1）而且沒有通過驗證（verified 是 false）的評論。
+  hints:
+    - "POST /scratch_reviews/_delete_by_query { \"query\": { \"bool\": { \"filter\": [ … ] } } }"
+  answer: |
+    POST /scratch_reviews/_delete_by_query
+    {
+      "query": {
+        "bool": {
+          "filter": [
+            { "term": { "rating": 1 } },
+            { "term": { "verified": false } }
+          ]
+        }
+      }
+    }
+  check: |
+    POST /scratch_reviews/_refresh
+
+    GET /scratch_reviews/_count
+  explanation: |
+    _delete_by_query 先搜尋、再逐批刪除（快照當下符合的文件）。刪除只是標記，空間要等 segment 合併才回收。
+    ★ 要刪掉「整段時間的舊資料」（例如 30 天前的 log）不要用 delete_by_query：依時間切索引（logs-2026.09、或 data stream），直接刪掉整個索引，又快又不產生垃圾。

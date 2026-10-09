@@ -6,7 +6,7 @@
   const tabsNav = document.getElementById("dbtabs");
   const KNOWN_KEY = "bank-known";            // { "redis:str-get": true, … }
   const LAST_KEY = "bank-last";
-  const SHOWCASE = { postgresql: "postgres", redis: "redis", mongodb: "mongodb", cassandra: "cassandra", neo4j: "neo4j", timescaledb: "timescaledb", pgvector: "pgvector" };
+  const SHOWCASE = { postgresql: "postgres", redis: "redis", mongodb: "mongodb", cassandra: "cassandra", neo4j: "neo4j", timescaledb: "timescaledb", pgvector: "pgvector", elasticsearch: "elasticsearch" };
   const known = store.get(KNOWN_KEY, {});
   // 舊版只有 PostgreSQL，標記沒有加前綴：搬過來
   const legacy = store.get("pg-bank-known", null);

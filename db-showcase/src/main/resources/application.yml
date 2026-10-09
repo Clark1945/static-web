@@ -52,4 +52,9 @@ showcase:
     password: timescale-lab
   pgvector:                       # pg-lab 容器裡的 vectors 資料庫（帳號同 spring.datasource，啟動時自動建立）
     url: jdbc:postgresql://localhost:5434/vectors
+  elasticsearch:                  # es-lab 容器（Elasticsearch 8.17，單節點）
+    url: http://localhost:9201
+    admin-password: elastic-lab   # 內建的 elastic：建索引、建帳號、載入資料、實驗室
+    reader-password: reader-lab   # 只能讀練習資料：批改查詢題
+    learner-password: learner-lab # 練習資料唯讀、scratch* 可寫：主控台與寫入題
   # 之後串接其他資料庫時，各自的設定加在這裡

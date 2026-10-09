@@ -1,0 +1,150 @@
+# Elasticsearch 實驗室「寫入與索引的行為」的步驟：每一步的請求在乾淨的 scratch_* 索引上用 learner 執行，執行完自動刪除。
+
+- id: near-real-time
+  title: "近即時：refresh 之後才搜得到"
+  goal: "把 refresh_interval 設成 30 秒，寫入一份文件後：馬上搜尋、用 _id 取得、手動 refresh 後再搜尋。"
+  commands: |
+    PUT /scratch_nrt
+    { "settings": { "refresh_interval": "30s" } }
+
+    PUT /scratch_nrt/_doc/1
+    { "content": "降噪效果很棒" }
+
+    GET /scratch_nrt/_search
+    { "query": { "match": { "content": "降噪" } } }
+
+    GET /scratch_nrt/_doc/1
+
+    POST /scratch_nrt/_refresh
+
+    GET /scratch_nrt/_search
+    { "query": { "match": { "content": "降噪" } } }
+  question: "三次讀取各拿到什麼？"
+  takeaway: |
+    寫入流程：文件先進記憶體的 indexing buffer，同時寫進 translog（保證當機也不遺失）；
+    refresh 把 buffer 變成一個新的、可以搜尋的 segment（還在檔案系統快取，尚未 fsync）；flush 才把 segment 寫到磁碟並清掉 translog。
+    所以 _search 要等 refresh（預設 1 秒）；GET /_doc 是即時的（realtime get）。
+    大量匯入時把 refresh_interval 設成 -1，匯入完再改回來，可以快很多。
+
+- id: versioning
+  title: "版本與樂觀鎖"
+  goal: "寫入、更新一次，再用「舊的」_seq_no 做條件更新。"
+  commands: |
+    PUT /scratch_stock/_doc/806
+    { "name": "Sony 無線耳機 F178", "stock": 10 }
+
+    POST /scratch_stock/_update/806
+    { "doc": { "stock": 9 } }
+
+    GET /scratch_stock/_doc/806
+
+    PUT /scratch_stock/_doc/806?if_seq_no=0&if_primary_term=1
+    { "name": "Sony 無線耳機 F178", "stock": 8 }
+  question: "最後一個請求會成功嗎？"
+  takeaway: |
+    每次寫入 _version 加 1，_seq_no 是分片內的寫入序號。第一次寫入時 _seq_no 是 0，更新後變成 1。
+    最後一句說「只有在 _seq_no 還是 0 時才寫入」，但文件已經被改過（現在是 1），所以回傳 409 version_conflict_engine_exception。
+    這就是樂觀鎖：讀出時記下 _seq_no 與 _primary_term，寫回時帶上；被別人改過就失敗，重新讀取再試。
+    Elasticsearch 沒有交易、沒有鎖；_update 本身在單一文件上是原子的，跨文件的一致性要自己設計。
+
+- id: mapping-immutable
+  title: "欄位型別不能改"
+  goal: "建立索引時 price 是 integer。之後想把它改成 keyword、再新增一個欄位。"
+  commands: |
+    PUT /scratch_map
+    { "mappings": { "properties": { "price": { "type": "integer" } } } }
+
+    PUT /scratch_map/_mapping
+    { "properties": { "price": { "type": "keyword" } } }
+
+    PUT /scratch_map/_mapping
+    { "properties": { "brand": { "type": "keyword" } } }
+
+    GET /scratch_map/_mapping
+  question: "兩次修改 mapping，哪一次會成功？"
+  takeaway: |
+    已經存在的欄位不能改型別（倒排索引、doc values 都是依舊的型別建好的），會回傳 400 illegal_argument_exception；新增欄位沒問題。
+    要改型別：建新索引（新的 mapping）→ _reindex 把資料搬過去 → 把別名（alias）切到新索引。
+    ★ 程式一律透過 alias 存取索引，換索引時應用程式不用改、也不用停機。
+
+- id: delete-is-mark
+  title: "刪除只是標記"
+  goal: "寫入 3 份文件、刪除 1 份，看 docs.count 與 docs.deleted，以及刪除後的 _version。"
+  commands: |
+    PUT /scratch_seg/_bulk?refresh=true
+    {"index": {"_id": "1"}}
+    {"content": "音質很好"}
+    {"index": {"_id": "2"}}
+    {"content": "降噪效果很棒"}
+    {"index": {"_id": "3"}}
+    {"content": "續航很久"}
+
+    GET /_cat/indices/scratch_seg?v&h=index,docs.count,docs.deleted
+
+    DELETE /scratch_seg/_doc/2?refresh=true
+
+    GET /_cat/indices/scratch_seg?v&h=index,docs.count,docs.deleted
+  question: "刪除之後，docs.count 與 docs.deleted 各是多少？"
+  takeaway: |
+    segment 寫好之後就不能修改（immutable）：刪除只是把舊文件標記成「已刪除」，搜尋時跳過它；更新 = 標記刪除舊的 + 寫入新的。
+    刪除動作本身也會寫入一筆記錄（tombstone，同樣是已刪除狀態），所以這裡 docs.deleted 是 2，不是 1。
+    背景的 merge 把小 segment 合併成大的，順便把已刪除的文件真的清掉；但剛刪除的文件會為了副本同步（soft deletes 的保留機制）暫時留著，不會馬上消失。
+    forcemerge 只適合「不會再寫入」的索引（例如前一天的 log）：對還在寫入的索引做，會產生一個巨大的 segment，之後很難再被合併。
+
+- id: synonyms
+  title: "同義詞：搜「抗噪」也找得到「降噪」"
+  goal: "建立一個 search_analyzer 帶有同義詞的索引：寫入時用 cjk，搜尋時多做一次同義詞展開。"
+  commands: |
+    PUT /scratch_syn
+    {
+      "settings": {
+        "analysis": {
+          "filter": {
+            "my_synonyms": { "type": "synonym_graph", "synonyms": ["降噪, 抗噪, anc", "耳機, earphone"] }
+          },
+          "analyzer": {
+            "cjk_search": { "tokenizer": "standard", "filter": ["cjk_width", "lowercase", "cjk_bigram", "my_synonyms"] }
+          }
+        }
+      },
+      "mappings": {
+        "properties": {
+          "content": { "type": "text", "analyzer": "cjk", "search_analyzer": "cjk_search" }
+        }
+      }
+    }
+
+    PUT /scratch_syn/_doc/1?refresh=true
+    { "content": "主動降噪耳機" }
+
+    GET /scratch_syn/_search
+    { "query": { "match": { "content": "ANC earphone" } } }
+
+    POST /scratch_syn/_analyze
+    { "analyzer": "cjk_search", "text": "抗噪" }
+  question: "搜尋「ANC earphone」找得到「主動降噪耳機」嗎？"
+  takeaway: |
+    搜尋時的分析器把「anc」展開成「降噪、抗噪、anc」，「earphone」展開成「耳機」，就能對上文件裡的「降噪」「耳機」。
+    ★ 同義詞放在 search_analyzer（搜尋時）：同義詞表常常要改，放在搜尋時改了就生效（reload_search_analyzers），不必重建索引；
+    放在寫入時（analyzer）的話，每次改同義詞都要 reindex。
+    中文搜尋品質通常靠「斷詞外掛 + 同義詞表 + 使用者的搜尋紀錄」一起調。
+
+- id: deep-paging
+  title: "深分頁：from/size vs search_after"
+  goal: "logs 依時間排序：from 10000 會報錯；改用 search_after（上一頁最後一筆的排序值）。"
+  commands: |
+    GET /logs/_search
+    { "from": 10000, "size": 3, "sort": [{ "@timestamp": "asc" }, { "trace_id": "asc" }] }
+
+    GET /logs/_search
+    { "size": 3, "_source": ["@timestamp", "message"], "sort": [{ "@timestamp": "asc" }, { "trace_id": "asc" }] }
+
+    GET /logs/_search
+    { "size": 3, "_source": ["@timestamp", "message"], "sort": [{ "@timestamp": "asc" }, { "trace_id": "asc" }],
+      "search_after": [1788192208672, "722ada4508737385"] }
+  question: "第三個請求回傳的是哪幾筆？"
+  takeaway: |
+    from + size 超過 10,000 會報錯：每個分片都要排出前 from + size 名再合併，越後面越貴。
+    search_after 用「上一頁最後一筆的排序值」當起點，每一頁的成本都一樣：第三個請求接在第二個請求的最後一筆之後。
+    排序一定要有唯一的欄位當最後一個條件（這裡是 trace_id），同一時間的文件才不會在換頁時重複或漏掉。
+    資料一直在寫入時，再搭配 PIT（point in time，POST /logs/_pit?keep_alive=1m）固定一個快照，翻頁過程中結果才不會變動。

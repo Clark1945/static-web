@@ -232,6 +232,10 @@ DATABASES = [
                 "壓縮、連續聚合的實驗需要互動操作，請到展示台的「實驗室」。"},
     {"id": "pgvector", "name": "pgvector", "dir": "pgvector", "api": "pgvector", "key": "sql", "lang": "sql",
      "lab": None, "labName": None, "labNote": None},
+    {"id": "elasticsearch", "name": "Elasticsearch", "dir": "elastic", "api": "elastic", "key": "commands", "lang": "es",
+     "lab": "relevance-lab.yml", "labName": "相關性實驗",
+     "labNote": "每一步用不同的查詢搜尋同一批資料，比較前幾名與 _score：IDF、欄位長度、欄位權重、function_score、filter 不計分。"
+                "分析器與寫入行為（近即時、版本衝突、mapping、同義詞、深分頁）的實驗需要互動操作，請到展示台的「實驗室」。"},
 ]
 
 
@@ -406,12 +410,54 @@ def cypher_blocks(results):
     return out
 
 
+ES_FIELDS = ["name", "title", "content", "description", "message", "price", "rating", "review_count", "status",
+             "@timestamp", "order_date", "total", "category", "brand", "service", "latency_ms", "tags", "helpful", "stock"]
+
+
+def es_blocks(results):
+    """Elasticsearch：_search 列出 hits 表格（_id、_score、幾個常見欄位）＋ 聚合的 JSON；其他回應是 JSON 文字。"""
+    out = []
+    for r in results:
+        b, cmd = r["response"], f"{r['statement']}  ({r['status']})"
+        if not 200 <= r["status"] < 300:
+            reason = b.get("error") if isinstance(b, dict) else b
+            if isinstance(reason, dict):
+                reason = (reason.get("root_cause") or [{}])[0].get("reason") or reason.get("reason")
+            out.append({"cmd": cmd, "text": str(reason), "error": True})
+            continue
+        if isinstance(b, str):
+            out.append({"cmd": cmd, "text": clip(b.rstrip() or "（沒有內容）")})
+            continue
+        if isinstance(b.get("hits"), dict) and isinstance(b["hits"].get("hits"), list):
+            hits = b["hits"]["hits"]
+            total = b["hits"].get("total") or {}
+            if hits:
+                keys = []
+                for h in hits:
+                    keys += [k for k in (h.get("_source") or {}) if k in ES_FIELDS and k not in keys]
+                keys = sorted(keys, key=ES_FIELDS.index)[:4]
+                rows = [[h["_id"], None if h.get("_score") is None else round(h["_score"], 3)]
+                        + [cql_cell((h.get("_source") or {}).get(k)) for k in keys] for h in hits[:RESULT_ROWS]]
+                out.append({"cmd": cmd, "table": {"columns": ["_id", "_score"] + keys, "rows": rows,
+                                                  "total": total.get("value", len(hits))}})
+            if b.get("aggregations") or not hits:
+                text = f"hits.total = {total.get('value')}{'+' if total.get('relation') == 'gte' else ''}"
+                if b.get("aggregations"):
+                    text += "\naggregations = " + json.dumps(b["aggregations"], ensure_ascii=False, indent=2)
+                out.append({"cmd": None if hits else cmd, "text": clip(text)})
+            continue
+        slim = {k: v for k, v in b.items() if k not in ("_shards", "took", "timed_out")}
+        out.append({"cmd": cmd, "text": clip(json.dumps(slim, ensure_ascii=False, indent=2))})
+    return out
+
+
 def blocks(db, run):
     """把一次執行（PostgreSQL 是單一查詢結果，其他是多句指令的結果）轉成共同格式。"""
     if db["id"] in ("postgresql", "timescaledb", "pgvector"):
         return pg_blocks(run)
     results = run["results"]
-    return {"redis": redis_blocks, "mongodb": mongo_blocks, "cassandra": cql_blocks, "neo4j": cypher_blocks}[db["id"]](results)
+    return {"redis": redis_blocks, "mongodb": mongo_blocks, "cassandra": cql_blocks, "neo4j": cypher_blocks,
+            "elasticsearch": es_blocks}[db["id"]](results)
 
 
 # ---------- 讀題庫、整理成共同的欄位 ----------
@@ -440,7 +486,8 @@ def normalize(db):
         "id": s["id"], "title": s["title"], "goal": s["goal"], "question": s.get("question"), "takeaway": s["takeaway"],
         "setup": s.get("ddl") or s.get("indexes") or [],
         "queries": [{"label": q["label"], "code": q.get("sql") or q.get("command") or q.get("cql") or q.get("cypher")}
-                    for q in (s.get("sqls") or s.get("queries") or [])],
+                    for q in (s.get("sqls") or s.get("queries") or [])]
+                   or ([{"label": "請求", "code": s["commands"]}] if s.get("commands") else []),
     } for s in step_raw]
     return exercises, traps, steps
 
@@ -458,7 +505,7 @@ def fetch_results(db, exercises, traps):
         if g.get("checks"):
             checks = g["checks"]
             e["checks"] = {"redis": redis_blocks, "mongodb": mongo_blocks, "cassandra": cql_blocks,
-                           "neo4j": cypher_blocks}[db["id"]](checks)
+                           "neo4j": cypher_blocks, "elasticsearch": es_blocks}[db["id"]](checks)
     for t in traps:
         r = api(f"{base}/traps/{t['id']}/answer", {"choice": t["answer"]})
         t["results"] = [blocks(db, x) for x in r["results"]]
@@ -504,7 +551,7 @@ def build_index(stats):
   <span class="sub">面試準備 · shop 練習資料庫</span></div></div></header>
 <main class="home">
   <p class="lead">以一個台灣電商「shop」的模擬資料（會員、訂單、明細、商品、分類，約 30 萬筆）為例，
-    練習 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB、pgvector 七種資料庫的查詢、資料模型與面試常考的觀念。</p>
+    練習 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB、pgvector、Elasticsearch 八種資料庫的查詢、資料模型與面試常考的觀念。</p>
   <div class="home-grid">
     <a class="home-card" href="cheatsheet.html">
       <b>CheatSheet</b>
@@ -514,7 +561,8 @@ def build_index(stats):
         Cassandra：分區鍵與叢集鍵、查詢先行的表設計、墓碑、一致性等級、LWT。
         Neo4j：Cypher 圖樣、路徑與最短路徑、MERGE、圖的資料模型、PROFILE。
         TimescaleDB：hypertable 與 chunk、time_bucket、gapfill、連續聚合、壓縮、資料保留。
-        pgvector：距離運算子、語意搜尋與推薦、HNSW vs IVFFlat、過濾與多租戶、量化、混合搜尋。</span>
+        pgvector：距離運算子、語意搜尋與推薦、HNSW vs IVFFlat、過濾與多租戶、量化、混合搜尋。
+        Elasticsearch：倒排索引與分析器、Query DSL、BM25 相關性、聚合、nested、寫入與近即時、分片。</span>
     </a>
     <a class="home-card" href="question-bank.html">
       <b>題庫</b>

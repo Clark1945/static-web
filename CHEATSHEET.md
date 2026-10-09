@@ -2325,3 +2325,272 @@ ORDER BY rrf DESC LIMIT 10;
 - ★ Spring AI：`PgVectorStore`（starter：`spring-ai-starter-vector-store-pgvector`），設定前綴 `spring.ai.vectorstore.pgvector`：`index-type=HNSW`、`distance-type=COSINE_DISTANCE`、`dimensions`
 - `vectorStore.add(documents)`：呼叫 EmbeddingModel 嵌入後寫入；查詢 `vectorStore.similaritySearch(request)`，request 用 `SearchRequest.builder()` 設定 `query("…")`、`topK(5)`、`filterExpression("tenant == 7")`
 - 嵌入呼叫要批次、要重試、要限流；向量欄位不要在列表 API 裡 SELECT 出來（很大）
+
+# Elasticsearch
+
+> 範例都來自練習環境（`es-lab` 容器，http://localhost:9201，Elasticsearch 8.17 單節點），可以直接貼到展示台的「Dev Tools 主控台」或 Kibana Dev Tools 執行。products（1,500 件商品）、reviews（2 萬多則中文評論）、orders（8 萬筆訂單，明細是 nested）、logs（9 月的 API 存取紀錄，20 萬筆）。
+
+## 1. ★ 基本觀念
+
+- **倒排索引（inverted index）**：把每份文件切成「詞」，建立「詞 → 哪些文件有這個詞（與位置）」的對照表；查詢時直接用詞找文件，不必掃描全部
+- 每個欄位依型別用不同的結構：text → 倒排索引；keyword、數字、日期 → 倒排索引 + **doc values**（依欄位存放，給排序、聚合用）；數字、日期另有 BKD 樹（範圍查詢）
+- **近即時（near real-time）**：寫入後要等 refresh（預設 1 秒）才搜得到
+- 底層是 Lucene：一個**分片（shard）**就是一個 Lucene 索引，由許多不可修改的 **segment** 組成
+
+| 關聯式資料庫 | Elasticsearch |
+|---|---|
+| 資料表 | 索引（index） |
+| 一列 | 文件（document，JSON） |
+| 欄位 | 欄位（field） |
+| schema | mapping |
+| SQL | Query DSL（JSON）；也有 SQL API（`POST /_sql`） |
+| B-tree 索引 | 倒排索引、doc values、BKD 樹（每個欄位預設都有索引） |
+| JOIN | 幾乎沒有：反正規化、nested、join 欄位（parent-child） |
+| 交易 | 沒有：只有單一文件的原子寫入、樂觀鎖 |
+
+★ 面試結論：Elasticsearch 是**搜尋與分析引擎**，不是主要的資料庫。常見架構：PostgreSQL / MySQL 存正本，同步一份到 Elasticsearch 做全文檢索、篩選、聚合（商品搜尋、站內搜尋、日誌分析）。
+
+## 2. ★ 分析器（analyzer）
+
+```es
+POST /_analyze
+{ "analyzer": "standard", "text": "Sony 無線耳機，降噪效果很棒" }
+# → sony、無、線、耳、機、降、噪、效、果、很、棒（中文一字一詞）
+
+POST /_analyze
+{ "analyzer": "cjk", "text": "Sony 無線耳機，降噪效果很棒" }
+# → sony、無線、線耳、耳機、降噪、噪效、效果、果很、很棒（兩字一組）
+
+POST /products/_analyze
+{ "field": "name", "text": "主動降噪耳機" }          # 用欄位設定的分析器
+```
+
+- 分析器 = 字元過濾器（char_filter，例如去掉 HTML）→ **切詞器（tokenizer）** → 詞過濾器（filter，例如小寫、同義詞、詞幹還原、停用詞）
+- ★ 寫入時與搜尋時要用相容的分析器，詞才對得上；可以分開設定 `analyzer`（寫入）與 `search_analyzer`（搜尋）
+- 中文：standard 一字一詞（「音質」= 音 OR 質，雜訊多）；**cjk** 兩字一組（不用外掛，召回率高）；**IK、smartcn、jieba** 真的斷詞（要裝外掛）
+- 實測（評論）：match「音質」用 cjk 找到 695 則，用 standard 找到 4,509 則（混進「品質」「肉質」）
+- 同義詞放在 search_analyzer（`synonym_graph`）：改同義詞表不用重建索引
+- 分析器在建索引時決定，之後改要建新索引、reindex
+
+## 3. Mapping 與型別
+
+```es
+PUT /products
+{
+  "mappings": {
+    "dynamic": "strict",                                       # 沒定義的欄位直接拒絕
+    "properties": {
+      "name":     { "type": "text", "analyzer": "cjk",
+                    "fields": { "keyword": { "type": "keyword" } } },   # multi-field：同一個值兩種索引
+      "brand":    { "type": "keyword" },
+      "price":    { "type": "integer" },
+      "created_at": { "type": "date" },
+      "items":    { "type": "nested", "properties": { … } }
+    }
+  }
+}
+GET /products/_mapping
+```
+
+| 型別 | 用途 |
+|---|---|
+| `text` | 全文檢索（會分析）；不能排序、聚合 |
+| `keyword` | 精確比對、排序、聚合（品牌、狀態、標籤、ID） |
+| `integer` / `long` / `float` / `scaled_float` | 數值、範圍查詢；金額可用 scaled_float |
+| `date` | 存成 UTC 毫秒；查詢時注意時區 |
+| `boolean`、`ip`、`geo_point` | 布林、IP（可以查網段）、經緯度（距離查詢） |
+| `object` / `nested` | 物件；陣列裡的物件要「同一個物件」比對時用 nested |
+| `dense_vector` | 向量（kNN 搜尋，跟 pgvector 同類的功能） |
+
+- ★ **動態 mapping**：沒定義的欄位第一次出現時自動推斷（數字 → long、字串 → text + keyword），之後型別就固定；第一份是數字、第二份是 "10A" → 第二份被拒絕
+- ★ 已存在的欄位**不能改型別**：建新索引 → `_reindex` → 用**別名（alias）**切換；程式一律透過 alias 存取
+- 正式環境事先定義 mapping 或 **index template**；欄位太多（mapping explosion）會拖垮叢集
+
+## 4. ★ Query DSL
+
+```es
+GET /products/_search
+{
+  "query": {
+    "bool": {
+      "must":     [{ "match": { "description": "輕薄" } }],             # 要符合、計分
+      "filter":   [{ "term": { "category": "筆電" } },                  # 要符合、不計分、可快取
+                   { "range": { "price": { "gte": 20000, "lte": 40000 } } }],
+      "should":   [{ "term": { "tags": "熱銷" } }],                     # 加分
+      "must_not": [{ "term": { "brand": "Apple" } }]                   # 排除
+    }
+  },
+  "sort": [{ "_score": "desc" }, { "price": "asc" }],
+  "from": 0, "size": 10,
+  "_source": ["name", "price"],
+  "highlight": { "fields": { "description": {} } }
+}
+
+GET /reviews/_count
+{ "query": { "match_phrase": { "content": "通勤戴很舒服" } } }
+```
+
+| 查詢 | 說明 |
+|---|---|
+| `match` | 全文：先分析，再找含有這些詞的文件；預設 OR（`operator: and`、`minimum_should_match`） |
+| `match_phrase` | 詞要依序相鄰（用位置判斷）；`slop` 容許間隔 |
+| `multi_match` | 多個欄位，`"fields": ["name^3", "description"]` 加權；best_fields / most_fields / cross_fields |
+| `term` / `terms` | 精確比對（不分析），用在 keyword、數字 |
+| `range` | 數值、日期範圍（`gte`、`lt`，日期可寫 `now-7d/d`） |
+| `exists` | 欄位有值 |
+| `fuzzy` / `fuzziness: "AUTO"` | 容許拼錯（編輯距離） |
+| `prefix` / `wildcard` / `regexp` | 開頭是…；前面有萬用字元的很慢 |
+| `nested` | 對 nested 欄位查詢 |
+| `function_score` | 依欄位值、距離、腳本調整分數 |
+
+- ★ **query context vs filter context**：must / should 計分；filter / must_not 不計分、結果可以快取 → 不需要相關性的條件一律放 filter
+- ★ text 欄位用 match；keyword、數字、日期用 term / range。對 text 用 term 常常找不到（存的是小寫、切開的詞）
+- 實測：match「通勤戴很舒服」找到 2,756 則（任何一個 bigram 就算），match_phrase 只有 266 則
+- `hits.total` 預設只精確算到 10,000（`relation: gte`）；要精確：`track_total_hits: true` 或 `_count`
+
+## 5. ★ 相關性：BM25
+
+- 分數 ≈ **IDF**（越少文件有這個詞越高）× **TF**（出現次數，會飽和，參數 k1 = 1.2）× **欄位長度調整**（越短越高，參數 b = 0.75）
+- 實測：「降噪」（404 則有）第一名 4.3 分，「很好」（8 千多則有）第一名只有 1.5 分
+- `"explain": true` 看分數怎麼算；分數只能在同一個查詢裡比較名次，不能當門檻
+- 調整排序：欄位權重（`^3`）、should 加分、`function_score`（評分、銷量、新舊、距離）、`rescore`
+- 舊版（5.0 以前）預設是 TF-IDF；BM25 對高頻詞與長文件的處理比較合理
+
+## 6. ★ 聚合（aggregations）
+
+```es
+GET /orders/_search
+{
+  "size": 0,                                                      # 只要聚合，不要文件
+  "query": { "range": { "order_date": { "gte": "2026-09-01T00:00:00+08:00" } } },
+  "aggs": {
+    "per_day": {
+      "date_histogram": { "field": "order_date", "calendar_interval": "day", "time_zone": "+08:00" },
+      "aggs": { "revenue": { "sum": { "field": "total" } } }
+    },
+    "by_city": { "terms": { "field": "shipping_city", "size": 5 } },
+    "p95": { "percentiles": { "field": "total", "percents": [95] } },
+    "customers": { "cardinality": { "field": "customer_id" } }
+  }
+}
+```
+
+| 類型 | 聚合 | SQL 對照 |
+|---|---|---|
+| bucket（分組） | `terms`、`date_histogram`、`histogram`、`range`、`filters`、`composite` | GROUP BY |
+| metric（計算） | `avg`、`sum`、`min`、`max`、`stats`、`percentiles`、`cardinality`、`top_hits` | 聚合函式 |
+| pipeline（對結果再算） | `bucket_sort`、`derivative`、`cumulative_sum`、`moving_fn` | 視窗函數 |
+
+- 聚合用 doc values：text 欄位不能聚合（fielddata 預設關閉），用 keyword 或 `.keyword` 子欄位
+- ★ 近似值：`terms` 在多分片時可能漏算（`doc_count_error_upper_bound`）、`cardinality` 是 HyperLogLog++、`percentiles` 是 TDigest
+- ★ date_histogram 沒給 `time_zone` 依 UTC 切（台灣的一天從早上 8 點開始）
+- 要翻完所有分組（匯出）用 `composite` + `after`
+
+## 7. 關聯資料：nested、object、parent-child
+
+```es
+GET /orders/_count
+{
+  "query": { "nested": { "path": "items", "query": { "bool": { "filter": [
+    { "term": { "items.category": "手機" } },
+    { "range": { "items.quantity": { "gte": 2 } } }
+  ] } } } }
+}
+```
+
+- ★ **object 陣列會被攤平**：items.category = [手機, 男裝]、items.quantity = [1, 3]，條件來自不同明細也會符合（實測 object 6,884 筆，nested 正確答案 3,465 筆）
+- **nested**：每個物件是一份隱藏的 Lucene 文件（orders 8 萬筆、明細 20 萬 → `_cat/indices` 顯示 28 萬份）；查詢、聚合要用 nested / reverse_nested；更新一個明細要整份重寫
+- **join 欄位（parent-child）**：父子各自是文件、可以分開更新，但查詢慢、要在同一個分片（routing）
+- ★ 首選**反正規化**：把需要搜尋的欄位直接放進文件（訂單裡放商品名稱、類別），資料變了再重建
+
+## 8. 寫入與近即時
+
+```es
+PUT  /scratch/_doc/1            { … }             # 指定 _id：新增或整份覆蓋
+POST /scratch/_doc              { … }             # 自動產生 _id
+PUT  /scratch/_create/1         { … }             # 已存在就失敗
+POST /scratch/_update/1         { "doc": { "price": 2990 } }
+POST /scratch/_update_by_query  { "query": …, "script": { "source": "ctx._source.tags.add(params.t)", "params": { "t": "週年慶" } } }
+POST /scratch/_delete_by_query  { "query": … }
+POST /_bulk                     （NDJSON：一行動作、一行內容）
+PUT  /scratch/_doc/1?if_seq_no=5&if_primary_term=1   { … }   # 樂觀鎖：被改過就 409
+```
+
+- 寫入流程：記憶體 buffer + **translog**（防遺失）→ **refresh**（變成可搜尋的 segment，預設每 1 秒）→ **flush**（fsync 到磁碟、清 translog）→ **merge**（合併 segment、清掉已刪除的文件）
+- ★ 搜尋要等 refresh；`GET /_doc/id` 是即時的。需要寫完就搜得到：`?refresh=wait_for`（不要每次 `refresh=true`）
+- ★ segment 不能修改：**更新 = 標記刪除 + 重新寫入**、刪除只是標記 → 頻繁更新同一份文件（計數器）不適合
+- `_bulk` 不是交易：每個動作各自成功或失敗，要檢查回應的 `errors` 與每個 `items`
+- 大量匯入：`refresh_interval: -1`、`number_of_replicas: 0`，匯入完再改回來
+- 刪舊資料不要用 delete_by_query：依時間切索引，直接刪整個索引
+
+## 9. ★ 分片與叢集
+
+- 索引分成多個 **primary shard**（建立後不能改，只能 `_split` / `_shrink` 或 reindex）；每個 primary 有 **replica**（可以隨時改）
+- 文件放在哪個分片：`hash(_routing 或 _id) % 分片數` → 這就是分片數不能改的原因
+- 搜尋是 **query then fetch**：每個分片各自找出前 from + size 名 → 協調節點合併排序 → 再去拿文件內容
+- 叢集健康：**green**（全部都分配好）/ **yellow**（有 replica 沒地方放，例如單節點）/ **red**（有 primary 不見，資料不完整）
+- 節點角色：master（管理叢集狀態，要奇數個避免 split brain）、data（hot / warm / cold）、ingest、coordinating
+- 分片大小建議 10～50 GB；太多小分片（oversharding）浪費記憶體、拖慢 master
+- replica 提高可用性與讀取吞吐量，但寫入要寫每一份
+
+## 10. 分頁與大量讀取
+
+```es
+GET /logs/_search
+{ "size": 100, "sort": [{ "@timestamp": "asc" }, { "trace_id": "asc" }],
+  "search_after": [1788192208672, "722ada4508737385"] }        # 上一頁最後一筆的 sort 值
+
+POST /logs/_pit?keep_alive=1m                                  # point in time：固定快照
+```
+
+- ★ `from + size` 最多 10,000（`index.max_result_window`）：每個分片都要排出前 from + size 名，越後面越貴
+- 深分頁用 **search_after**（+ PIT 讓翻頁過程結果不變）；排序最後一定要有唯一欄位
+- scroll 用於大量匯出（已不建議，改用 PIT + search_after）
+
+## 11. 日誌與時間序列：data stream、ILM
+
+- 日誌依時間切索引（logs-2026.09.18），或用 **data stream**（自動 rollover 的一組隱藏索引，只能新增）
+- **ILM**（Index Lifecycle Management）：hot（新資料、SSD）→ warm（唯讀、forcemerge）→ cold / frozen（便宜的儲存）→ delete
+- ELK / Elastic Stack：Beats / Logstash 收集 → Elasticsearch 存放 → Kibana 查詢、儀表板；OpenSearch 是 AWS 分支出來的開源版本
+
+## 12. 常見陷阱
+
+| 陷阱 | 說明 |
+|---|---|
+| 對 text 欄位用 term | 存的是分析後的詞（小寫、切開），找不到 |
+| match 一整句 | 預設 OR，任何一個詞符合就算，結果很多 |
+| 中文用 standard 分析器 | 一字一詞，「音質」會找到「品質」 |
+| object 陣列 | 條件會跨物件交叉比對，要用 nested |
+| hits.total 是 10000 | 預設只精確算到一萬，`relation: gte` |
+| date_histogram 沒給時區 | 依 UTC 切，每天的數字都錯 |
+| 對 text 欄位聚合、排序 | 報錯：fielddata is disabled，用 keyword |
+| from 10000 | Result window is too large，用 search_after |
+| 動態 mapping | 第一份文件決定型別，之後寫不進去 |
+| 改欄位型別 | 不能改，建新索引 + reindex + alias |
+| 寫完馬上搜尋 | 近即時，要等 refresh |
+| 分片數設太多 / 太少 | 建立後不能改；太多浪費資源，太少無法水平擴充 |
+| 把 Elasticsearch 當主資料庫 | 沒有交易、mapping 不能改、可能遺失最近的寫入（取決於設定） |
+
+## 13. ★ 面試題速答
+
+| 問題 | 重點 |
+|---|---|
+| 為什麼搜尋快？ | 倒排索引：用詞直接找文件；doc values 給排序聚合；分片平行處理 |
+| text 和 keyword 差在哪？ | text 會分析，給全文檢索；keyword 不分析，給精確比對、排序、聚合 |
+| 相關性怎麼算？ | BM25：IDF、TF（會飽和）、欄位長度；可用 boost、function_score 調整 |
+| query 和 filter 差在哪？ | query 計分；filter 不計分、可以快取，比較快 |
+| 為什麼寫入後搜不到？ | 近即時：refresh（預設 1 秒）後才變成可搜尋的 segment |
+| 分片數怎麼決定？ | 依資料量（每個分片 10～50 GB）與節點數；primary 數建立後不能改 |
+| 叢集變 yellow / red？ | yellow：replica 沒分配（單節點）；red：primary 不見，資料不完整 |
+| 怎麼跟資料庫同步？ | 應用程式雙寫（可能不一致）、CDC（Debezium → Kafka → Elasticsearch）、定期全量重建；以資料庫為準 |
+| 深分頁怎麼做？ | search_after + PIT；from + size 限制 10,000 |
+| nested 和 object？ | object 陣列會攤平，跨物件交叉比對；nested 保留物件邊界，但成本高 |
+| Elasticsearch 和資料庫的 LIKE 比？ | LIKE '%詞%' 要全表掃描、沒有相關性排序、不懂斷詞；ES 用倒排索引、BM25、分析器 |
+| Elasticsearch 和 pgvector？ | ES 擅長關鍵字（BM25）與聚合，也有 dense_vector 做 kNN；混合搜尋常兩者並用 |
+
+## 14. Java / Spring
+
+- 官方 **Elasticsearch Java API Client**（`co.elastic.clients:elasticsearch-java`）：型別安全的 builder，`client.search(s -> s.index("products").query(q -> q.match(m -> m.field("name").query("耳機"))), Product.class)`
+- **Spring Data Elasticsearch**：`@Document(indexName = "products")`、`@Field(type = FieldType.Text, analyzer = "cjk")`、`ElasticsearchRepository<Product, String>`（衍生查詢 `findByBrand`）、複雜查詢用 `NativeQuery`
+- ★ 同步策略：交易 commit 之後才送出（`@TransactionalEventListener(phase = AFTER_COMMIT)`），失敗要能重試；大量資料用 CDC
+- 批次寫入用 `BulkIngester`；查詢記得設 timeout；不要把 Elasticsearch 的連線池開太大

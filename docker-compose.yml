@@ -116,7 +116,33 @@ services:
     volumes:
       - timescaledata:/var/lib/postgresql/data
 
+  elasticsearch:
+    image: elasticsearch:8.17.4
+    container_name: es-lab
+    restart: unless-stopped        # Docker 啟動時自動跟著啟動（手動 stop 的除外）
+    environment:
+      discovery.type: single-node                       # 單節點，不找其他節點組叢集
+      xpack.security.enabled: "true"                    # 開啟帳號權限（展示台建立 reader / learner 角色）
+      xpack.security.http.ssl.enabled: "false"          # 練習環境用 http，不用憑證
+      xpack.security.transport.ssl.enabled: "false"
+      ELASTIC_PASSWORD: elastic-lab                     # 內建超級使用者 elastic
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+      cluster.routing.allocation.disk.threshold_enabled: "false"   # 磁碟快滿時不要把索引變成唯讀
+      action.destructive_requires_name: "true"          # 不能用 * 一次刪掉所有索引
+      TZ: Asia/Taipei
+    ports:
+      - "9201:9200"                  # 索引、帳號、資料由展示台第一次啟動時建立
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -u elastic:elastic-lab http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
 volumes:
+  esdata:
   timescaledata:
   cassandradata:
   pgdata:

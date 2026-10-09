@@ -1,0 +1,102 @@
+{
+  "products": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "properties": {
+        "name": { "type": "text", "analyzer": "cjk",
+                  "fields": { "std": { "type": "text", "analyzer": "standard" }, "keyword": { "type": "keyword" } } },
+        "brand": { "type": "keyword" },
+        "category": { "type": "keyword" },
+        "category_path": { "type": "keyword" },
+        "description": { "type": "text", "analyzer": "cjk" },
+        "price": { "type": "integer" },
+        "stock": { "type": "integer" },
+        "is_active": { "type": "boolean" },
+        "tags": { "type": "keyword" },
+        "specs": { "type": "object" },
+        "rating": { "type": "float" },
+        "review_count": { "type": "integer" },
+        "created_at": { "type": "date" }
+      }
+    }
+  },
+  "reviews": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "properties": {
+        "product_id": { "type": "integer" },
+        "product_name": { "type": "text", "analyzer": "cjk", "fields": { "keyword": { "type": "keyword" } } },
+        "brand": { "type": "keyword" },
+        "category": { "type": "keyword" },
+        "customer_id": { "type": "integer" },
+        "rating": { "type": "byte" },
+        "title": { "type": "text", "analyzer": "cjk" },
+        "content": { "type": "text", "analyzer": "cjk", "fields": { "std": { "type": "text", "analyzer": "standard" } } },
+        "helpful": { "type": "integer" },
+        "verified": { "type": "boolean" },
+        "created_at": { "type": "date" }
+      }
+    }
+  },
+  "orders": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "properties": {
+        "customer_id": { "type": "integer" },
+        "customer": { "properties": {
+          "name": { "type": "keyword" }, "city": { "type": "keyword" }, "vip_level": { "type": "keyword" }, "gender": { "type": "keyword" } } },
+        "status": { "type": "keyword" },
+        "order_date": { "type": "date" },
+        "shipping_city": { "type": "keyword" },
+        "shipping_fee": { "type": "integer" },
+        "total": { "type": "integer" },
+        "item_count": { "type": "integer" },
+        "items": { "type": "nested", "properties": {
+          "product_id": { "type": "integer" },
+          "name": { "type": "text", "analyzer": "cjk", "fields": { "keyword": { "type": "keyword" } } },
+          "brand": { "type": "keyword" },
+          "category": { "type": "keyword" },
+          "quantity": { "type": "integer" },
+          "unit_price": { "type": "integer" },
+          "discount": { "type": "float" } } }
+      }
+    }
+  },
+  "orders_object": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "properties": {
+        "customer_id": { "type": "integer" },
+        "status": { "type": "keyword" },
+        "order_date": { "type": "date" },
+        "total": { "type": "integer" },
+        "items": { "type": "object", "properties": {
+          "product_id": { "type": "integer" },
+          "name": { "type": "text", "analyzer": "cjk", "fields": { "keyword": { "type": "keyword" } } },
+          "brand": { "type": "keyword" },
+          "category": { "type": "keyword" },
+          "quantity": { "type": "integer" },
+          "unit_price": { "type": "integer" },
+          "discount": { "type": "float" } } }
+      }
+    }
+  },
+  "logs": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "level": { "type": "keyword" },
+        "service": { "type": "keyword" },
+        "method": { "type": "keyword" },
+        "path": { "type": "keyword" },
+        "status": { "type": "short" },
+        "latency_ms": { "type": "integer" },
+        "user_id": { "type": "integer" },
+        "ip": { "type": "ip" },
+        "trace_id": { "type": "keyword" },
+        "message": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } }
+      }
+    }
+  }
+}

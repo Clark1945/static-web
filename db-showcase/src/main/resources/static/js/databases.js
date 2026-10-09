@@ -38,7 +38,7 @@ export const DATABASES = [
   {
     id: "elasticsearch", name: "Elasticsearch", kind: "搜尋引擎", mono: "Es", color: "#00BFB3", ink: "#002A27",
     tagline: "全文檢索與日誌分析，用倒排索引做模糊搜尋和相關性排序。",
-    status: "planned",
+    status: "ready", page: () => import("./pages/elasticsearch/index.js"),
   },
   {
     id: "pgvector", name: "pgvector", kind: "向量", mono: "Vec", color: "#5B4FC4", ink: "#FFFFFF",

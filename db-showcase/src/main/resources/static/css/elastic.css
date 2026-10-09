@@ -1,0 +1,30 @@
+/* Elasticsearch 頁面：請求紀錄、JSON 上色、分析器的詞、explain 樹
+   練習題、陷阱題、卡片、統計、表格沿用 mongo.css、cassandra.css、redis.css、postgres.css */
+.es-schema { margin-top: 14px; }
+.es-detail { font-size: .72rem; overflow-wrap: anywhere; }
+.key-badge.fk { background: var(--fk-soft); color: var(--fk); }
+
+.es-transcript { display: grid; gap: 14px; }
+.es-req { display: grid; gap: 6px; min-width: 0; }
+.es-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: .85rem; }
+.es-stmt { font-weight: 600; overflow-wrap: anywhere; }
+.es-status { font-family: var(--font-mono); font-size: .75rem; padding: 1px 8px; border-radius: 999px; }
+.es-status.ok { background: var(--fk-soft); color: var(--fk); }
+.es-status.bad { background: var(--danger-soft); color: var(--danger); }
+.es-meta { font-size: .82rem; color: var(--muted); }
+.es-meta b { color: var(--ink); font-variant-numeric: tabular-nums; }
+pre.code.es-json, pre.code.es-text, pre.code.es-tree { white-space: pre; overflow-x: auto; font-size: .76rem; max-height: 420px; }
+.es-json .j-key { color: var(--accent); }
+.es-json .j-str { color: var(--fk); }
+.es-json .j-num { color: var(--pk); }
+.es-json .j-lit { color: var(--danger); }
+
+.es-input { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  flex: 1 1 260px; min-width: 0; max-width: 480px; }
+.es-tokens { display: grid; gap: 10px; }
+.es-token-row { display: grid; grid-template-columns: 110px 70px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+@media (max-width: 640px) { .es-token-row { grid-template-columns: minmax(0, 1fr); } }
+.es-token { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 8px; border-radius: 6px; background: var(--accent-soft);
+  font-family: var(--font-mono); font-size: .8rem; }
+.es-explain { display: grid; gap: 6px; margin-bottom: 12px; }
+.es-tree b { color: var(--accent); }

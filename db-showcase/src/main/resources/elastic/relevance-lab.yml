@@ -1,0 +1,118 @@
+# Elasticsearch 實驗室「相關性排序」的步驟：每一步有幾個查詢（Dev Tools 寫法，用 reader 唯讀執行），
+# 頁面列出每個查詢的前幾名與分數；可以展開第一名的分數計算（explain）。
+
+- id: idf
+  title: "稀有的詞分數高（IDF）"
+  goal: "同樣只搜一個詞：「降噪」只出現在少數評論，「很好」幾乎到處都有。比較兩個查詢第一名的分數。"
+  commands: |
+    GET /reviews/_search
+    { "size": 3, "_source": ["content"], "query": { "match": { "content": "降噪" } } }
+
+    GET /reviews/_search
+    { "size": 3, "_source": ["content"], "query": { "match": { "content": "很好" } } }
+  question: "哪個查詢的分數比較高？為什麼？"
+  takeaway: |
+    BM25 的分數 ≈ IDF × TF 的部分 × 欄位長度的調整。
+    IDF（inverse document frequency）：越少文件出現的詞越有鑑別力，分數越高。「降噪」只在幾百則評論出現，「很好」出現在幾千則，所以「降噪」的分數高很多。
+    多個詞的查詢裡，稀有的詞貢獻大部分的分數；「的、很、了」這種到處都有的詞幾乎不影響排序（以前要設停用詞，BM25 自然就壓低它們）。
+
+- id: field-length
+  title: "欄位越短，分數越高"
+  goal: "搜「音質」：A 是分數最高的 3 筆，B 依分數由低到高排，是分數最低的 3 筆。它們都只含有一次「音質」。"
+  commands: |
+    GET /reviews/_search
+    { "size": 3, "_source": ["content"], "query": { "match": { "content": "音質" } } }
+
+    GET /reviews/_search
+    { "size": 3, "_source": ["content"], "query": { "match": { "content": "音質" } },
+      "sort": [{ "_score": "asc" }] }
+  question: "同樣出現一次「音質」，分數為什麼不一樣？"
+  takeaway: |
+    BM25 會依欄位長度調整（參數 b，預設 0.75）：在短的評論裡出現「音質」，代表它是評論的重點，分數比較高；
+    在長評論裡出現一次，可能只是順便提到，分數比較低。
+    另一個參數 k1（預設 1.2）控制詞頻（TF）的飽和：同一個詞出現 1 次和 2 次差很多，出現 10 次和 11 次幾乎沒差，避免灌關鍵字。
+    對 A 按「第一名的分數怎麼算」可以看到 idf、tf、dl（這份文件的長度，以詞數計）、avgdl（平均長度）實際的數字。
+
+- id: boost
+  title: "欄位權重（boost）"
+  goal: "搜「Sony 耳機」：A 的 name 與 description 一樣重要，B 的 name 乘上 3 倍。"
+  commands: |
+    GET /products/_search
+    { "size": 5, "_source": ["name", "description"],
+      "query": { "multi_match": { "query": "Sony 耳機", "fields": ["name", "description"] } } }
+
+    GET /products/_search
+    { "size": 5, "_source": ["name", "description"],
+      "query": { "multi_match": { "query": "Sony 耳機", "fields": ["name^3", "description"] } } }
+  question: "前 5 名、分數有什麼變化？"
+  takeaway: |
+    multi_match 預設是 best_fields：每個欄位各算一個分數，取最高的。
+    A：前幾名是 Sony 的「有線」耳機。它們的 description 很短（只有顏色、線長），BM25 的長度調整讓 description 的分數比較高。
+    B：name 的分數乘上 3 倍後變成主導，name 裡同時有 Sony 與耳機的商品（無線、有線都有）分數一樣，排在一起。
+    ★ 欄位權重（boost）是調整相關性最常用的工具：名稱、標題通常比內文重要。
+    ★ 分數只能在同一個查詢裡比較名次，不同查詢的分數大小沒有意義（不能拿來設「分數 > 5 才算相關」這種門檻）。
+
+- id: function-score
+  title: "相關性加上商業規則：function_score"
+  goal: "描述有「降噪」的耳機分數都一樣（描述是同一個模板）。A 只看相關性；B 再乘上評分（rating）。"
+  commands: |
+    GET /products/_search
+    { "size": 5, "_source": ["name", "rating", "review_count"],
+      "query": { "match": { "description": "降噪" } } }
+
+    GET /products/_search
+    { "size": 5, "_source": ["name", "rating", "review_count"],
+      "query": {
+        "function_score": {
+          "query": { "match": { "description": "降噪" } },
+          "field_value_factor": { "field": "rating", "modifier": "log1p", "missing": 3 },
+          "boost_mode": "multiply"
+        }
+      } }
+  question: "B 的前 5 名依什麼排序？"
+  takeaway: |
+    電商搜尋很少只看文字相關性：還要考慮評分、銷量、庫存、上架時間、廣告。function_score 用函式調整分數：
+    field_value_factor（依欄位值）、gauss / exp / linear（距離某個值越遠分數越低，例如價格、時間、地點）、script_score、random_score（隨機但穩定的排序）。
+    modifier: log1p 讓評分 5 和 4 的差距不會太誇張；boost_mode 決定原本的分數與函式分數怎麼合併（multiply、sum、replace…）。
+
+- id: filter-no-score
+  title: "filter 不計分"
+  goal: "同樣的條件，A 放在 must，B 放在 filter。看看分數。"
+  commands: |
+    GET /products/_search
+    { "size": 3, "_source": ["name", "price"],
+      "query": { "bool": { "must": [
+        { "term": { "category": "無線耳機" } },
+        { "range": { "price": { "lte": 3000 } } }
+      ] } } }
+
+    GET /products/_search
+    { "size": 3, "_source": ["name", "price"],
+      "query": { "bool": { "filter": [
+        { "term": { "category": "無線耳機" } },
+        { "range": { "price": { "lte": 3000 } } }
+      ] } } }
+  question: "兩個查詢找到的文件一樣嗎？分數呢？"
+  takeaway: |
+    找到的文件完全一樣，但 must 會算分數（term 也有 IDF），filter 的分數全部是 0。
+    filter 不必算分數，而且常用的 filter 結果會被快取成 bitset，下次直接重用。
+    ★ 「是或不是」的條件（類別、價格區間、狀態、權限、時間）放 filter；只有需要影響排序的全文條件放 must / should。
+
+- id: should-bonus
+  title: "should 當作加分"
+  goal: "搜描述有「降噪」的商品；B 另外用 should 讓有「熱銷」標籤的加分。"
+  commands: |
+    GET /products/_search
+    { "size": 5, "_source": ["name", "tags"],
+      "query": { "bool": { "must": [{ "match": { "description": "降噪" } }] } } }
+
+    GET /products/_search
+    { "size": 5, "_source": ["name", "tags"],
+      "query": { "bool": {
+        "must": [{ "match": { "description": "降噪" } }],
+        "should": [{ "term": { "tags": { "value": "熱銷", "boost": 2 } } }]
+      } } }
+  question: "B 找到的總數有變嗎？前 5 名呢？"
+  takeaway: |
+    有 must 時，should 不再是必要條件，只是「符合就加分」：總數不變，但有熱銷標籤的排到前面。
+    這是「軟條件」的標準寫法：偏好某個品牌、某個地區、有庫存的，但沒有也不排除。

@@ -1,0 +1,270 @@
+# Elasticsearch 陷阱題：先猜結果，再執行對照。answer 是 options 的索引（從 0 開始）。
+# 沒有 fixture 的題目用 reader 直接在練習資料執行；有 fixture 的題目每段請求各自在乾淨的 scratch 副本用 learner 執行。
+
+- id: term-on-text
+  title: "對 text 欄位用 term"
+  question: "name 是 text 欄位（cjk 分析器），內容像「Sony 無線耳機 F178」。A 用 term 找「Sony」，會找到幾件？"
+  scripts:
+    - label: "A：term 查 text 欄位 name"
+      commands: |
+        GET /products/_count
+        { "query": { "term": { "name": "Sony" } } }
+    - label: "B：term 查 keyword 欄位 brand"
+      commands: |
+        GET /products/_count
+        { "query": { "term": { "brand": "Sony" } } }
+  options:
+    - "跟 B 一樣，59 件"
+    - "0 件"
+    - "報錯：text 欄位不能用 term"
+  answer: 1
+  explanation: |
+    text 欄位存的是分析後的詞：分析器會轉小寫，倒排索引裡是「sony」，不是「Sony」。term 不會分析查詢文字，拿「Sony」去找當然找不到，而且不會報錯。
+    ★ 規則：text 欄位用 match（查詢文字跟寫入時經過同一個分析器）；keyword、數字、日期用 term / range。
+    同樣地，對 keyword 欄位 brand 查「sony」（小寫）也是 0 件：keyword 不分析，大小寫要完全一樣。
+
+- id: match-is-or
+  title: "match 一整句話"
+  question: "評論裡真的出現「通勤戴很舒服」這句話的只有兩百多則。A 用 match 搜這句話，會找到幾則？"
+  scripts:
+    - label: "A：match"
+      commands: |
+        GET /reviews/_count
+        { "query": { "match": { "content": "通勤戴很舒服" } } }
+    - label: "B：match_phrase"
+      commands: |
+        GET /reviews/_count
+        { "query": { "match_phrase": { "content": "通勤戴很舒服" } } }
+  options:
+    - "跟 B 差不多"
+    - "比 B 多很多倍"
+    - "比 B 少：match 要求每個詞都出現"
+  answer: 1
+  explanation: |
+    cjk 分析器把這句話切成「通勤、勤戴、戴很、很舒、舒服」五個詞，match 預設是 OR：任何一個詞出現就算符合。
+    「舒服」「很舒」在很多評論裡都有（穿起來很舒服、睡起來很舒服），所以 A 找到兩千多則。
+    排序上最相關的仍會排前面，但「符合的總數」差很多；要精確用 match_phrase，或 operator and、minimum_should_match。
+
+- id: standard-on-chinese
+  title: "standard 分析器搜中文"
+  question: "content.std 用預設的 standard 分析器（中文一個字一個詞）。搜「音質」會找到幾則？"
+  scripts:
+    - label: "A：content.std（standard）"
+      commands: |
+        GET /reviews/_search
+        {
+          "size": 3, "_source": ["content"],
+          "query": { "match": { "content.std": "音質" } }
+        }
+    - label: "B：content（cjk）"
+      commands: |
+        GET /reviews/_search
+        {
+          "size": 3, "_source": ["content"],
+          "query": { "match": { "content": "音質" } }
+        }
+  options:
+    - "跟 B 一樣"
+    - "比 B 多很多，而且混進很多跟音質無關的評論"
+    - "0 則：standard 不支援中文"
+  answer: 1
+  explanation: |
+    standard 把「音質」拆成「音」「質」兩個詞，match 預設 OR：有「質」的評論（品質很好、肉質很好）也算符合，數量是 cjk 的好幾倍。
+    第一名雖然還是音質相關（兩個字都有的分數高），但召回了大量雜訊；聚合、計數都會錯。
+    ★ 中文欄位一定要選對分析器：cjk（bigram，不用外掛）、smartcn、IK（真的斷詞，要裝外掛）。分析器在建索引時就決定，之後改要 reindex。
+
+- id: object-vs-nested
+  title: "object 陣列的交叉比對"
+  question: "同樣的訂單、同樣的條件（同一個明細是手機、而且數量 ≥ 2），orders_object 的 items 是一般 object。A 會找到幾筆？"
+  scripts:
+    - label: "A：orders_object（object）"
+      commands: |
+        GET /orders_object/_count
+        {
+          "query": { "bool": { "filter": [
+            { "term": { "items.category": "手機" } },
+            { "range": { "items.quantity": { "gte": 2 } } }
+          ] } }
+        }
+    - label: "B：orders（nested）"
+      commands: |
+        GET /orders/_count
+        {
+          "query": { "nested": { "path": "items", "query": { "bool": { "filter": [
+            { "term": { "items.category": "手機" } },
+            { "range": { "items.quantity": { "gte": 2 } } }
+          ] } } } }
+        }
+  options:
+    - "跟 B 一樣"
+    - "比 B 多"
+    - "比 B 少"
+  answer: 1
+  explanation: |
+    object 陣列會被攤平：一筆訂單的 items.category = [手機, 男裝]、items.quantity = [1, 3]，兩個條件各自找「陣列裡有沒有」，
+    手機（數量 1）和男裝（數量 3）來自不同明細也會符合，所以 A 比較多，而且多出來的都是錯的。
+    ★ 陣列裡的物件需要「同一個物件的欄位一起比對」時，mapping 要用 nested（查詢也要用 nested query）。
+
+- id: nested-doc-count
+  title: "orders 有幾份文件"
+  question: "orders 有 8 萬筆訂單、20 萬個明細（nested）。_cat/indices 的 docs.count 會顯示多少？"
+  scripts:
+    - label: "A：_cat/indices"
+      commands: |
+        GET /_cat/indices/orders?v&h=index,docs.count
+    - label: "B：_count"
+      commands: |
+        GET /orders/_count
+  options:
+    - "80000，跟 _count 一樣"
+    - "280115"
+    - "200115"
+  answer: 1
+  explanation: |
+    每個 nested 物件在 Lucene 裡都是一份獨立的（隱藏）文件，跟父文件存在一起：8 萬 + 20 萬 = 28 萬。
+    _count、_search 只算最上層的文件（8 萬）；_cat/indices 顯示的是 Lucene 層級的數量。
+    nested 很好用，但每個明細都是一份文件：明細很多的時候索引變大，更新任何一個明細都要整份訂單重新寫入。
+
+- id: total-10000
+  title: "hits.total 是多少"
+  question: "reviews 有兩萬多則評論。不加任何條件搜尋，hits.total.value 會是多少？"
+  scripts:
+    - label: "A：預設"
+      commands: |
+        GET /reviews/_search
+        { "size": 0 }
+    - label: "B：track_total_hits: true"
+      commands: |
+        GET /reviews/_search
+        { "size": 0, "track_total_hits": true }
+  options:
+    - "21556"
+    - "10000，relation 是 gte"
+    - "10，因為 size 預設是 10"
+  answer: 1
+  explanation: |
+    為了效能，Elasticsearch 預設只精確計算到 10,000 筆：超過時 total 是 { "value": 10000, "relation": "gte" }（至少一萬）。
+    這樣只要找到「前幾名」就可以提早結束，不必把所有符合的文件都數完。
+    要精確數字：track_total_hits: true，或直接用 _count。做分頁時「共 N 頁」通常顯示「10,000+」就好。
+
+- id: no-time-zone
+  title: "date_histogram 沒給時區"
+  question: "9/1～9/7（台灣時間）每天的訂單數。A 沒有 time_zone，會回傳幾個 bucket？"
+  scripts:
+    - label: "A：沒有 time_zone"
+      commands: |
+        GET /orders/_search
+        {
+          "size": 0,
+          "query": { "range": { "order_date": { "gte": "2026-09-01T00:00:00+08:00", "lt": "2026-09-08T00:00:00+08:00" } } },
+          "aggs": { "per_day": { "date_histogram": { "field": "order_date", "calendar_interval": "day" } } }
+        }
+    - label: "B：time_zone +08:00"
+      commands: |
+        GET /orders/_search
+        {
+          "size": 0,
+          "query": { "range": { "order_date": { "gte": "2026-09-01T00:00:00+08:00", "lt": "2026-09-08T00:00:00+08:00" } } },
+          "aggs": { "per_day": { "date_histogram": { "field": "order_date", "calendar_interval": "day", "time_zone": "+08:00" } } }
+        }
+  options:
+    - "7 個，跟 B 一樣"
+    - "8 個：依 UTC 切，台灣的一天從早上 8 點開始，頭尾各多切出一段"
+    - "報錯"
+  answer: 1
+  explanation: |
+    date 欄位存的是 UTC，date_histogram 預設也依 UTC 切：台灣時間 9/1 00:00～08:00 屬於 UTC 的 8/31，所以多出一個 bucket，而且每一天的數字都不對。
+    跟 TimescaleDB 的 time_bucket 是同一個陷阱。Kibana 會自動帶上瀏覽器的時區，自己寫查詢時要記得加。
+
+- id: terms-on-text
+  title: "對 text 欄位做 terms 聚合"
+  question: "想統計評論最常出現的標題，對 title（text 欄位）做 terms 聚合。結果是？"
+  scripts:
+    - label: "terms 聚合 text 欄位"
+      commands: |
+        GET /reviews/_search
+        {
+          "size": 0,
+          "aggs": { "titles": { "terms": { "field": "title" } } }
+        }
+  options:
+    - "依標題分組，前 10 名"
+    - "依分析後的詞分組（很、滿意、不…）"
+    - "報錯：text 欄位預設不能聚合"
+  answer: 2
+  explanation: |
+    聚合、排序要用 doc values（依欄位存放的資料），text 欄位沒有 doc values；fielddata 可以在記憶體裡建，但預設關閉（很吃 heap）。
+    ★ 要聚合的字串欄位用 keyword，或在 text 欄位底下加一個 keyword 子欄位（fields: { keyword: { type: keyword } }），聚合 title.keyword。
+    就算打開 fielddata，聚合的也是分析後的「詞」，不是完整的標題。
+
+- id: deep-paging
+  title: "跳到第 1001 頁"
+  question: "每頁 10 筆，想看第 1001 頁：from 10000、size 10。結果是？"
+  scripts:
+    - label: "from 10000"
+      commands: |
+        GET /logs/_search
+        { "from": 10000, "size": 10 }
+  options:
+    - "第 10001～10010 筆"
+    - "報錯：Result window is too large"
+    - "空的結果"
+  answer: 1
+  explanation: |
+    from + size 不能超過 index.max_result_window（預設 10,000）。原因：每個分片都要排出前 from + size 名再合併，越後面越貴（深分頁問題）。
+    ★ 解法：search_after（用上一頁最後一筆的排序值當游標，搭配 PIT 固定快照），或 scroll（大量匯出，已不建議）。
+    使用者介面通常也不提供「跳到第 1000 頁」，只有「下一頁」或縮小搜尋條件。
+
+- id: dynamic-mapping
+  title: "動態 mapping 決定了型別"
+  fixture:
+    scratch_reviews: { source: reviews, query: { term: { product_id: 806 } } }
+  question: "新的索引沒有定義 mapping。第一份文件的 zip 是數字 100，第二份的 zip 是字串 \"10A\"。第二份寫得進去嗎？"
+  scripts:
+    - label: "依序寫入兩份文件"
+      commands: |
+        PUT /scratch_dynamic/_doc/1
+        { "zip": 100 }
+
+        PUT /scratch_dynamic/_doc/2
+        { "zip": "10A" }
+
+        GET /scratch_dynamic/_mapping
+  options:
+    - "寫得進去，Elasticsearch 是 schemaless"
+    - "寫不進去：zip 已經被推斷成 long"
+    - "寫得進去，zip 自動改成 text"
+  answer: 1
+  explanation: |
+    沒有 mapping 的欄位，第一次出現時由動態 mapping 推斷型別（數字 → long、字串 → text + keyword 子欄位、日期格式的字串 → date），之後就固定了。
+    第二份的「10A」轉不成 long，整份文件被拒絕（mapper_parsing_exception）。欄位型別一旦決定就不能改，只能建新索引再 _reindex。
+    ★ 正式環境一定要事先定義 mapping（或用 index template），必要時設 "dynamic": "strict" 拒絕沒定義的欄位，避免欄位數量暴增（mapping explosion）。
+
+- id: near-real-time
+  title: "寫入後馬上搜尋"
+  fixture:
+    scratch_reviews: { source: reviews, query: { term: { product_id: 806 } } }
+  question: "索引的 refresh_interval 是 30 秒。寫入一份文件後馬上 _search，搜得到嗎？用 _id GET 呢？"
+  scripts:
+    - label: "寫入後馬上搜尋、GET"
+      commands: |
+        PUT /scratch_nrt
+        { "settings": { "refresh_interval": "30s" } }
+
+        PUT /scratch_nrt/_doc/1
+        { "content": "降噪效果很棒" }
+
+        GET /scratch_nrt/_search
+        { "query": { "match": { "content": "降噪" } } }
+
+        GET /scratch_nrt/_doc/1
+  options:
+    - "兩個都拿得到"
+    - "搜尋找不到，GET 拿得到"
+    - "兩個都拿不到，要等 30 秒"
+  answer: 1
+  explanation: |
+    Elasticsearch 是「近即時」（near real-time）：寫入先進記憶體的緩衝區（並寫 translog 保證不遺失），refresh 時才變成可以搜尋的 segment。
+    預設每 1 秒 refresh 一次（索引一段時間沒有被搜尋時會暫停），這裡設成 30 秒，所以馬上搜尋找不到。
+    GET /_doc/1 是即時的：還沒 refresh 時會從 translog / 緩衝區讀出來。
+    需要「寫完馬上搜得到」時，寫入加上 ?refresh=wait_for（等下一次 refresh），不要每次都 ?refresh=true（產生大量小 segment）。
