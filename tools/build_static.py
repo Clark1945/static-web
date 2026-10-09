@@ -230,6 +230,8 @@ DATABASES = [
      "lab": "chunk-lab.yml", "labName": "chunk 實驗",
      "labNote": "每一句查詢都用 EXPLAIN ANALYZE 執行，比較讀了幾個 chunk（page_views 共 27 個，每個 7 天）與執行時間。"
                 "壓縮、連續聚合的實驗需要互動操作，請到展示台的「實驗室」。"},
+    {"id": "pgvector", "name": "pgvector", "dir": "pgvector", "api": "pgvector", "key": "sql", "lang": "sql",
+     "lab": None, "labName": None, "labNote": None},
 ]
 
 
@@ -406,7 +408,7 @@ def cypher_blocks(results):
 
 def blocks(db, run):
     """把一次執行（PostgreSQL 是單一查詢結果，其他是多句指令的結果）轉成共同格式。"""
-    if db["id"] in ("postgresql", "timescaledb"):
+    if db["id"] in ("postgresql", "timescaledb", "pgvector"):
         return pg_blocks(run)
     results = run["results"]
     return {"redis": redis_blocks, "mongodb": mongo_blocks, "cassandra": cql_blocks, "neo4j": cypher_blocks}[db["id"]](results)
@@ -502,7 +504,7 @@ def build_index(stats):
   <span class="sub">面試準備 · shop 練習資料庫</span></div></div></header>
 <main class="home">
   <p class="lead">以一個台灣電商「shop」的模擬資料（會員、訂單、明細、商品、分類，約 30 萬筆）為例，
-    練習 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB 六種資料庫的查詢、資料模型與面試常考的觀念。</p>
+    練習 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB、pgvector 七種資料庫的查詢、資料模型與面試常考的觀念。</p>
   <div class="home-grid">
     <a class="home-card" href="cheatsheet.html">
       <b>CheatSheet</b>
@@ -511,7 +513,8 @@ def build_index(stats):
         MongoDB：查詢與聚合管線、內嵌 vs 參照、索引與 ESR、交易與分片。
         Cassandra：分區鍵與叢集鍵、查詢先行的表設計、墓碑、一致性等級、LWT。
         Neo4j：Cypher 圖樣、路徑與最短路徑、MERGE、圖的資料模型、PROFILE。
-        TimescaleDB：hypertable 與 chunk、time_bucket、gapfill、連續聚合、壓縮、資料保留。</span>
+        TimescaleDB：hypertable 與 chunk、time_bucket、gapfill、連續聚合、壓縮、資料保留。
+        pgvector：距離運算子、語意搜尋與推薦、HNSW vs IVFFlat、過濾與多租戶、量化、混合搜尋。</span>
     </a>
     <a class="home-card" href="question-bank.html">
       <b>題庫</b>

@@ -2088,3 +2088,240 @@ SELECT * FROM timescaledb_information.jobs;                                    -
 - JPA 實體的主鍵要包含時間欄位（複合主鍵 `@IdClass` / `@EmbeddedId`），或不在 hypertable 上用 JPA，改用 JdbcTemplate
 - 大量寫入：`reWriteBatchedInserts=true` + JDBC batch，或 PostgreSQL 的 `CopyManager`（COPY）
 - time_bucket 這類函式在 JPQL 不能直接用：用原生 SQL（`@Query(nativeQuery = true)`）或 JdbcTemplate
+
+# pgvector
+
+> 範例都來自練習環境（`pg-lab` 容器的 `vectors` 資料庫，port 5434），可以直接貼到展示台的「SQL 主控台」執行。products 是 1,500 件商品（64 維），`embed(文字)` 是用詞庫做的迷你嵌入模型；passages 是 10 萬筆 128 維的模擬文件片段（索引實驗用）。
+
+## 1. ★ 基本觀念
+
+- **嵌入（embedding）**：模型把文字、圖片轉成一串數字（向量），意思相近的東西向量也相近；常見 384～3072 維
+- **向量搜尋**：拿查詢的向量，找「距離最近的 k 筆」（k-nearest neighbors），用來做語意搜尋、推薦、去重、分類、RAG
+- **pgvector = PostgreSQL 的擴充**：加上 `vector` 型別、距離運算子、向量索引（HNSW、IVFFlat）；向量跟一般欄位放在同一張表，可以 WHERE、JOIN、交易
+- **RAG（Retrieval-Augmented Generation）**：文件切段 → 每段嵌入存進資料庫 → 問題也嵌入 → 找最近的幾段 → 連同問題交給 LLM 回答
+
+| | pgvector | 專用向量資料庫（Pinecone、Milvus、Qdrant、Weaviate） |
+|---|---|---|
+| 過濾、JOIN | 一般 SQL，跟關聯資料一起查 | 只能用另外存的 metadata 過濾 |
+| 交易、備份、權限 | PostgreSQL 現成的 | 各自的機制 |
+| 規模 | 單機千萬筆等級沒問題；更大要分區、讀取副本 | 為十億筆、分散式設計 |
+| 維運 | 不用多一套系統 | 多一套服務（或付費 SaaS） |
+
+★ 面試結論：已經在用 PostgreSQL、資料量在千萬筆以內，先用 pgvector；需要超大規模、極低延遲或多模態的進階功能，再考慮專用資料庫。
+
+## 2. 型別、運算子、函式
+
+```sql
+CREATE EXTENSION vector;
+CREATE TABLE products (id int PRIMARY KEY, name text, embedding vector(64));   -- 宣告維度，維度不對寫不進去
+INSERT INTO products VALUES (1, 'x', '[0.1, 0.2, …]');
+
+SELECT id FROM products ORDER BY embedding <=> '[…]' LIMIT 5;                  -- 最近的 5 筆
+SELECT 1 - (a.embedding <=> b.embedding) AS cosine_similarity FROM …;
+SELECT avg(embedding), sum(embedding) FROM products;                            -- 向量也能聚合
+SELECT vector_dims(embedding), vector_norm(embedding), l2_normalize(embedding);
+SELECT subvector(embedding, 1, 16), embedding::halfvec, binary_quantize(embedding);
+```
+
+| 運算子 | 距離 | 索引的 operator class | 說明 |
+|---|---|---|---|
+| `<->` | L2（歐幾里得） | `vector_l2_ops` | 看長度與方向 |
+| `<=>` | cosine 距離 = 1 - cosine 相似度 | `vector_cosine_ops` | 只看方向，範圍 0～2 |
+| `<#>` | ★ **負的**內積 | `vector_ip_ops` | 越小越像；向量長度都是 1 時最快 |
+| `<+>` | L1（曼哈頓） | `vector_l1_ops` | 0.7 起 |
+| `<~>`、`<%>` | Hamming、Jaccard | `bit_hamming_ops`、`bit_jaccard_ops` | bit 型別 |
+
+| 型別 | 每維 | 索引上限 | 用途 |
+|---|---|---|---|
+| `vector` | 4 bytes（float4） | 2,000 維 | 預設 |
+| `halfvec` | 2 bytes（float2） | 4,000 維 | 空間減半，召回率幾乎不變 |
+| `bit` | 1 bit | 64,000 維 | binary quantization |
+| `sparsevec` | 只存非零值 | 1,000 個非零值 | 稀疏向量（SPLADE、BM25 類） |
+
+- ★ 向量都正規化成長度 1 時，cosine、L2、內積排出來的名次一樣（OpenAI 等模型的輸出已經是長度 1），可以選內積（最快）
+- ★ 所有運算子都是「越小越近」：索引只支援由小到大的排序，所以內積取負號
+- 同一個欄位只能放同一個模型產生的向量；不同模型的向量不能互相比較
+
+## 3. ★ 語意搜尋
+
+```sql
+-- 文字 → 向量：真實系統是應用程式呼叫嵌入模型 API；這裡用 embed()
+SELECT id, name FROM products ORDER BY embedding <=> embed('通勤 安靜') LIMIT 5;   -- 找到主動降噪耳機
+
+-- 跟一般條件一起用
+SELECT id, name, price FROM products
+WHERE price <= 1000 AND category IN ('男裝', '女裝')
+ORDER BY embedding <=> embed('冬天 保暖') LIMIT 5;
+
+-- 相似商品（記得排除自己）
+SELECT id, name FROM products WHERE id <> 806
+ORDER BY embedding <=> (SELECT embedding FROM products WHERE id = 806) LIMIT 5;
+
+-- 每一筆各找 k 個鄰居：LATERAL
+SELECT s.id, n.id FROM products s
+CROSS JOIN LATERAL (SELECT p.id FROM products p WHERE p.id <> s.id ORDER BY p.embedding <=> s.embedding LIMIT 2) n;
+
+-- 推薦：使用者向量 = 買過商品的平均
+WITH taste AS (SELECT avg(p.embedding) AS v FROM purchases u JOIN products p ON p.id = u.product_id WHERE u.customer_id = 224)
+SELECT p.id FROM products p, taste WHERE p.id NOT IN (…買過的…) ORDER BY p.embedding <=> taste.v LIMIT 5;
+
+-- k-NN 分類：最近的 15 件投票
+SELECT category, count(*) FROM (SELECT category FROM products ORDER BY embedding <=> embed('上班 通勤') LIMIT 15) s
+GROUP BY category ORDER BY count(*) DESC;
+```
+
+- 語意搜尋強在「意思相近」（同義詞、換個說法），弱在專有名詞：品牌、型號、料號模型常不認得或弄錯 → 用關鍵字或混合搜尋
+- 距離門檻要看資料決定：高維空間裡不相關的東西 cosine 相似度在 0 附近，相關的不一定到 0.8
+- RAG 的品質大多取決於「切段（chunking）」：太長混進不相關內容、太短失去上下文；常見 200～800 tokens、相鄰段落重疊一些
+
+## 4. ★ 向量索引：HNSW vs IVFFlat
+
+```sql
+CREATE INDEX ON passages USING hnsw (embedding vector_cosine_ops);                          -- m = 16, ef_construction = 64
+CREATE INDEX ON passages USING hnsw (embedding vector_cosine_ops) WITH (m = 32, ef_construction = 128);
+SET hnsw.ef_search = 100;                                                                    -- 預設 40
+
+CREATE INDEX ON passages USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);     -- 資料載入「之後」再建
+SET ivfflat.probes = 10;                                                                     -- 預設 1
+
+SET maintenance_work_mem = '2GB';                -- ★ 圖放得進記憶體，建 HNSW 才快
+SET max_parallel_maintenance_workers = 7;        -- 平行建索引（Docker 預設 /dev/shm 只有 64 MB，要加大 shm_size）
+```
+
+實測（10 萬筆 128 維，100 個查詢取平均，召回率 = 跟精確搜尋的前 10 名比）：
+
+| 做法 | 召回率 | 每次查詢 | 建索引 | 索引大小 |
+|---|---|---|---|---|
+| 精確搜尋（不用索引） | 100% | 19 ms | — | — |
+| HNSW，ef_search = 10 | 94% | 1.2 ms | 38 秒 | 79 MB |
+| HNSW，ef_search = 40（預設） | 99% | 1.3 ms | | |
+| HNSW，ef_search = 200 | 100% | 2.9 ms | | |
+| IVFFlat lists = 100，probes = 1 | 45% | 0.9 ms | 0.8 秒 | 53 MB |
+| IVFFlat lists = 100，probes = 10 | 81% | 2.7 ms | | |
+| IVFFlat lists = 100，probes = 30 | 95% | 6.6 ms | | |
+| IVFFlat lists = 1000，probes = 1 | 88% | 0.9 ms | 9 秒 | 56 MB |
+
+| | HNSW | IVFFlat |
+|---|---|---|
+| 原理 | 多層的鄰居圖，從上層往更近的鄰居走 | k-means 分成 lists 群，只看最近的 probes 群 |
+| 查詢參數 | `hnsw.ef_search`（也是最多回傳幾筆） | `ivfflat.probes` |
+| 建索引參數 | `m`、`ef_construction` | `lists`（建議 筆數 / 1000，百萬筆以上 √筆數） |
+| 召回率 / 速度 | 較好 | 同樣召回率時較慢 |
+| 建索引 | 慢、吃記憶體 | 快 |
+| 空資料表就建 | 可以（邊寫入邊建圖） | 不行：分群依建索引當下的資料，資料變多要重建 |
+
+- ★ 都是**近似**最近鄰（ANN），上線前用自己的資料量測召回率，再調 ef_search / probes
+- ★ 用得到索引的三個條件：`ORDER BY 欄位 運算子 值`（由小到大）＋ `LIMIT` ＋ 運算子跟 operator class 一致
+- 小資料表（幾萬筆以內）精確搜尋就夠快，不一定要建向量索引；精確搜尋召回率永遠 100%
+- 查詢參數用 `SET LOCAL` 只影響目前的交易，適合「這一句要特別準」的情況
+
+## 5. ★ 過濾與多租戶
+
+```sql
+SELECT id FROM passages WHERE tenant_id = 7 ORDER BY embedding <=> $1 LIMIT 10;   -- ★ 可能不到 10 筆
+
+SET hnsw.iterative_scan = relaxed_order;     -- 0.8 起：候選不夠時繼續往下找（strict_order 保證依距離排序）
+SET hnsw.max_scan_tuples = 20000;            -- 最多掃幾筆（預設 2 萬）
+SET ivfflat.iterative_scan = relaxed_order;  -- IVFFlat 也有（ivfflat.max_probes）
+
+CREATE INDEX ON passages USING hnsw (embedding vector_cosine_ops) WHERE tenant_id = 7;   -- 大租戶的部分索引
+```
+
+- ★ **post-filtering**：HNSW 先找 ef_search（40）個候選，之後才套用 WHERE；租戶 7 只佔 2%，實測平均只回傳 0.7 筆，而且不會報錯
+- 實測（租戶 7）：iterative_scan = relaxed_order 一定湊滿 10 筆、召回率 77%、8 ms；ef_search = 1000 召回率 89%、12 ms；精確搜尋 100%、10 ms
+- 過濾後剩下的資料不多時，精確搜尋又準又快（`WITH t AS MATERIALIZED (SELECT … WHERE tenant_id = 7) SELECT … FROM t ORDER BY … LIMIT 10`）
+- 租戶很多、每個都大：依 tenant_id 分區（`PARTITION BY LIST`），每個分區各自有 HNSW 索引
+
+## 6. 量化與降維
+
+```sql
+CREATE INDEX ON passages USING hnsw ((embedding::halfvec(128)) halfvec_cosine_ops);
+SELECT id FROM passages ORDER BY embedding::halfvec(128) <=> $1::halfvec(128) LIMIT 10;   -- 要寫成同樣的運算式
+
+CREATE INDEX ON passages USING hnsw ((binary_quantize(embedding)::bit(128)) bit_hamming_ops);
+SELECT id FROM (                                                  -- bit 撈候選 → 原始向量重排
+  SELECT id, embedding FROM passages ORDER BY binary_quantize(embedding)::bit(128) <~> binary_quantize($1) LIMIT 100
+) c ORDER BY embedding <=> $1 LIMIT 10;
+```
+
+| 索引（10 萬筆 128 維） | 大小 | 召回率 |
+|---|---|---|
+| vector | 79 MB | 99% |
+| halfvec | 54 MB | 99.9% |
+| bit | 30 MB | 42% |
+| bit 撈 100 筆 → 重排 | 30 MB | 95% |
+
+- 1536 維 × 1000 萬筆 = 60 GB 的向量，HNSW 索引再一份；量化用精度換空間
+- ★ halfvec 幾乎沒有損失；3072 維的模型（超過 vector 索引的 2,000 維上限）一定要用 halfvec 建索引
+- binary quantization 適合 1,000 維以上的模型，一定要搭配重排
+- 降維：Matryoshka 類模型（OpenAI text-embedding-3）可以直接取前 256 / 512 維（`subvector`，記得重新正規化）
+
+## 7. 混合搜尋（hybrid search）
+
+```sql
+WITH semantic AS (
+  SELECT id, row_number() OVER (ORDER BY embedding <=> embed('Sony 降噪')) AS r
+  FROM products ORDER BY embedding <=> embed('Sony 降噪') LIMIT 50
+), keyword AS (
+  SELECT id, row_number() OVER (ORDER BY ts_rank(tsv, query) DESC) AS r
+  FROM products, plainto_tsquery('simple', 'Sony 降噪') query WHERE tsv @@ query LIMIT 50
+)
+SELECT coalesce(s.id, k.id) AS id,
+       coalesce(1.0 / (60 + s.r), 0) + coalesce(1.0 / (60 + k.r), 0) AS rrf
+FROM semantic s FULL JOIN keyword k ON k.id = s.id
+ORDER BY rrf DESC LIMIT 10;
+```
+
+- 語意搜尋負責「意思相近」，關鍵字（全文檢索 / BM25）負責專有名詞、型號、精確字串；兩邊都做再合併
+- ★ **RRF（Reciprocal Rank Fusion）**：每份名單排第 r 名得 1 / (60 + r) 分，加總排序；只看名次，不用管兩邊分數的單位不同
+- 中文全文檢索要處理斷詞（pg_bigm、zhparser），或關鍵字那一邊交給 Elasticsearch
+- 進一步：取前 50 筆交給 reranker（cross-encoder）模型重新排序
+
+## 8. 寫入與維護
+
+- 向量是從文字算出來的衍生資料：★ **文字改了要重算向量**；換模型要全部重算，所以要記錄每筆向量的模型與版本
+- 嵌入很慢又要花錢：批次呼叫、非同步（寫入文字後由背景工作補向量）、只對變動的資料重算
+- HNSW 會在 INSERT 時更新，大量匯入時「先匯入、再建索引」比較快；IVFFlat 一定要在資料載入後才建
+- UPDATE / DELETE 會在索引留下死資料，靠 VACUUM 清掉；大量變動後 `REINDEX INDEX CONCURRENTLY`
+- 一筆 1536 維就有 6 KB，超過 2 KB 會被 TOAST；`SELECT *` 會把向量一起傳回來，查詢時只選需要的欄位
+
+## 9. 常見陷阱
+
+| 陷阱 | 說明 |
+|---|---|
+| `<#>` 由大到小排 | `<#>` 是負內積，DESC 找到的是最不像的 |
+| `ORDER BY 1 - 距離 DESC` | 結果一樣，但用不到索引 |
+| 運算子跟索引不一致 | cosine 索引配 `<->`：整張表掃描 |
+| 沒有 LIMIT | 用不到索引 |
+| 只有距離門檻 `WHERE dist < 0.3` | 用不到索引，要 ORDER BY … LIMIT 再過濾 |
+| 過濾條件很嚴格 | HNSW 回傳不足 k 筆，不會報錯 |
+| 相似商品沒排除自己 | 第一名是自己（距離 0） |
+| 模型不認得的文字 | embed() 回傳 NULL / 不準的向量，結果看起來有答案但是錯的 |
+| 平均向量 | 長度小於 1，拿去跟固定門檻比要先 l2_normalize |
+| IVFFlat 建在空表 | 分群沒有意義，召回率很差；資料載入後再建 |
+| HNSW ef_search 小於 LIMIT | 最多只回傳 ef_search 筆 |
+| 建 HNSW 很慢 | maintenance_work_mem 太小（圖放不進記憶體） |
+| 文字改了沒重算向量 | 搜尋結果跟內容對不上 |
+
+## 10. ★ 面試題速答
+
+| 問題 | 重點 |
+|---|---|
+| 向量搜尋是什麼？ | 把資料嵌入成向量，找距離最近的 k 筆；用在語意搜尋、推薦、去重、RAG |
+| cosine、L2、內積怎麼選？ | 照模型建議；向量都正規化時三者名次一樣，用內積最快 |
+| HNSW vs IVFFlat？ | HNSW 召回率與速度較好、可邊寫入邊建，但建得慢、吃記憶體；IVFFlat 建得快、較小，要資料載入後才建 |
+| 召回率怎麼調？ | HNSW 調 ef_search（建索引時 m、ef_construction）；IVFFlat 調 probes、lists；用自己的資料量測 |
+| 加上 WHERE 結果變少？ | post-filtering；iterative scan、提高 ef_search、部分索引、分區，或過濾後精確搜尋 |
+| 向量太佔空間？ | halfvec（減半、幾乎無損）、binary quantization + 重排、降維 |
+| 語意搜尋找不到型號？ | 混合搜尋：全文檢索 + 向量，RRF 合併 |
+| pgvector 還是專用向量資料庫？ | 千萬筆以內、需要跟關聯資料一起查 → pgvector；十億筆、分散式 → 專用資料庫 |
+| RAG 的流程？ | 切段 → 嵌入 → 存向量 → 問題嵌入 → 找最近的段落（+ 過濾、重排）→ 交給 LLM |
+| 換嵌入模型要做什麼？ | 全部重新嵌入、重建索引；新舊模型的向量不能混用（可以先寫新欄位，切換後刪舊的） |
+
+## 11. Java / Spring
+
+- JDBC：`com.pgvector:pgvector` 套件，`PGvector.addVectorType(conn)` 後用 `new PGvector(float[])` 當參數；或直接傳字串 `?::vector`
+- Hibernate 6.4+：`hibernate-vector` 模組，`@JdbcTypeCode(SqlTypes.VECTOR) @Array(length = 1536) float[] embedding`
+- ★ Spring AI：`PgVectorStore`（starter：`spring-ai-starter-vector-store-pgvector`），設定前綴 `spring.ai.vectorstore.pgvector`：`index-type=HNSW`、`distance-type=COSINE_DISTANCE`、`dimensions`
+- `vectorStore.add(documents)`：呼叫 EmbeddingModel 嵌入後寫入；查詢 `vectorStore.similaritySearch(request)`，request 用 `SearchRequest.builder()` 設定 `query("…")`、`topK(5)`、`filterExpression("tenant == 7")`
+- 嵌入呼叫要批次、要重試、要限流；向量欄位不要在列表 API 裡 SELECT 出來（很大）

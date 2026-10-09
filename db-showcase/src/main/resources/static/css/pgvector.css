@@ -1,0 +1,15 @@
+/* pgvector 頁面：資料表卡片的索引清單、實驗室的三欄比較與量測表
+   練習題、陷阱題、寫入沙盒沿用 postgres.css；卡片、統計、表格沿用 mongo.css、cassandra.css、redis.css */
+.vec-schema { margin-top: 14px; }
+.vec-indexes { display: grid; gap: 6px; font-size: .8rem; }
+.vec-def { font-size: .72rem; overflow-wrap: anywhere; }
+.vec-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1100px) { .vec-three { grid-template-columns: minmax(0, 1fr); } }
+.vec-three .result { max-height: 420px; }
+.vec-input { font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  flex: 1 1 260px; min-width: 0; max-width: 420px; }
+.vec-sep { width: 1px; align-self: stretch; background: var(--line); }
+.vec-good { color: var(--fk); }
+.vec-bad { color: var(--danger); }
+.vec-note { margin: 4px 0 0; font-size: .8rem; }
+pre.code.vec-plan { white-space: pre; overflow-x: auto; font-size: .76rem; max-height: 360px; }

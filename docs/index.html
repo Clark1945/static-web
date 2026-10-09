@@ -120,7 +120,7 @@ pre.code:hover .copy, .copy:focus-visible { opacity: 1; }
   <span class="sub">面試準備 · shop 練習資料庫</span></div></div></header>
 <main class="home">
   <p class="lead">以一個台灣電商「shop」的模擬資料（會員、訂單、明細、商品、分類，約 30 萬筆）為例，
-    練習 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB 六種資料庫的查詢、資料模型與面試常考的觀念。</p>
+    練習 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB、pgvector 七種資料庫的查詢、資料模型與面試常考的觀念。</p>
   <div class="home-grid">
     <a class="home-card" href="cheatsheet.html">
       <b>CheatSheet</b>
@@ -129,15 +129,16 @@ pre.code:hover .copy, .copy:focus-visible { opacity: 1; }
         MongoDB：查詢與聚合管線、內嵌 vs 參照、索引與 ESR、交易與分片。
         Cassandra：分區鍵與叢集鍵、查詢先行的表設計、墓碑、一致性等級、LWT。
         Neo4j：Cypher 圖樣、路徑與最短路徑、MERGE、圖的資料模型、PROFILE。
-        TimescaleDB：hypertable 與 chunk、time_bucket、gapfill、連續聚合、壓縮、資料保留。</span>
+        TimescaleDB：hypertable 與 chunk、time_bucket、gapfill、連續聚合、壓縮、資料保留。
+        pgvector：距離運算子、語意搜尋與推薦、HNSW vs IVFFlat、過濾與多租戶、量化、混合搜尋。</span>
     </a>
     <a class="home-card" href="question-bank.html">
       <b>題庫</b>
-      <span>PostgreSQL 練習 43 題、陷阱 10 題、實驗 11 步、Redis 練習 26 題、陷阱 8 題、MongoDB 練習 27 題、陷阱 8 題、實驗 6 步、Cassandra 練習 28 題、陷阱 11 題、實驗 6 步、Neo4j 練習 24 題、陷阱 12 題、實驗 5 步、TimescaleDB 練習 18 題、陷阱 6 題、實驗 4 步。
+      <span>PostgreSQL 練習 43 題、陷阱 10 題、實驗 11 步、Redis 練習 26 題、陷阱 8 題、MongoDB 練習 27 題、陷阱 8 題、實驗 6 步、Cassandra 練習 28 題、陷阱 11 題、實驗 6 步、Neo4j 練習 24 題、陷阱 12 題、實驗 5 步、TimescaleDB 練習 18 題、陷阱 6 題、實驗 4 步、pgvector 練習 20 題、陷阱 8 題。
         附提示、答案、解說與正確答案的實際執行結果。</span>
     </a>
   </div>
-  <p class="foot">更新於 2026-10-08</p>
+  <p class="foot">更新於 2026-10-09</p>
 </main>
 <script>
 // 兩份靜態頁共用：SQL 上色、複製按鈕、HTML 跳脫

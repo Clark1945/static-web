@@ -43,7 +43,7 @@ export const DATABASES = [
   {
     id: "pgvector", name: "pgvector", kind: "向量", mono: "Vec", color: "#5B4FC4", ink: "#FFFFFF",
     tagline: "PostgreSQL 的向量擴充：相似度搜尋，AI 語意搜尋與 RAG 的基礎。",
-    status: "planned",
+    status: "ready", page: () => import("./pages/pgvector/index.js"),
   },
 ];
 

@@ -1,0 +1,187 @@
+# pgvector 陷阱題：先猜結果，再執行對照（都在唯讀交易裡執行）。answer 是 options 的索引（從 0 開始）。
+
+- id: self-match
+  title: "最像的商品是誰"
+  question: "找跟商品 806 最像的 3 件商品，第一名會是哪一件？"
+  sqls:
+    - label: "沒有排除自己"
+      sql: |
+        SELECT id, name, round((embedding <=> (SELECT embedding FROM products WHERE id = 806))::numeric, 3) AS distance
+        FROM products
+        ORDER BY embedding <=> (SELECT embedding FROM products WHERE id = 806)
+        LIMIT 3;
+  options:
+    - "另一件 Sony 無線耳機"
+    - "806 自己，距離 0"
+    - "隨機一件，因為距離都差不多"
+  answer: 1
+  explanation: |
+    自己跟自己的距離是 0，一定排第一。「相似商品」「相關文章」都要記得 WHERE id <> 806，
+    而且只排除自己還不夠：同一件商品的重複資料（換個 id 重新上架）距離也幾乎是 0，常要再用距離門檻排除。
+
+- id: negative-inner-product
+  title: "<#> 由大到小排"
+  question: "想要「內積最大」（最像）的 3 件，於是寫 ORDER BY embedding <#> x DESC。結果是最像的嗎？"
+  sqls:
+    - label: "A：<#> … DESC"
+      sql: |
+        SELECT id, name, round((embedding <#> (SELECT embedding FROM products WHERE id = 806))::numeric, 3) AS neg_inner
+        FROM products
+        ORDER BY embedding <#> (SELECT embedding FROM products WHERE id = 806) DESC
+        LIMIT 3;
+    - label: "B：<#> 由小到大"
+      sql: |
+        SELECT id, name, round((embedding <#> (SELECT embedding FROM products WHERE id = 806))::numeric, 3) AS neg_inner
+        FROM products
+        ORDER BY embedding <#> (SELECT embedding FROM products WHERE id = 806)
+        LIMIT 3;
+  options:
+    - "是，<#> 是內積，越大越像"
+    - "不是，<#> 回傳「負的」內積，DESC 反而找到最不像的"
+    - "報錯：<#> 不能排序"
+  answer: 1
+  explanation: |
+    pgvector 的 <#> 回傳負內積：越像的值越小（-1 最像）。A 找到的是飲料、健身器材這些跟耳機完全無關的商品。
+    原因：PostgreSQL 的索引只支援「由小到大」的距離排序，所以內積取負號，讓所有運算子都是「越小越近」。
+    ★ 三個運算子都一樣：ORDER BY 運算子由小到大 LIMIT k，就是最像的 k 筆。要顯示內積時自己乘上 -1。
+
+- id: opclass-mismatch
+  title: "L2 距離用得到 cosine 索引嗎"
+  question: "passages 的向量都是長度 1，L2 距離與 cosine 距離排出來的名次完全一樣。索引是 vector_cosine_ops，B 用 <->（L2）會用到索引嗎？"
+  sqls:
+    - label: "A：<=>（cosine）"
+      sql: |
+        EXPLAIN (COSTS OFF)
+        SELECT id FROM passages
+        ORDER BY embedding <=> (SELECT embedding FROM questions WHERE id = 1)
+        LIMIT 5;
+    - label: "B：<->（L2）"
+      sql: |
+        EXPLAIN (COSTS OFF)
+        SELECT id FROM passages
+        ORDER BY embedding <-> (SELECT embedding FROM questions WHERE id = 1)
+        LIMIT 5;
+  options:
+    - "會，名次一樣，規劃器知道可以用"
+    - "不會，B 整張表掃描再排序"
+    - "會，但要多花一點時間轉換"
+  answer: 1
+  explanation: |
+    向量索引綁定建立時的運算子類別（operator class）：vector_cosine_ops 只服務 <=>，vector_l2_ops 只服務 <->，vector_ip_ops 只服務 <#>。
+    規劃器不知道「向量都是長度 1 所以名次一樣」，B 只好 Parallel Seq Scan 算 10 萬次距離。
+    ★ 建索引前先決定好用哪一種距離（通常照嵌入模型文件的建議），程式裡的查詢一律用同一個運算子。
+
+- id: similarity-expression
+  title: "ORDER BY 相似度 DESC"
+  question: "A、B 的結果完全一樣。哪一句用得到 HNSW 索引？"
+  sqls:
+    - label: "A：ORDER BY 距離"
+      sql: |
+        EXPLAIN (COSTS OFF)
+        SELECT id FROM passages
+        ORDER BY embedding <=> (SELECT embedding FROM questions WHERE id = 1)
+        LIMIT 5;
+    - label: "B：ORDER BY 1 - 距離 DESC（相似度由高到低）"
+      sql: |
+        EXPLAIN (COSTS OFF)
+        SELECT id FROM passages
+        ORDER BY 1 - (embedding <=> (SELECT embedding FROM questions WHERE id = 1)) DESC
+        LIMIT 5;
+  options:
+    - "兩句都用得到"
+    - "只有 A"
+    - "只有 B，因為相似度才是索引存的值"
+  answer: 1
+  explanation: |
+    索引只認得「欄位 運算子 值」由小到大這個形式。包上一層運算（1 - …、乘上 -1、轉型）之後就不認得了，B 是整張表掃描。
+    ★ ORDER BY 永遠寫原本的距離；相似度只在 SELECT 裡算給人看。
+
+- id: missing-limit
+  title: "沒有 LIMIT"
+  question: "想要全部依距離排好，所以沒寫 LIMIT。會用到 HNSW 索引嗎？"
+  sqls:
+    - label: "沒有 LIMIT"
+      sql: |
+        EXPLAIN (COSTS OFF)
+        SELECT id FROM passages
+        ORDER BY embedding <=> (SELECT embedding FROM questions WHERE id = 1);
+  options:
+    - "會，索引本來就是排好的"
+    - "不會，整張表掃描再排序"
+  answer: 1
+  explanation: |
+    HNSW、IVFFlat 是為「找最近的 k 個」設計的，而且是近似結果；最多只回傳 ef_search（預設 40）或 probes 涵蓋範圍內的資料。
+    沒有 LIMIT 時規劃器不會用它（用了反而會漏資料），改成整張表算距離再排序。向量搜尋一定要寫 LIMIT。
+
+- id: filter-fewer-rows
+  title: "加上過濾條件，回傳幾筆"
+  question: "租戶 7 只佔全部資料的 2%（約 2000 筆）。加上 WHERE tenant_id = 7 再取最近的 10 筆，會回傳幾筆？"
+  sqls:
+    - label: "HNSW + WHERE"
+      sql: |
+        SELECT id, tenant_id
+        FROM passages
+        WHERE tenant_id = 7
+        ORDER BY embedding <=> (SELECT embedding FROM questions WHERE id = 1)
+        LIMIT 10;
+  options:
+    - "10 筆，租戶 7 有 2000 筆，一定夠"
+    - "不到 10 筆"
+    - "0 筆，WHERE 跟向量索引不能一起用"
+  answer: 1
+  explanation: |
+    HNSW 先找出 ef_search（預設 40）個最近的候選，再套用 WHERE；40 筆裡屬於租戶 7 的平均不到 1 筆，所以回傳的筆數不足（這句只回傳 2 筆）。
+    這是「過濾後再取 k 筆」（post-filtering）的經典問題，多租戶 RAG 最常踩到。解法：
+    1. pgvector 0.8：SET hnsw.iterative_scan = relaxed_order，候選不夠時自動繼續往下找。
+    2. 調高 hnsw.ef_search（例如 1000），代價是變慢。
+    3. 部分索引（WHERE tenant_id = 7）或依租戶分區；過濾後資料很少時，直接精確搜尋（練習題「多租戶」）。
+    實驗室「過濾」有不同過濾比例、不同做法的量測。
+
+- id: unknown-words
+  title: "模型不認得的文字"
+  question: "詞庫裡沒有「iPhone」也沒有「15」。用 embed('iPhone 15') 搜尋會得到什麼？"
+  sqls:
+    - label: "A：embed('iPhone 15')"
+      sql: |
+        SELECT embed('iPhone 15') IS NULL AS is_null, tokens('iPhone 15') AS tokens;
+    - label: "B：拿它來搜尋"
+      sql: |
+        SELECT id, name
+        FROM products
+        ORDER BY embedding <=> embed('iPhone 15')
+        LIMIT 3;
+  options:
+    - "Apple 手機"
+    - "報錯：向量是 NULL"
+    - "隨便 3 件商品：距離全部是 NULL，排序沒有意義"
+  answer: 2
+  explanation: |
+    embed() 一個詞都不認得時回傳 NULL，所有距離都是 NULL，ORDER BY 沒有作用，回傳的是表裡「剛好排在前面」的商品，而且不會報錯。
+    真正的嵌入模型不會回傳 NULL，但遇到沒看過的專有名詞（型號、新品名、內部代號）同樣會給出不準的向量，結果看起來「有答案」卻是錯的。
+    ★ 型號、品牌、料號這種精確比對的需求，用關鍵字搜尋（或混合搜尋）；向量搜尋負責「意思相近」。
+
+- id: avg-not-normalized
+  title: "平均向量的長度"
+  question: "products 的每個向量長度都是 1。整個「耳機」相關類別的平均向量，長度是多少？"
+  sqls:
+    - label: "平均向量的長度"
+      sql: |
+        SELECT category, round(vector_norm(avg(embedding))::numeric, 3) AS norm_of_avg
+        FROM products
+        WHERE category IN ('無線耳機', '有線耳機')
+        GROUP BY category
+        UNION ALL
+        SELECT '兩類合起來', round(vector_norm(avg(embedding))::numeric, 3)
+        FROM products
+        WHERE category IN ('無線耳機', '有線耳機');
+  options:
+    - "1，平均之後長度不變"
+    - "小於 1，而且越分散越短"
+    - "大於 1，因為加了很多向量"
+  answer: 1
+  explanation: |
+    方向不同的向量平均，會互相抵消一部分，長度小於 1；越分散（兩類合起來）越短。
+    拿它去找最近的 k 筆時，名次不受影響（cosine 只看方向；內積、L2 對長度 1 的資料來說，查詢向量等比例縮放也不改變名次）。
+    但「距離的數值」會變：內積、L2 距離跟查詢向量的長度有關，拿固定門檻（例如內積 > 0.8 才算相關）去篩，就會篩掉太多。
+    要拿平均向量跟門檻比較時，先 l2_normalize(avg(…))。
+    「使用者喜好向量 = 買過商品的平均」也是同樣的情況：興趣越分散，平均向量越短、越沒有特色。

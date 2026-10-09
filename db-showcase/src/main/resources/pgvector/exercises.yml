@@ -1,0 +1,438 @@
+# pgvector 練習題。pgvector 是 PostgreSQL 的擴充，所以跟 PostgreSQL 頁面用同一套批改方式：
+# 查詢題在唯讀交易裡以 learner 角色執行；mode: write 的題目在寫入沙盒執行（一律 ROLLBACK），比對最後回傳的資料列。
+# 距離一律四捨五入到小數 3 位：round((…)::numeric, 3)。
+
+# ================================================================ 向量與距離
+
+- id: dims-norm
+  chapter: 向量與距離
+  title: "向量的維度與長度"
+  prompt: |
+    商品 806 的向量有幾維？長度（L2 norm）是多少？
+    回傳兩欄：維度、長度（四捨五入到小數 3 位）。
+  hints:
+    - "vector_dims(embedding) 回傳維度，vector_norm(embedding) 回傳長度。"
+    - "vector_norm 回傳 double precision，要先轉成 numeric 才能 round 到小數 3 位。"
+  ordered: true
+  answer: |
+    SELECT vector_dims(embedding) AS dims,
+           round(vector_norm(embedding)::numeric, 3) AS norm
+    FROM products
+    WHERE id = 806;
+  explanation: |
+    這裡的向量都已經正規化成長度 1（l2_normalize）。真正的嵌入模型（例如 OpenAI text-embedding-3）輸出的向量通常也是長度 1。
+    長度都是 1 時，cosine 距離、L2 距離、內積排出來的名次完全一樣，可以挑最快的內積（<#>）。
+    ★ 欄位宣告成 vector(64) 時，維度不對的向量寫不進去；同一個欄位只能放同一個模型產生的向量。
+
+- id: operators
+  chapter: 向量與距離
+  title: "四種距離運算子"
+  prompt: |
+    計算 '[3,4]' 與 '[6,8]' 兩個向量之間的四種距離，回傳一列四欄：
+    L2 距離、cosine 距離（這兩個四捨五入到小數 3 位）、負內積、L1 距離。
+  hints:
+    - "<-> L2（歐幾里得）距離；<=> cosine 距離；<#> 負的內積；<+> L1（曼哈頓）距離。"
+    - "字串要先轉型：'[3,4]'::vector"
+  ordered: true
+  answer: |
+    SELECT round(('[3,4]'::vector <-> '[6,8]')::numeric, 3) AS l2,
+           round(('[3,4]'::vector <=> '[6,8]')::numeric, 3) AS cosine,
+           '[3,4]'::vector <#> '[6,8]' AS neg_inner_product,
+           '[3,4]'::vector <+> '[6,8]' AS l1;
+  explanation: |
+    兩個向量方向相同、長度差一倍：L2 距離 5（看長度），cosine 距離 0（只看方向），內積 50。
+    ★ <#> 回傳的是「負的」內積（-50），因為 PostgreSQL 的索引只會「由小到大」排序，取負號後 ORDER BY 由小到大就是內積由大到小。
+    cosine 距離 = 1 - cosine 相似度，範圍 0～2：0 完全同向、1 互相垂直、2 完全相反。
+
+- id: similar-products
+  chapter: 向量與距離
+  title: "跟某件商品最像的商品"
+  prompt: |
+    跟商品 806 最像的 5 件商品（不含 806 自己），依相似度由高到低。
+    回傳 id、name、cosine 相似度（= 1 - cosine 距離，四捨五入到小數 3 位）。
+  hints:
+    - "ORDER BY embedding <=> (SELECT embedding FROM products WHERE id = 806) LIMIT 5"
+    - "別忘了排除 806 自己：它跟自己的距離是 0，一定排第一。"
+  ordered: true
+  answer: |
+    SELECT id, name,
+           round((1 - (embedding <=> (SELECT embedding FROM products WHERE id = 806)))::numeric, 3) AS similarity
+    FROM products
+    WHERE id <> 806
+    ORDER BY embedding <=> (SELECT embedding FROM products WHERE id = 806)
+    LIMIT 5;
+  explanation: |
+    「看了這件的人也在看」最簡單的做法：拿商品自己的向量去找最近的鄰居。
+    ★ ORDER BY 要寫「距離」由小到大（embedding <=> x），不要寫成 1 - 距離 DESC：結果一樣，但後者用不到向量索引（陷阱題有示範）。
+    相似度只在 SELECT 裡算給人看就好。
+
+- id: pairwise
+  chapter: 向量與距離
+  title: "兩兩比較相似度"
+  prompt: |
+    商品 806（Sony 無線耳機）分別跟 537、469、1132 這三件商品的 cosine 相似度是多少？
+    回傳 id、name、相似度（四捨五入到小數 3 位），相似度由高到低。
+  hints:
+    - "把 806 當成 a、另外三件當成 b：FROM products a, products b WHERE a.id = 806 AND b.id IN (…)"
+  ordered: true
+  answer: |
+    SELECT b.id, b.name,
+           round((1 - (a.embedding <=> b.embedding))::numeric, 3) AS similarity
+    FROM products a, products b
+    WHERE a.id = 806 AND b.id IN (537, 469, 1132)
+    ORDER BY similarity DESC;
+  explanation: |
+    同樣是無線耳機的 537 相似度 0.66；保養品、筆電接近 0，甚至是負的（方向幾乎垂直）。
+    高維空間裡，不相關的東西彼此「垂直」，相似度在 0 附近；所以設相似度門檻時，0.3 和 0.6 的意義差很多，要看實際資料決定。
+
+# ================================================================ 語意搜尋
+
+- id: semantic-search
+  chapter: 語意搜尋
+  title: "用文字找商品"
+  prompt: |
+    用 embed() 把「通勤 安靜」轉成向量，找出最符合的 5 件商品。回傳 id、name，由最符合排到最不符合。
+  hints:
+    - "embed('通勤 安靜') 回傳一個 vector(64)，跟 embedding 比距離就好。"
+    - "SELECT tokens('通勤 安靜') 可以看 embed() 認得哪些詞。"
+  ordered: true
+  answer: |
+    SELECT id, name
+    FROM products
+    ORDER BY embedding <=> embed('通勤 安靜')
+    LIMIT 5;
+  explanation: |
+    找到的都是主動降噪的無線耳機，但商品描述裡根本沒有「通勤」「安靜」這兩個詞：
+    在詞庫裡，「通勤」的向量跟「降噪」「無線」很接近，所以意思相近的商品排在前面。這就是語意搜尋跟關鍵字搜尋最大的差別。
+    真實系統裡 embed() 是呼叫嵌入模型的 API（應用程式端算好向量再傳進 SQL）；這裡用詞庫做的迷你模型代替。
+
+- id: similar-words
+  chapter: 語意搜尋
+  title: "詞庫裡的近義詞"
+  prompt: |
+    詞庫（vocab）裡，跟「露營」最接近的 5 個詞（不含「露營」自己）。
+    回傳 word、cosine 距離（四捨五入到小數 3 位），由近到遠。
+  hints:
+    - "vocab 的 embedding 也是向量：ORDER BY embedding <=> (SELECT embedding FROM vocab WHERE word = '露營')"
+  ordered: true
+  answer: |
+    SELECT word, round((embedding <=> (SELECT embedding FROM vocab WHERE word = '露營'))::numeric, 3) AS distance
+    FROM vocab
+    WHERE word <> '露營'
+    ORDER BY embedding <=> (SELECT embedding FROM vocab WHERE word = '露營')
+    LIMIT 5;
+  explanation: |
+    「戶外」「帳篷」幾乎跟「露營」一樣，「登山」「野餐」也很近。看 recipe 欄位就知道原因：它們都含有「戶外」這個主題。
+    真正的嵌入模型也是同樣的道理，只是「主題」是模型從大量文字裡自己學出來的幾百、幾千個維度，人看不懂每一維的意思。
+
+- id: filtered-search
+  chapter: 語意搜尋
+  title: "語意搜尋加上一般條件"
+  prompt: |
+    預算 1000 元以內（price <= 1000）的男裝、女裝裡，最適合「冬天 保暖」的 5 件。
+    回傳 id、name、price，由最符合排到最不符合。
+  hints:
+    - "一般的 WHERE 條件照寫，再 ORDER BY 向量距離。"
+  ordered: true
+  answer: |
+    SELECT id, name, price
+    FROM products
+    WHERE price <= 1000 AND category IN ('男裝', '女裝')
+    ORDER BY embedding <=> embed('冬天 保暖')
+    LIMIT 5;
+  explanation: |
+    把向量放在 PostgreSQL 裡最大的好處：向量搜尋可以跟價格、類別、庫存、權限這些一般條件寫在同一句 SQL，還能 JOIN。
+    專用的向量資料庫（Pinecone、Milvus）要另外存一份這些欄位（metadata）才能過濾。
+    找到的都是羊毛材質的衣服：「羊毛」的向量含有「保暖」主題。
+    ★ 資料量大、用了向量索引時，過濾條件可能讓結果不足 5 筆（實驗室「過濾」有示範）。
+
+- id: threshold
+  chapter: 語意搜尋
+  title: "用距離門檻篩選"
+  prompt: |
+    跟「露營 輕量」的 cosine 距離小於 0.35 的商品有幾件？回傳一個數字。
+  hints:
+    - "WHERE embedding <=> embed('露營 輕量') < 0.35"
+  ordered: true
+  answer: |
+    SELECT count(*)
+    FROM products
+    WHERE embedding <=> embed('露營 輕量') < 0.35;
+  explanation: |
+    RAG 常見的做法：只把「夠相關」的資料交給 LLM，太遠的寧可不要（避免模型被不相關的內容誤導）。
+    ★ 只有距離門檻、沒有 ORDER BY … LIMIT 的查詢用不到 HNSW / IVFFlat 索引（它們只會「找最近的 k 個」），會整張表算一遍。
+    大表上要寫成「ORDER BY 距離 LIMIT k」，再從結果裡濾掉太遠的。
+
+- id: keyword-and-semantic
+  chapter: 語意搜尋
+  title: "限定品牌的語意搜尋"
+  prompt: |
+    名稱以「Sony 」開頭的商品裡，最符合「通勤 安靜」的 3 件。回傳 id、name，由最符合排到最不符合。
+  hints:
+    - "WHERE name LIKE 'Sony %'"
+  ordered: true
+  answer: |
+    SELECT id, name
+    FROM products
+    WHERE name LIKE 'Sony %'
+    ORDER BY embedding <=> embed('通勤 安靜')
+    LIMIT 3;
+  explanation: |
+    品牌、型號這種「專有名詞」語意模型通常處理不好（這裡的詞庫甚至完全不認得 Sony），用關鍵字條件比較可靠；
+    「通勤、安靜」這種描述需求的話，語意搜尋比較強。兩者合起來就是混合搜尋（hybrid search），實驗室有 RRF 合併名次的做法。
+
+- id: best-per-category
+  chapter: 語意搜尋
+  title: "每個類別最符合的一件"
+  prompt: |
+    每個類別（category）裡，最符合「送禮」的那一件商品。
+    回傳 category、id、name，依 category 排序。
+  hints:
+    - "DISTINCT ON (category) … ORDER BY category, 距離"
+  ordered: true
+  answer: |
+    SELECT DISTINCT ON (category) category, id, name
+    FROM products
+    ORDER BY category, embedding <=> embed('送禮');
+  explanation: |
+    DISTINCT ON 是 PostgreSQL 的「每組取第一筆」：依 ORDER BY 排好之後，每個 category 只留第一列。
+    搜尋結果頁「每個類別各推薦一件」、避免結果全部擠在同一類，就可以這樣做（多樣化 diversification）。
+
+# ================================================================ 推薦與分類
+
+- id: neighbors-lateral
+  chapter: 推薦與分類
+  title: "每件商品各找 2 個鄰居"
+  prompt: |
+    商品 806、469、1132 各自最像的 2 件商品（不含自己）。
+    回傳 source_id（原商品）、id、name，依 source_id 排序、同一件商品裡由最像排到最不像。
+  hints:
+    - "FROM products s CROSS JOIN LATERAL (SELECT … ORDER BY p.embedding <=> s.embedding LIMIT 2) n"
+    - "LATERAL 子查詢可以引用左邊那張表的欄位（s.embedding），對每一列各執行一次。"
+  ordered: true
+  answer: |
+    SELECT s.id AS source_id, n.id, n.name
+    FROM products s
+    CROSS JOIN LATERAL (
+      SELECT p.id, p.name, p.embedding <=> s.embedding AS distance
+      FROM products p
+      WHERE p.id <> s.id
+      ORDER BY p.embedding <=> s.embedding
+      LIMIT 2
+    ) n
+    WHERE s.id IN (806, 469, 1132)
+    ORDER BY s.id, n.distance;
+  explanation: |
+    「每一筆各找 k 個最近的」要用 LATERAL：一般的子查詢不能引用外面那一列，JOIN 也做不到「每組取前 k 筆」。
+    LATERAL 裡的 ORDER BY … LIMIT 也用得到向量索引（每一列各做一次索引搜尋）。
+
+- id: knn-classify
+  chapter: 推薦與分類
+  title: "k-NN 分類：投票決定類別"
+  prompt: |
+    一件新商品的描述是「上班 通勤」。找出跟 embed('上班 通勤') 最近的 15 件商品，看它們各屬於哪個類別：
+    回傳 category、票數，票數由多到少（同票依 category 排序）。
+  hints:
+    - "先在子查詢裡取最近的 15 件，外面再 GROUP BY category。"
+  ordered: true
+  answer: |
+    SELECT category, count(*) AS votes
+    FROM (
+      SELECT category FROM products
+      ORDER BY embedding <=> embed('上班 通勤')
+      LIMIT 15
+    ) nearest
+    GROUP BY category
+    ORDER BY votes DESC, category;
+  explanation: |
+    k-NN（k nearest neighbors）分類：看最近的 k 個鄰居大多是哪一類，就判斷成哪一類。
+    不用訓練模型，新的類別只要加資料就好。商品自動分類、客服工單分派、垃圾訊息偵測都能這樣做。
+
+- id: customer-taste
+  chapter: 推薦與分類
+  title: "依購買紀錄推薦"
+  prompt: |
+    顧客 224 買過的所有商品（purchases），向量取平均當作他的「喜好」；
+    推薦 5 件他沒買過、最接近這個喜好的商品。回傳 id、name，由最接近排到最不接近。
+  hints:
+    - "avg(embedding) 可以算向量的平均（pgvector 提供 vector 的 avg、sum 聚合函式）。"
+    - "WITH taste AS (SELECT avg(p.embedding) AS v FROM purchases u JOIN products p ON p.id = u.product_id WHERE u.customer_id = 224)"
+    - "排除買過的：WHERE id NOT IN (SELECT product_id FROM purchases WHERE customer_id = 224)"
+  ordered: true
+  answer: |
+    WITH taste AS (
+      SELECT avg(p.embedding) AS v
+      FROM purchases u JOIN products p ON p.id = u.product_id
+      WHERE u.customer_id = 224
+    )
+    SELECT p.id, p.name
+    FROM products p, taste
+    WHERE p.id NOT IN (SELECT product_id FROM purchases WHERE customer_id = 224)
+    ORDER BY p.embedding <=> taste.v
+    LIMIT 5;
+  explanation: |
+    最簡單的內容式推薦（content-based）：使用者向量 = 互動過的物品向量平均。
+    ★ 缺點：興趣很分散的人（這位顧客買過寢具、生鮮、衣服、3C），平均之後會落在「什麼都有一點」的中間，推薦結果很模糊。
+    實務上會分群（每個興趣各一個向量）、依時間加權（最近買的權重高），或改用協同過濾、雙塔模型。
+
+- id: category-centroid
+  chapter: 推薦與分類
+  title: "每個類別的代表商品"
+  prompt: |
+    每個類別裡，離「該類別所有商品的平均向量」最近的那一件商品（最典型的商品）。
+    回傳 category、id、name，依 category 排序。
+  hints:
+    - "先 GROUP BY category 算 avg(embedding)，再 JOIN 回 products，用 DISTINCT ON 每類取最近的一件。"
+  ordered: true
+  answer: |
+    WITH centroid AS (
+      SELECT category, avg(embedding) AS v
+      FROM products
+      GROUP BY category
+    )
+    SELECT DISTINCT ON (p.category) p.category, p.id, p.name
+    FROM products p
+    JOIN centroid c ON c.category = p.category
+    ORDER BY p.category, p.embedding <=> c.v;
+  explanation: |
+    類別中心（centroid）在分群、分類、異常偵測都會用到：離中心特別遠的，可能是分錯類或資料有問題的商品。
+    IVFFlat 索引就是用同樣的概念：先用 k-means 把向量分成 lists 群，查詢時只看最近的幾群（probes）。
+
+- id: near-duplicates
+  chapter: 推薦與分類
+  title: "找出幾乎一樣的商品"
+  prompt: |
+    cosine 距離小於 0.015 的商品「配對」有幾組？（同一對只算一次）回傳一個數字。
+  hints:
+    - "自己 JOIN 自己：products a JOIN products b ON a.id < b.id"
+    - "a.id < b.id 讓 (1, 2)、(2, 1) 只算一次，也排除自己跟自己。"
+  ordered: true
+  answer: |
+    SELECT count(*)
+    FROM products a
+    JOIN products b ON a.id < b.id
+    WHERE a.embedding <=> b.embedding < 0.015;
+  explanation: |
+    重複商品、重複文章、抄襲偵測都是這個做法。這裡比了 1500 × 1499 / 2 ≈ 112 萬對，還不到 1 秒；
+    資料量大時要改成「每一筆用索引找最近的幾筆」（LATERAL + LIMIT），而不是兩兩全部比較（N² 會爆掉）。
+
+# ================================================================ 索引與量化
+
+- id: ann-search
+  chapter: 索引與量化
+  title: "在 10 萬筆裡找最近的 5 筆"
+  prompt: |
+    questions 第 1 題的向量，在 passages 裡最近的 5 筆。回傳 id、tenant_id，由近到遠。
+  hints:
+    - "passages 的 embedding 欄位有 HNSW 索引（vector_cosine_ops），要用 <=> 才用得到。"
+    - "前面加上 EXPLAIN 可以看到 Index Scan using passages_hnsw。"
+  ordered: true
+  answer: |
+    SELECT id, tenant_id
+    FROM passages
+    ORDER BY embedding <=> (SELECT embedding FROM questions WHERE id = 1)
+    LIMIT 5;
+  explanation: |
+    用得到 HNSW 索引時不到 1 ms；不用索引時要算 10 萬次距離再排序（約 15 ms，資料越多越慢）。
+    向量索引是「近似」最近鄰（ANN）：不保證找到真正最近的那幾筆，用召回率衡量準不準（實驗室有量測）。
+    ★ 要用到索引，三個條件缺一不可：ORDER BY 距離由小到大、有 LIMIT、運算子跟建索引時的 ops 一致（cosine 索引配 <=>）。
+
+- id: tenant-exact
+  chapter: 索引與量化
+  title: "多租戶：只搜自己的資料"
+  prompt: |
+    租戶 7（tenant_id = 7）的資料裡，跟 questions 第 1 題最近的 5 筆。回傳 id，由近到遠。
+    注意：直接加 WHERE tenant_id = 7 可能不到 5 筆，想辦法讓它一定回傳正確的 5 筆。
+  hints:
+    - "直接加 WHERE 時，HNSW 先找出 ef_search（預設 40）個候選，再套用過濾，租戶 7 只佔 2%，候選裡可能只剩 0～2 筆。"
+    - "這裡只能下一句查詢（不能 SET）。可以先把租戶 7 的資料取出來，再在這一小群裡精確排序："
+    - "WITH mine AS MATERIALIZED (SELECT id, embedding FROM passages WHERE tenant_id = 7) SELECT id FROM mine ORDER BY …"
+  ordered: true
+  answer: |
+    WITH mine AS MATERIALIZED (
+      SELECT id, embedding FROM passages WHERE tenant_id = 7
+    )
+    SELECT id
+    FROM mine
+    ORDER BY embedding <=> (SELECT embedding FROM questions WHERE id = 1)
+    LIMIT 5;
+  explanation: |
+    MATERIALIZED 讓 CTE 先執行完（取出租戶 7 的約 2000 筆），外面再精確排序，不會走 HNSW，一定是正確的 5 筆。
+    多租戶的向量搜尋是很常見的面試題，其他做法：
+    1. pgvector 0.8 的 iterative scan：SET hnsw.iterative_scan = relaxed_order，候選不夠時繼續往下找（實驗室有量測）。
+    2. 每個大租戶一個部分索引（CREATE INDEX … WHERE tenant_id = 7），或依 tenant_id 分區（partition）。
+    3. 過濾條件很嚴格時（只剩幾千筆），精確搜尋本來就很快，根本不需要向量索引。
+
+- id: quantization-size
+  chapter: 索引與量化
+  title: "一個向量佔多少空間"
+  prompt: |
+    商品 806 的向量用三種型別存時，各佔幾個 bytes？回傳一列三欄：
+    vector（原本的 float4）、halfvec（float2）、binary_quantize 之後的 bit。
+  hints:
+    - "pg_column_size(值) 回傳一個值實際佔的 bytes。"
+    - "embedding::halfvec 轉成半精度；binary_quantize(embedding) 每一維只留正負號（1 bit）。"
+  ordered: true
+  answer: |
+    SELECT pg_column_size(embedding) AS vector_bytes,
+           pg_column_size(embedding::halfvec) AS halfvec_bytes,
+           pg_column_size(binary_quantize(embedding)) AS bit_bytes
+    FROM products
+    WHERE id = 806;
+  explanation: |
+    64 維：vector 每維 4 bytes（256 + 8 bytes 標頭 = 264）、halfvec 每維 2 bytes（136）、bit 每維 1 bit（8 bytes + 標頭 = 16）。
+    1536 維（OpenAI 的嵌入）一筆就是 6 KB，1000 萬筆光向量就要 60 GB，HNSW 索引還要再一份。
+    量化（quantization）就是用精度換空間：halfvec 召回率幾乎不變、空間減半；bit 小 32 倍但不準，通常搭配「重排（rerank）」。
+    實驗室「量化」有實際量測索引大小與召回率。
+
+# ================================================================ 寫入（在沙盒執行，一律 ROLLBACK）
+
+- id: insert-with-embedding
+  chapter: 寫入
+  title: "新增商品並產生向量"
+  mode: write
+  prompt: |
+    新增一件商品：id 9001、名稱「Bose 無線耳機 Z001」、類別「無線耳機」、價格 8990，
+    描述「Bose 無線耳機 Z001 黑色 主動降噪 續航24小時」，向量用 embed(描述) 產生。
+    新增之後，查出跟它最像的 3 件商品（不含它自己）的 id，由最像排到最不像。
+  hints:
+    - "INSERT INTO products (id, name, category, price, description, embedding) VALUES (…, embed('…'))"
+    - "第二句 SELECT 的結果會拿來批改。"
+  ordered: true
+  answer: |
+    INSERT INTO products (id, name, category, price, description, embedding)
+    VALUES (9001, 'Bose 無線耳機 Z001', '無線耳機', 8990,
+            'Bose 無線耳機 Z001 黑色 主動降噪 續航24小時',
+            embed('Bose 無線耳機 Z001 黑色 主動降噪 續航24小時'));
+
+    SELECT id
+    FROM products
+    WHERE id <> 9001
+    ORDER BY embedding <=> (SELECT embedding FROM products WHERE id = 9001)
+    LIMIT 3;
+  explanation: |
+    真實系統通常是應用程式先呼叫嵌入模型 API 拿到向量，再一起 INSERT（或交給背景工作補上）。
+    新增後馬上就搜得到：HNSW 索引會在 INSERT 時同步更新，不需要重建（IVFFlat 也會，但分群中心不會變，資料分布變很多時要重建）。
+
+- id: update-reembed
+  chapter: 寫入
+  title: "改了描述，向量也要重算"
+  mode: write
+  prompt: |
+    把商品 469（筆電）的描述後面加上「 打電動」，並且重新計算向量。
+    回傳 id、新的描述、新向量跟 embed('打電動') 的 cosine 距離（四捨五入到小數 3 位）。
+  hints:
+    - "UPDATE … SET description = description || ' 打電動', embedding = embed(description || ' 打電動')"
+    - "SET 裡引用的 description 是「更新前」的值，所以兩邊都要自己串上新的文字。"
+    - "RETURNING 可以回傳更新後的值。"
+  ordered: true
+  answer: |
+    UPDATE products
+    SET description = description || ' 打電動',
+        embedding = embed(description || ' 打電動')
+    WHERE id = 469
+    RETURNING id, description, round((embedding <=> embed('打電動'))::numeric, 3) AS distance;
+  explanation: |
+    向量是從文字算出來的「衍生資料」，文字改了向量不會自己更新，忘記重算的話搜尋結果會跟內容對不上。
+    常見做法：應用程式更新文字時一起更新向量；或用觸發器把「需要重新嵌入」的 id 寫進佇列，由背景工作呼叫模型。
+    ★ 換嵌入模型時，全部的向量都要重算（不同模型的向量不能互相比較），所以要記錄每筆向量是哪個模型產生的。
