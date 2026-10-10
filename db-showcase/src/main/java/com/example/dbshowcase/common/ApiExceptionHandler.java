@@ -62,4 +62,11 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(503).body(Map.of("error",
                 e.getMessage() + "\n請確認 es-lab 容器有在執行（docker compose up -d elasticsearch），剛啟動的話要等半分鐘左右。"));
     }
+
+    /** InfluxDB 連不上（容器沒啟動）。 */
+    @ExceptionHandler(com.example.dbshowcase.influx.InfluxClient.UnavailableException.class)
+    public ResponseEntity<Map<String, String>> influxDown(com.example.dbshowcase.influx.InfluxClient.UnavailableException e) {
+        return ResponseEntity.status(503).body(Map.of("error",
+                e.getMessage() + "\n請確認 influx-lab 容器有在執行（docker compose up -d influxdb）。"));
+    }
 }

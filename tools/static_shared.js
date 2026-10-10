@@ -112,6 +112,26 @@ function highlightES(text) {
   return out + esc(text.slice(last));
 }
 
+/** Flux：// 註解、字串、時間（2026-09-18T14:00:00+08:00）、數字、|> 管線、函式名稱。 */
+function highlightFlux(text) {
+  const TOKEN = /(\/\/[^\n]*)|("(?:[^"\\]|\\.)*")|(\b\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d)?)|(\|>)|(\b\d+(?:\.\d+)?(?:ms|s|m|h|d|w|mo|y)?\b)|(\b(?:import|option|and|or|not|true|false|return|if|then|else|with)\b)|([A-Za-z_][A-Za-z0-9_.]*(?=\())/g;
+  let out = "", last = 0, m;
+  while ((m = TOKEN.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    const [tok, cmt, str, time, pipe, num, kw, fn] = m;
+    const cls = cmt ? "hl-cmt" : str ? "hl-str" : time ? "hl-num" : pipe ? "hl-op" : num ? "hl-num" : kw ? "hl-kw" : fn ? "hl-fn" : "";
+    out += `<span class="${cls}">${esc(tok)}</span>`;
+    last = m.index + tok.length;
+  }
+  return out + esc(text.slice(last));
+}
+
+/** InfluxDB：有 |> 的是 Flux；其他（InfluxQL、line protocol、混合的陷阱題腳本）用 SQL 的上色，# 開頭的行當註解。 */
+function highlightInflux(text) {
+  if (/\|>/.test(text)) return highlightFlux(text);
+  return text.split("\n").map((line) => /^\s*#/.test(line) ? `<span class="hl-cmt">${esc(line)}</span>` : highlightSQL(line)).join("\n");
+}
+
 /** 把 root 底下的 pre.code 上色並加上「複製」按鈕。 */
 function enhanceCode(root) {
   root.querySelectorAll("pre.code").forEach((pre) => {
@@ -124,6 +144,7 @@ function enhanceCode(root) {
     else if (pre.dataset.lang === "cql") code.innerHTML = highlightSQL(raw, CQL_KEYWORDS);
     else if (pre.dataset.lang === "cypher") code.innerHTML = highlightCypher(raw);
     else if (pre.dataset.lang === "es") code.innerHTML = highlightES(raw);
+    else if (pre.dataset.lang === "influx" || pre.dataset.lang === "flux") code.innerHTML = highlightInflux(raw);
     else if (pre.dataset.lang === "sql" || pre.dataset.lang === undefined && !pre.closest(".doc")) code.innerHTML = highlightSQL(raw);
     const btn = document.createElement("button");
     btn.type = "button";

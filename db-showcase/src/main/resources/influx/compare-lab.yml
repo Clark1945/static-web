@@ -1,0 +1,124 @@
+# InfluxDB 實驗室「InfluxQL vs Flux」的步驟：同一個問題兩種寫法，用 reader token 唯讀執行，結果並排比較。
+
+- id: raw
+  title: "讀原始資料"
+  goal: "db-01 在 9/18 14:00～14:05 的 usage_user。"
+  influxql: |
+    SELECT usage_user FROM cpu
+    WHERE host = 'db-01' AND time >= '2026-09-18T14:00:00+08:00' AND time < '2026-09-18T14:05:00+08:00'
+  flux: |
+    from(bucket: "metrics")
+      |> range(start: 2026-09-18T14:00:00+08:00, stop: 2026-09-18T14:05:00+08:00)
+      |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user" and r.host == "db-01")
+  question: "兩邊的結果長得一樣嗎？"
+  takeaway: |
+    InfluxQL 回傳「一個 series、多個欄位」的表（time、usage_user），跟 SQL 很像。
+    Flux 回傳的每一列都帶著完整的資訊：_start、_stop（查詢範圍）、_time、_value、_field、_measurement 與所有 tag。
+    Flux 的資料模型是「一列一個值」：要同時看兩個 field，得 pivot（見第 4 步）。
+
+- id: group
+  title: "每台主機的平均"
+  goal: "9/18 這一天每台主機 usage_user 的平均。"
+  influxql: |
+    SELECT mean(usage_user) FROM cpu
+    WHERE time >= '2026-09-18T00:00:00+08:00' AND time < '2026-09-19T00:00:00+08:00'
+    GROUP BY host
+  flux: |
+    from(bucket: "metrics")
+      |> range(start: 2026-09-18T00:00:00+08:00, stop: 2026-09-19T00:00:00+08:00)
+      |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user")
+      |> mean()
+      |> keep(columns: ["host", "_value"])
+  question: "Flux 沒有寫 GROUP BY host，為什麼也是每台主機各一個平均？"
+  takeaway: |
+    InfluxQL 預設把整個 measurement 合在一起算，要 GROUP BY tag 才分開。
+    Flux 剛好相反：from 讀出來時每條 series（measurement + tag + field）就是一張表，mean() 每張表各算一次，所以預設就是「每條 series 一個值」；
+    要全部合在一起算，先 group()；要依某個 tag 分組，用 group(columns: ["role"])。
+
+- id: timezone
+  title: "依台灣時間的每天"
+  goal: "db-01 在 9/18、9/19 每天的最大值。"
+  influxql: |
+    SELECT max(usage_user) FROM cpu
+    WHERE host = 'db-01' AND time >= '2026-09-18T00:00:00+08:00' AND time < '2026-09-20T00:00:00+08:00'
+    GROUP BY time(1d) tz('Asia/Taipei')
+  flux: |
+    import "timezone"
+    option location = timezone.location(name: "Asia/Taipei")
+
+    from(bucket: "metrics")
+      |> range(start: 2026-09-18T00:00:00+08:00, stop: 2026-09-20T00:00:00+08:00)
+      |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user" and r.host == "db-01")
+      |> aggregateWindow(every: 1d, fn: max)
+      |> keep(columns: ["_time", "_value"])
+  question: "兩邊的時間欄位一樣嗎？"
+  takeaway: |
+    值一樣，時間不一樣：InfluxQL 的 time 是區間的開始（9/18 00:00），Flux 的 aggregateWindow 預設標在區間的結束（9/19 00:00）。
+    時區：InfluxQL 用 tz()、Flux 用 option location，兩邊都要明確指定，否則依 UTC 切。
+
+- id: arithmetic
+  title: "兩個 field 相加"
+  goal: "db-01 在 9/18 14:00～14:05 的 usage_user + usage_system。"
+  influxql: |
+    SELECT usage_user + usage_system AS total FROM cpu
+    WHERE host = 'db-01' AND time >= '2026-09-18T14:00:00+08:00' AND time < '2026-09-18T14:05:00+08:00'
+  flux: |
+    from(bucket: "metrics")
+      |> range(start: 2026-09-18T14:00:00+08:00, stop: 2026-09-18T14:05:00+08:00)
+      |> filter(fn: (r) => r._measurement == "cpu" and r.host == "db-01")
+      |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+      |> map(fn: (r) => ({ _time: r._time, total: r.usage_user + r.usage_system }))
+  question: "Flux 為什麼要多一個 pivot？"
+  takeaway: |
+    InfluxQL 的一列有多個 field，可以直接相加。Flux 的兩個 field 在不同的表、不同的列，要先 pivot 成同一列（_field 的值變成欄位名稱），再用 map 計算。
+    map 可以產生任意的新欄位，比 InfluxQL 的四則運算強大（字串處理、條件判斷、跨 measurement 的 join）。
+
+- id: ranking
+  title: "跨 series 排名"
+  goal: "9 月整個月，平均 usage_user 最高的 3 台主機。"
+  influxql: |
+    SELECT top(mean, host, 3) FROM (
+      SELECT mean(usage_user) FROM cpu
+      WHERE time >= '2026-09-01T00:00:00+08:00' AND time < '2026-10-01T00:00:00+08:00'
+      GROUP BY host
+    )
+  flux: |
+    from(bucket: "metrics")
+      |> range(start: 2026-09-01T00:00:00+08:00, stop: 2026-10-01T00:00:00+08:00)
+      |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user")
+      |> mean()
+      |> group()
+      |> sort(columns: ["_value"], desc: true)
+      |> limit(n: 3)
+      |> keep(columns: ["host", "_value"])
+  question: "兩邊的寫法差在哪？"
+  takeaway: |
+    InfluxQL 不能 ORDER BY 值，只能用 top(field, tag, N)：「依 tag 分組取每組最大，再取前 N 組」，搭配子查詢才能做跨 series 的排名。
+    Flux 用 group() 合成一張表，再 sort、limit，跟 SQL 的思路一樣。
+    db-01 排第一（資料庫平常就比較忙，再加上 9/18 的事故）。
+
+- id: join
+  title: "跨 measurement：CPU 與記憶體"
+  goal: "9/30 這一天每台主機的平均 CPU 與平均記憶體使用率，放在同一列。"
+  influxql: |
+    SELECT mean(usage_user) FROM cpu
+    WHERE time >= '2026-09-30T00:00:00+08:00' AND time < '2026-10-01T00:00:00+08:00' GROUP BY host;
+    SELECT mean(used_percent) FROM mem
+    WHERE time >= '2026-09-30T00:00:00+08:00' AND time < '2026-10-01T00:00:00+08:00' GROUP BY host
+  flux: |
+    cpu = from(bucket: "metrics")
+      |> range(start: 2026-09-30T00:00:00+08:00, stop: 2026-10-01T00:00:00+08:00)
+      |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user")
+      |> mean()
+    mem = from(bucket: "metrics")
+      |> range(start: 2026-09-30T00:00:00+08:00, stop: 2026-10-01T00:00:00+08:00)
+      |> filter(fn: (r) => r._measurement == "mem" and r._field == "used_percent")
+      |> mean()
+    join(tables: { cpu: cpu, mem: mem }, on: ["host"])
+      |> keep(columns: ["host", "_value_cpu", "_value_mem"])
+  question: "InfluxQL 能把兩個 measurement 放在同一列嗎？"
+  takeaway: |
+    InfluxQL 沒有 JOIN：只能分成兩句查詢，在應用程式裡合併。
+    Flux 可以 join 不同 measurement、不同 bucket，甚至（用 sql 套件）關聯式資料庫的資料，這是 Flux 被設計出來的主要原因之一。
+    web-03 在 9/20 下線，9/30 沒有資料，所以結果只有 4 台主機。
+    （InfluxDB 3 改回 SQL：JOIN、子查詢、視窗函數都用標準 SQL 寫。）

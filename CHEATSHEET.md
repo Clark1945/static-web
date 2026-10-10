@@ -2594,3 +2594,187 @@ POST /logs/_pit?keep_alive=1m                                  # point in time�
 - **Spring Data Elasticsearch**：`@Document(indexName = "products")`、`@Field(type = FieldType.Text, analyzer = "cjk")`、`ElasticsearchRepository<Product, String>`（衍生查詢 `findByBrand`）、複雜查詢用 `NativeQuery`
 - ★ 同步策略：交易 commit 之後才送出（`@TransactionalEventListener(phase = AFTER_COMMIT)`），失敗要能重試；大量資料用 CDC
 - 批次寫入用 `BulkIngester`；查詢記得設 timeout；不要把 Elasticsearch 的連線池開太大
+
+# InfluxDB
+
+> 範例都來自練習環境（`influx-lab` 容器，http://localhost:8087，InfluxDB 2.7，組織 shop、bucket metrics），可以直接貼到展示台的「主控台」執行。cpu、mem（5 台主機，每分鐘）、http（API 請求的累計計數器）、sensors（倉庫溫溼度，每 5 分鐘）都是 2026 年 9 月；orders 從 PostgreSQL 複製。
+
+## 1. ★ 基本觀念
+
+- **point（點）**= measurement + tag set + field set + 時間戳記：`cpu,host=db-01,role=db usage_user=35.8,usage_system=10.2 1790783940`
+- **measurement** ≈ 資料表名稱；**tag** 有索引、值一律是字串（用來篩選、分組）；**field** 沒有索引、存量測值（浮點數、整數、字串、布林）
+- **series**：measurement + tag set（+ field）決定一條時間序列，各自依時間存放、壓縮。cpu 有 5 台主機 → 5 條 series
+- 2.x 的組織方式：**organization** → **bucket**（資料庫 + 保留時間）；權限綁在 **token** 上（沒有角色，每個 token 列出可以讀 / 寫哪些 bucket）
+- 查詢語言：**InfluxQL**（類似 SQL，1.x 起就有，2.x 要先建立 DBRP 對應）、**Flux**（2.x 的管線式語言，已不再開發新功能）；3.x 改成 **SQL** + InfluxQL
+
+| 關聯式資料庫 / TimescaleDB | InfluxDB |
+|---|---|
+| 資料表 | measurement |
+| 有索引的欄位（主機、地區） | tag（一律是字串） |
+| 一般欄位（數值） | field |
+| 一列 | point |
+| 資料庫 + 保留政策 | bucket（2.x）、database + retention policy（1.x） |
+| JOIN、子查詢、視窗函數 | InfluxQL 沒有 JOIN；Flux 可以 join |
+| UPDATE | 沒有：同一個 series、同一個時間戳記重新寫入就覆蓋 |
+
+## 2. 寫入：line protocol
+
+```text
+# measurement,tag1=值,tag2=值 field1=值,field2=值 時間戳記
+cpu,host=db-01,region=tpe,role=db usage_user=35.84,usage_system=10.2 1790783940
+orders,city=台北市,status=paid order_id=1001i,total=1990i,coupon="WELCOME",gift=true 1790726400
+```
+
+- measurement 與 tag 用逗號、tag 與 field 之間一個空白、field 與時間之間一個空白；空白、逗號、等號要用反斜線跳脫
+- field 型別：浮點數（預設）、**整數加 i**（`1990i`）、字串用雙引號、布林 `true` / `false`
+- 時間戳記的單位由 `precision` 參數決定（ns 預設、us、ms、s）；沒給時間就用伺服器收到的時間
+- ★ 同一條 series + 同一個時間戳記 = 同一個點：後寫的覆蓋前面的（不同 field 會合併）。同一秒兩筆訂單、同一組 tag → 第一筆不見，而且不報錯
+- ★ 同一個 shard 裡，一個 field 只能有一種型別：先寫 `total=100i` 再寫 `total=1.5` → field type conflict，整批可能被拒絕
+- 批次寫入（每批約 5,000 行），tag 依名稱排序後寫入比較快；刪除用 delete API（時間範圍 + tag 條件）
+
+## 3. ★ 資料模型：tag 還是 field
+
+| | tag | field |
+|---|---|---|
+| 索引 | 有（TSI） | 沒有 |
+| 型別 | 只有字串 | 浮點數、整數、字串、布林 |
+| WHERE 篩選 | 查索引，直接找到 series | 整條 series 讀出來逐筆比對 |
+| GROUP BY | 可以 | 不行（會全部擠在同一組，不報錯） |
+| 計算（mean、sum） | 不行 | 可以 |
+| 值的種類很多時 | ★ series 數量暴增（high cardinality） | 沒影響 |
+
+- 實測（實驗室）：1,000 位使用者 × 20 個事件，user_id 放 tag → **1,000 條 series**；放 field → **1 條**
+- ★ 規則：拿來篩選、分組、而且值的種類有限（主機、區域、服務、狀態、感測器編號）→ tag；量測值、ID、高基數的值（使用者 ID、訂單編號、trace id、IP、完整 URL）→ field
+- high cardinality 是 1.x / 2.x 效能問題的頭號原因：索引吃記憶體、寫入變慢、查詢要合併大量 series；3.x 改用欄式儲存（Arrow / Parquet）就是為了解決它
+- `SHOW SERIES EXACT CARDINALITY`（InfluxQL）、`influxdb.cardinality()`（Flux）查 series 數量
+
+## 4. ★ InfluxQL
+
+```sql
+SHOW MEASUREMENTS;
+SHOW TAG KEYS FROM cpu;
+SHOW TAG VALUES FROM cpu WITH KEY = "host";
+SHOW FIELD KEYS FROM orders;                       -- 欄位與型別
+
+SELECT mean(usage_user) FROM cpu
+WHERE host = 'db-01'                               -- ★ 字串值用單引號
+  AND time >= '2026-09-18T12:00:00+08:00' AND time < '2026-09-18T17:00:00+08:00'
+GROUP BY time(1h), host fill(null) tz('Asia/Taipei');
+
+SELECT last(usage_user) FROM cpu GROUP BY host;    -- 每台主機最後一次回報
+SELECT top(total, 5), order_id, city FROM orders WHERE time >= '2026-09-01T00:00:00+08:00';
+SELECT max(mean) FROM (SELECT mean(usage_user) FROM cpu WHERE … GROUP BY time(1h), host) GROUP BY host;   -- 子查詢
+SELECT non_negative_derivative(last(requests), 1m) FROM http WHERE service = 'api' AND … GROUP BY time(1m);
+```
+
+| 類型 | 函式 | time 欄位 |
+|---|---|---|
+| aggregate | `count`、`mean`、`sum`、`median`、`spread`、`stddev` | 區間的開始（沒有 GROUP BY time 時是 0） |
+| selector | `first`、`last`、`max`、`min`、`top`、`bottom`、`percentile` | 那一筆的時間（有 GROUP BY time 時是區間開始） |
+| transformation | `derivative`、`non_negative_derivative`、`difference`、`moving_average`、`cumulative_sum` | 每一列 |
+
+- ★ 單引號 = 字串值，雙引號 = 識別字。`host = "db-01"` 找不到任何資料，也不報錯
+- ★ 天以上的 GROUP BY time() 一定要 `tz('Asia/Taipei')`，否則依 UTC 切（多出一列，每天的值都錯）
+- `fill(null | none | 0 | previous | linear)` 決定沒有資料的區間怎麼顯示
+- 只能 `ORDER BY time`；依值排名用 `top()` / `bottom()`
+- 有 GROUP BY tag 時 `LIMIT` 是「每條 series」各自限制；限制 series 數量用 `SLIMIT`
+- 只 SELECT tag（沒有 field）→ 不回傳任何資料；沒有 JOIN
+
+## 5. ★ Flux
+
+```flux
+import "timezone"
+option location = timezone.location(name: "Asia/Taipei")
+
+from(bucket: "metrics")
+  |> range(start: 2026-09-18T00:00:00+08:00, stop: 2026-09-20T00:00:00+08:00)   // ★ 一定要有 range
+  |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user")
+  |> aggregateWindow(every: 1d, fn: max, createEmpty: false)                     // _time 是區間的「結束」
+  |> group()                                                                     // 合成一張表才能一起排序
+  |> sort(columns: ["_value"], desc: true)
+  |> limit(n: 3)
+  |> keep(columns: ["_time", "host", "_value"])
+
+// 兩個 field 相加：先 pivot 成同一列
+  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) => ({ r with total: r.usage_user + r.usage_system }))
+
+// 計數器 → 每分鐘的量（跳過重置的負值）
+  |> derivative(unit: 1m, nonNegative: true)
+```
+
+- 資料模型：**一列一個值**（`_value`），欄位名稱在 `_field`；每條 series 是一張「表」，函式對每張表各自執行
+- 分組 = 表：`group(columns: ["role"])` 重新分表，`group()` 全部合成一張；聚合、排序、limit 都是每張表各自做
+- 跟 InfluxQL 的差異：`aggregateWindow` 的 `_time` 預設是區間的**結束**（`timeSrc: "_start"` 改成開始）；時區用 `option location`
+- Flux 能做 InfluxQL 做不到的：join 不同 measurement / bucket、`map` 任意計算、`to()` 寫回 bucket（降低精度）、Task 排程
+- 安全：Flux 有 `sql`、`http` 等套件可以連到外部系統，token 的權限管不到
+
+## 6. 計數器與變化率
+
+- 監控系統（Telegraf、Prometheus exporter）收集的大多是**累計計數器**：只回報「到目前為止總共幾次」，查詢時算差值
+- ★ 程式重啟後計數器歸零，`derivative` 會算出巨大的負數（實測 -360 萬）→ 一律用 `non_negative_derivative` / `non_negative_difference`（Flux：`nonNegative: true`、`increase()`）
+- `difference` = 後一個減前一個；`derivative(…, 1m)` = 再除以時間單位，變成速率
+- 錯誤率：`100 * non_negative_difference(last(errors)) / non_negative_difference(last(requests))`
+
+## 7. ★ 保留期限與降低精度（downsampling）
+
+- bucket 的 **retention period**：超過期限的資料自動刪除（依 shard group 整塊刪，很便宜）
+- 降低精度：用 **Task**（排程執行的 Flux）把舊資料彙總到另一個 bucket，例如：
+  `option task = {name: "downsample_cpu", every: 1h}` + `aggregateWindow(every: 1h, fn: mean) |> to(bucket: "cpu_1h")`
+- 1.x 用 Continuous Query + Retention Policy；TimescaleDB 用連續聚合 + 保留政策，觀念一樣
+- 實測：9 月的 cpu 從 200,880 個點變成 3,348 個（1/60），同樣的查詢快好幾倍；但每小時平均看不出 db-01 滿載的尖峰 → 常同時存 mean、max、min、count
+- 遲到的資料可能錯過已經跑過的 Task：排程處理「1 小時前」的區間，留一點緩衝
+
+## 8. 儲存引擎與版本
+
+- 1.x / 2.x：**TSM**（Time-Structured Merge Tree）引擎：寫入先進 WAL 與記憶體快取，再壓縮成 TSM 檔；依時間切成 **shard group**（保留期限無限時每 7 天一組）；**TSI** 索引 tag → series
+- 欄位依型別壓縮（時間用 delta-of-delta、浮點數用 Gorilla XOR），時序資料的壓縮率很高
+- 3.x（IOx）：Apache **Arrow**（記憶體）+ **Parquet**（物件儲存）+ **DataFusion**（SQL 查詢引擎），欄式儲存、對高基數友善，查詢改用 SQL / InfluxQL，**不支援 Flux**
+
+| | 1.x | 2.x | 3.x |
+|---|---|---|---|
+| 查詢 | InfluxQL | Flux、InfluxQL（相容 API） | SQL、InfluxQL |
+| 組織方式 | database + retention policy | organization + bucket + token | database（table = measurement） |
+| 排程彙總 | Continuous Query | Task（Flux） | 外部排程 / 處理引擎 |
+| 儲存 | TSM + TSI | TSM + TSI | Arrow + Parquet |
+| 高基數 | 弱 | 弱 | 好很多 |
+
+## 9. 常見陷阱
+
+| 陷阱 | 說明 |
+|---|---|
+| 字串用雙引號 `host = "db-01"` | 雙引號是識別字，找不到資料也不報錯 |
+| tag 的值當數字 `sensor_id = 2` | tag 一律是字串，要寫 `'2'` |
+| GROUP BY time(1d) 沒有 tz() | 依 UTC 切，每天的值都錯 |
+| 對計數器用 derivative | 重啟時出現巨大的負數 |
+| GROUP BY 一個 field | 全部擠在同一組，不報錯 |
+| 只 SELECT tag | 不回傳任何資料 |
+| GROUP BY tag + LIMIT | 每條 series 各自 LIMIT（用 SLIMIT 限制 series 數） |
+| Flux 沒有 range | 報錯：cannot submit unbounded read |
+| Flux 與 InfluxQL 的時間 | aggregateWindow 標在區間結束，GROUP BY time 標在開始 |
+| 同一秒、同一組 tag 寫兩筆 | 後面的覆蓋前面的 |
+| 同一個 field 寫不同型別 | field type conflict，整批可能被拒絕 |
+| 高基數的值放 tag | series 數量爆炸，記憶體與效能出問題 |
+
+## 10. ★ 面試題速答
+
+| 問題 | 重點 |
+|---|---|
+| InfluxDB 的資料模型？ | measurement + tags（有索引的字串）+ fields（量測值）+ 時間；measurement + tag set = series |
+| tag 與 field 怎麼選？ | 篩選、分組、值的種類有限 → tag；量測值、ID、高基數 → field |
+| 什麼是 high cardinality？ | series 數量太多（例如把使用者 ID 放 tag），索引吃記憶體、寫入查詢變慢 |
+| 怎麼處理舊資料？ | retention period 自動刪除 + Task 降低精度到另一個 bucket |
+| 計數器怎麼算速率？ | non_negative_derivative / increase，避免重置造成負值 |
+| InfluxDB vs TimescaleDB？ | InfluxDB：專用的時序引擎、寫入與壓縮快、監控生態系（Telegraf、Grafana）；TimescaleDB：完整 SQL、JOIN、交易，可以跟關聯資料放在一起、高基數也沒問題 |
+| InfluxDB vs Prometheus？ | Prometheus 用拉取（pull）收集指標、PromQL、適合 Kubernetes 監控與告警，本地儲存不適合長期保存；InfluxDB 是推送（push）寫入的通用時序資料庫，可以存任意事件與長期資料 |
+| 為什麼 3.x 改回 SQL？ | Flux 學習成本高、生態系小；欄式儲存（Arrow / Parquet / DataFusion）讓 SQL 與高基數都好處理 |
+| 怎麼修改寫錯的資料？ | 同一條 series、同一個時間戳記重新寫入；或用 delete API 刪除後重寫 |
+
+## 11. Java / Spring
+
+- 2.x 官方 client：`com.influxdb:influxdb-client-java`
+  - `Point.measurement("cpu").addTag("host", "db-01").addField("usage_user", 35.8).time(Instant.now(), WritePrecision.MS)`
+  - 寫入用 `WriteApi`（非同步、自動批次與重試）或 `WriteApiBlocking`；查詢 `QueryApi.query(flux)` 回傳 `FluxTable`
+- 3.x：`influxdb3-java`（Arrow Flight 查詢、SQL / InfluxQL）
+- 應用程式指標：Spring Boot Actuator + Micrometer 的 `micrometer-registry-influx`（設定 `management.influx.metrics.export.*`），自動送出 JVM、HTTP 請求等指標
+- ★ 寫入一定要批次、非同步；數字要明確決定型別（整數用 `addField(name, long)`），避免 field type conflict；高基數的值不要放 tag

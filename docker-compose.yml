@@ -141,7 +141,31 @@ services:
       retries: 30
       start_period: 30s
 
+  influxdb:
+    image: influxdb:2.7.11
+    container_name: influx-lab
+    restart: unless-stopped        # Docker 啟動時自動跟著啟動（手動 stop 的除外）
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup                  # 第一次啟動時自動建立組織、bucket、管理者
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: influx-lab
+      DOCKER_INFLUXDB_INIT_ORG: shop
+      DOCKER_INFLUXDB_INIT_BUCKET: metrics              # 練習資料（不過期）
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: influx-lab-admin-token
+      TZ: Asia/Taipei
+    ports:
+      - "8087:8086"                  # 唯讀 / 讀寫 token、scratch bucket、資料由展示台第一次啟動時建立
+    volumes:
+      - influxdata:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD-SHELL", "influx ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
 volumes:
+  influxdata:
   esdata:
   timescaledata:
   cassandradata:

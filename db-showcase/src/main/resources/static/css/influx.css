@@ -1,0 +1,16 @@
+/* InfluxDB 頁面：結果區塊、語言標籤、陷阱題的步驟
+   練習題、陷阱題、卡片、統計、表格沿用 mongo.css、cassandra.css、redis.css、postgres.css、elastic.css */
+.ifx-schema { margin-top: 14px; }
+.ifx-run { display: grid; gap: 12px; min-width: 0; }
+.ifx-block { display: grid; gap: 4px; min-width: 0; }
+.ifx-title { font-size: .8rem; color: var(--ink); overflow-wrap: anywhere; }
+.ifx-title .muted { font-family: var(--font-sans, inherit); margin-left: 6px; }
+.ifx-info { font-size: .85rem; padding: 8px 12px; border-radius: 8px; background: var(--accent-soft); }
+.ifx-run .result { max-height: 360px; }
+.ifx-step { display: grid; gap: 4px; }
+.ifx-step + .ifx-step { margin-top: 6px; }
+.ifx-step-result { display: grid; gap: 4px; }
+.ifx-step-result + .ifx-step-result { margin-top: 8px; }
+.tag.lang-influxql { background: var(--accent-soft); color: var(--accent); }
+.tag.lang-flux { background: var(--pk-soft); color: var(--pk); }
+.tag.lang-write { background: var(--fk-soft); color: var(--fk); }

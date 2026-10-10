@@ -1,0 +1,443 @@
+# InfluxDB 練習題。lang：influxql（類似 SQL，1.x 起就有）、flux（2.x 的管線式語言）、write（line protocol，寫入 scratch bucket）。
+# 查詢題用 reader token（只能讀 metrics）執行；InfluxQL 的時間一律寫成台灣時間（+08:00）。
+# 批改：InfluxQL 依位置比對每一列（欄位名稱、別名不比對）；Flux 只比對標準答案有的欄位（_start、_stop 不比對）；數字四捨五入到小數 4 位。
+
+# ================================================================ 資料模型與基本查詢（InfluxQL）
+
+- id: tag-values
+  chapter: 資料模型與基本查詢
+  title: "有哪些主機：SHOW TAG VALUES"
+  lang: influxql
+  prompt: |
+    cpu 這個 measurement 的 host 這個 tag 有哪些值？
+  hints:
+    - "SHOW TAG VALUES FROM 量測 WITH KEY = \"tag 名稱\""
+    - "InfluxQL 的識別字（measurement、tag、field 名稱）用雙引號，字串值用單引號。"
+  answer: |
+    SHOW TAG VALUES FROM cpu WITH KEY = "host"
+  explanation: |
+    InfluxDB 的一筆資料（point）= measurement + tag set + field set + 時間戳記，例如：
+    cpu,host=db-01,region=tpe,role=db usage_user=35.8,usage_system=10.2 1790783940
+    tag 會建索引（用來篩選、分組），值一律是字串；field 不建索引（存實際的量測值，可以是數字、字串、布林）。
+    measurement + tag set 決定一條「series」（時間序列）：cpu 有 5 條（5 台主機），每條各自依時間排好存放。
+
+- id: field-keys
+  chapter: 資料模型與基本查詢
+  title: "欄位的型別：SHOW FIELD KEYS"
+  lang: influxql
+  prompt: |
+    orders 有哪些 field？各是什麼型別？
+  hints:
+    - "SHOW FIELD KEYS FROM 量測"
+  answer: |
+    SHOW FIELD KEYS FROM orders
+  explanation: |
+    orders 的 customer_id、order_id、items、total 都是 field（integer）；city、status、vip_level 是 tag。
+    ★ 值的種類很多的資料（訂單編號、顧客編號、使用者 ID、trace id）不能當 tag：每個不同的 tag 組合都是一條新的 series，
+    series 數量（cardinality）爆炸會吃光記憶體、拖慢寫入與查詢。這是 InfluxDB 資料模型最重要的一條規則。
+    同一個 field 的型別第一次寫入就固定了（同一個 shard 裡），之後寫入不同型別會被拒絕。
+
+- id: raw-range
+  chapter: 資料模型與基本查詢
+  title: "時間範圍 + tag 條件"
+  lang: influxql
+  prompt: |
+    db-01 在 2026-09-18 14:00 到 14:05（台灣時間，不含 14:05）的 usage_user 與 usage_system 原始資料。
+  hints:
+    - "時間條件寫成 time >= '2026-09-18T14:00:00+08:00' AND time < '…'"
+    - "tag 的值是字串，用單引號：host = 'db-01'"
+  answer: |
+    SELECT usage_user, usage_system FROM cpu
+    WHERE host = 'db-01'
+      AND time >= '2026-09-18T14:00:00+08:00' AND time < '2026-09-18T14:05:00+08:00'
+  explanation: |
+    每分鐘一筆，所以是 5 列；結果一定依時間排序（預設由舊到新），第一欄永遠是 time。
+    ★ 一定要加時間範圍：InfluxDB 依時間把資料切成 shard（shard group），沒有時間條件就要掃過所有 shard。
+    InfluxQL 沒有 JOIN，查詢的單位是「一個 measurement 裡的一或多條 series」。
+
+- id: last-per-host
+  chapter: 資料模型與基本查詢
+  title: "每台主機最後一次回報"
+  lang: influxql
+  prompt: |
+    每台主機（host）最後一次回報的時間與當時的 usage_user。
+  hints:
+    - "last() 是 selector：回傳最後一筆的值，time 欄位就是那一筆的時間。"
+    - "GROUP BY host 讓每台主機各自算一次。"
+  answer: |
+    SELECT last(usage_user) FROM cpu GROUP BY host
+  explanation: |
+    其他主機最後一筆都在 9/30 23:59，web-03 停在 9/20 12:00：它下線了。監控系統常用這種查詢做「失聯告警」（deadman check）。
+    selector（first、last、max、min、top、bottom、percentile）回傳的是真實存在的某一筆，time 是那一筆的時間；
+    aggregate（mean、sum、count…）回傳計算出來的值，time 是區間的開始（沒有 GROUP BY time 時是 0，也就是 1970-01-01）。
+
+- id: latest-orders
+  chapter: 資料模型與基本查詢
+  title: "最新的 3 筆訂單"
+  lang: influxql
+  prompt: |
+    台北市（city = '台北市'）最新的 3 筆訂單，回傳所有欄位（SELECT *），由新到舊。
+  hints:
+    - "ORDER BY time DESC LIMIT 3（InfluxQL 只能依 time 排序）"
+  answer: |
+    SELECT * FROM orders WHERE city = '台北市' ORDER BY time DESC LIMIT 3
+  explanation: |
+    SELECT * 會回傳所有 tag 與 field，欄位依名稱排序。
+    ★ InfluxQL 的 ORDER BY 只能用 time；要「依金額排序」得用 top() / bottom()，或在 Flux 裡用 sort()。
+    時序資料庫假設你大部分的查詢都是「某段時間、依時間」，所以資料依時間存放，其他排序方式都不是它擅長的。
+
+# ================================================================ 聚合與 GROUP BY time（InfluxQL）
+
+- id: hourly-mean
+  chapter: 聚合與 GROUP BY time
+  title: "每小時的平均 CPU"
+  lang: influxql
+  prompt: |
+    db-01 在 2026-09-18 12:00 到 17:00（台灣時間）每小時的平均 usage_user。
+  hints:
+    - "GROUP BY time(1h)：把時間切成一小時一段。"
+    - "最後加上 tz('Asia/Taipei')，結果的時間才會以台灣時間對齊（小時剛好對齊，但天、週要靠它）。"
+  answer: |
+    SELECT mean(usage_user) FROM cpu
+    WHERE host = 'db-01' AND time >= '2026-09-18T12:00:00+08:00' AND time < '2026-09-18T17:00:00+08:00'
+    GROUP BY time(1h) tz('Asia/Taipei')
+  explanation: |
+    GROUP BY time() ≈ TimescaleDB 的 time_bucket、Elasticsearch 的 date_histogram。
+    14 點那一小時平均 76%：14:00～14:40 滿載，最後 20 分鐘恢復正常。只看小時平均會低估事故的嚴重程度，看 max 或縮小區間（5m）才清楚。
+
+- id: daily-max
+  chapter: 聚合與 GROUP BY time
+  title: "每台主機每天的最高 CPU"
+  lang: influxql
+  prompt: |
+    2026-09-18、09-19 兩天（台灣時間），每台主機每天 usage_user 的最大值。
+  hints:
+    - "GROUP BY time(1d), host tz('Asia/Taipei')"
+  answer: |
+    SELECT max(usage_user) FROM cpu
+    WHERE time >= '2026-09-18T00:00:00+08:00' AND time < '2026-09-20T00:00:00+08:00'
+    GROUP BY time(1d), host tz('Asia/Taipei')
+  explanation: |
+    GROUP BY 可以同時有 time() 與 tag：每台主機各一條結果（series），每條裡面每天一列。
+    ★ 天以上的區間一定要 tz()：沒有時依 UTC 切，台灣的一天從早上 8 點開始（陷阱題有示範）。
+    max 是 selector，time 欄位是區間的開始（有 GROUP BY time 時，selector 的 time 也會變成區間開始）。
+
+- id: sensor-p95
+  chapter: 聚合與 GROUP BY time
+  title: "冷藏感測器的 P95 溫度"
+  lang: influxql
+  prompt: |
+    冷藏（kind = 'cold'）的感測器，每個 sensor_id 在 9 月整個月 temperature 的第 95 百分位數。
+  hints:
+    - "percentile(temperature, 95)，GROUP BY sensor_id"
+  answer: |
+    SELECT percentile(temperature, 95) FROM sensors WHERE kind = 'cold' GROUP BY sensor_id
+  explanation: |
+    冷藏應該在 4 度左右；2 號的 P95 跟 1、4 號差不多，因為 9/18 升溫只有 2 小時，只佔整個月的 0.3%。
+    看「有沒有出事」要用 max 或 P99.9，看「平常怎樣」用中位數、P95。percentile 在 InfluxQL 裡是精確計算（會排序所有值）。
+
+- id: orders-by-city
+  chapter: 聚合與 GROUP BY time
+  title: "9 月各縣市的訂單數與營收"
+  lang: influxql
+  prompt: |
+    2026 年 9 月（台灣時間）各縣市（city）的訂單數（count）與營收（sum），都用 total 這個 field 計算。
+  hints:
+    - "SELECT count(total), sum(total) FROM orders WHERE … GROUP BY city"
+  answer: |
+    SELECT count(total), sum(total) FROM orders
+    WHERE time >= '2026-09-01T00:00:00+08:00' AND time < '2026-10-01T00:00:00+08:00'
+    GROUP BY city
+  explanation: |
+    GROUP BY 只能用 tag（或 time）：city 是 tag，所以可以分組；如果 city 是 field 就不能（陷阱題有示範 GROUP BY field 的結果）。
+    count() 一定要指定一個 field：InfluxQL 沒有 count(*) 計算「列數」的概念，每個 field 各自計數。
+
+- id: fill-gap
+  chapter: 聚合與 GROUP BY time
+  title: "斷線的時段：fill()"
+  lang: influxql
+  prompt: |
+    5 號感測器在 2026-09-10 09:00 到 15:00（台灣時間）每小時的平均溫度。它在 10:00～14:00 斷線，
+    沒有資料的小時用「前一個小時的值」補上（fill(previous)）。
+  hints:
+    - "GROUP BY time(1h) fill(previous) tz('Asia/Taipei')"
+    - "sensor_id 是 tag，值是字串：sensor_id = '5'"
+  answer: |
+    SELECT mean(temperature) FROM sensors
+    WHERE sensor_id = '5' AND time >= '2026-09-10T09:00:00+08:00' AND time < '2026-09-10T15:00:00+08:00'
+    GROUP BY time(1h) fill(previous) tz('Asia/Taipei')
+  explanation: |
+    GROUP BY time() 預設會列出範圍內所有的區間，沒有資料的區間值是 null（fill(null)）。其他選項：
+    fill(none) 不列出、fill(0) 補 0、fill(previous) 用前一個值、fill(linear) 線性內插。
+    ★ 補值會讓圖表好看，但也會「掩蓋斷線」：告警與報表要分清楚哪些是真的量到的。
+
+- id: top-orders
+  chapter: 聚合與 GROUP BY time
+  title: "金額最高的 5 筆訂單：top()"
+  lang: influxql
+  prompt: |
+    2026 年 9 月（台灣時間）金額（total）最高的 5 筆訂單，同時回傳 order_id 與 city。
+  hints:
+    - "top(total, 5) 是 selector，可以跟其他 field、tag 一起 SELECT。"
+  answer: |
+    SELECT top(total, 5), order_id, city FROM orders
+    WHERE time >= '2026-09-01T00:00:00+08:00' AND time < '2026-10-01T00:00:00+08:00'
+  explanation: |
+    top() 回傳的列依時間排序（不是依金額），time 是那筆訂單的時間。
+    InfluxQL 不能 ORDER BY total，top / bottom 是「依值取前幾名」唯一的方法；要依值排序全部資料，用 Flux 的 sort()。
+
+- id: subquery-peak
+  chapter: 聚合與 GROUP BY time
+  title: "子查詢：每台主機最忙的那一小時"
+  lang: influxql
+  prompt: |
+    2026-09-18（台灣時間）這一天，每台主機「每小時平均 usage_user」最高的那一小時，以及那個平均值。
+  hints:
+    - "內層：每小時、每台主機的平均。外層：從內層的結果取 max(mean)，GROUP BY host。"
+    - "SELECT max(mean) FROM (SELECT mean(usage_user) FROM cpu WHERE … GROUP BY time(1h), host tz('Asia/Taipei')) GROUP BY host"
+  answer: |
+    SELECT max(mean) FROM (
+      SELECT mean(usage_user) FROM cpu
+      WHERE time >= '2026-09-18T00:00:00+08:00' AND time < '2026-09-19T00:00:00+08:00'
+      GROUP BY time(1h), host tz('Asia/Taipei')
+    ) GROUP BY host
+  explanation: |
+    InfluxQL 1.2 起支援子查詢：內層的結果欄位名稱（mean）在外層當作 field 使用，內層的 GROUP BY tag 在外層也能用。
+    web 主機在晚上 9 點最忙（流量高峰）；db-01 是下午 2 點（事故）。
+
+# ================================================================ 變化率與計數器（InfluxQL）
+
+- id: request-rate
+  chapter: 變化率與計數器
+  title: "累計計數器 → 每分鐘請求數"
+  lang: influxql
+  prompt: |
+    http 的 requests 是「累計」計數器（只會增加）。算出 api 服務在 2026-09-15 02:57 到 03:03（台灣時間）每分鐘的請求數。
+    api 在 03:00 重啟，計數器從 0 開始，那一分鐘不要算成負的。
+  hints:
+    - "non_negative_derivative(last(requests), 1m) … GROUP BY time(1m)"
+  answer: |
+    SELECT non_negative_derivative(last(requests), 1m) FROM http
+    WHERE service = 'api' AND time >= '2026-09-15T02:57:00+08:00' AND time < '2026-09-15T03:03:00+08:00'
+    GROUP BY time(1m)
+  explanation: |
+    監控系統（Prometheus、Telegraf）收集的大多是累計計數器：只回報「到目前為止總共幾次」，由查詢端算差值。
+    好處是漏掉幾次回報也不會少算；壞處是程式重啟後計數器歸零，直接相減會得到一個巨大的負數（-360 萬，陷阱題有示範）。
+    non_negative_derivative 把負值丟掉；Prometheus 的 rate() 則會自動偵測重置並補回來。
+
+- id: errors-per-10m
+  chapter: 變化率與計數器
+  title: "每 10 分鐘的錯誤數"
+  lang: influxql
+  prompt: |
+    api 服務在 2026-09-18 13:30 到 15:00（台灣時間）每 10 分鐘新增了幾個錯誤（errors 也是累計計數器）。
+  hints:
+    - "non_negative_difference(last(errors)) 算相鄰兩個區間的差（不除以時間）。"
+  answer: |
+    SELECT non_negative_difference(last(errors)) FROM http
+    WHERE service = 'api' AND time >= '2026-09-18T13:30:00+08:00' AND time < '2026-09-18T15:00:00+08:00'
+    GROUP BY time(10m)
+  explanation: |
+    difference 是「後一個減前一個」，derivative 再除以時間單位（變成速率）。14:00～14:40 每 10 分鐘有幾百個錯誤，其他時段只有個位數。
+    注意第一個區間沒有前一個值可以相減，所以結果會比區間數少一列。
+
+- id: moving-average
+  chapter: 變化率與計數器
+  title: "移動平均：moving_average()"
+  lang: influxql
+  prompt: |
+    2 號感測器在 2026-09-18 12:00 到 16:00（台灣時間）每 30 分鐘的平均溫度，再取「最近 3 個區間」的移動平均。
+  hints:
+    - "moving_average(mean(temperature), 3) … GROUP BY time(30m) tz('Asia/Taipei')"
+  answer: |
+    SELECT moving_average(mean(temperature), 3) FROM sensors
+    WHERE sensor_id = '2' AND time >= '2026-09-18T12:00:00+08:00' AND time < '2026-09-18T16:00:00+08:00'
+    GROUP BY time(30m) tz('Asia/Taipei')
+  explanation: |
+    移動平均讓曲線平滑，用來看趨勢、減少誤報（溫度短暫跳一下不告警，持續偏高才告警）；代價是反應變慢。
+    前 2 個區間湊不滿 3 個值，不會輸出。
+
+- id: memory-leak
+  chapter: 變化率與計數器
+  title: "記憶體每天成長多少：derivative()"
+  lang: influxql
+  prompt: |
+    web-02 在 2026-09-10 到 09-20（台灣時間）每天的平均 used_percent，與前一天相比的變化量（每天）。
+  hints:
+    - "derivative(mean(used_percent), 1d) … GROUP BY time(1d) tz('Asia/Taipei')"
+  answer: |
+    SELECT derivative(mean(used_percent), 1d) FROM mem
+    WHERE host = 'web-02' AND time >= '2026-09-10T00:00:00+08:00' AND time < '2026-09-20T00:00:00+08:00'
+    GROUP BY time(1d) tz('Asia/Taipei')
+  explanation: |
+    每天穩定成長 1.7% 左右：典型的記憶體洩漏。9/15 那天大幅下降，是因為凌晨 3 點重啟了（洩漏的記憶體被釋放）。
+    用變化率做「預測型告警」：照這個速度幾天後會用滿，比等到 95% 才告警更早。
+
+# ================================================================ Flux
+
+- id: flux-basic
+  chapter: Flux
+  title: "Flux 的基本管線"
+  lang: flux
+  prompt: |
+    用 Flux 計算 db-01 在 2026-09-18 14:00 到 15:00（台灣時間）usage_user 的平均值。
+  hints:
+    - "from(bucket: \"metrics\") |> range(start: …, stop: …) |> filter(fn: (r) => …) |> mean()"
+    - "Flux 的時間可以直接寫 2026-09-18T14:00:00+08:00（不加引號）。"
+    - "filter 裡同時比對 _measurement、_field、host。"
+  answer: |
+    from(bucket: "metrics")
+      |> range(start: 2026-09-18T14:00:00+08:00, stop: 2026-09-18T15:00:00+08:00)
+      |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user" and r.host == "db-01")
+      |> mean()
+  explanation: |
+    Flux 是管線（|>）：資料以「表」的形式往下傳，每個函式處理後交給下一個。
+    from 之後一定要 range（沒有時間範圍會直接報錯），filter 用匿名函式，r 代表一列。
+    Flux 的資料模型：每一列只有一個值（_value），欄位名稱在 _field；同一個 series（measurement + tags + field）是一張表。
+    Flux 官方已不再開發新功能（InfluxDB 3 改回 SQL / InfluxQL），但 2.x 的系統大量使用它。
+
+- id: flux-window
+  chapter: Flux
+  title: "aggregateWindow：每天的最大值"
+  lang: flux
+  prompt: |
+    用 Flux 計算 db-01 在 2026-09-18、09-19 兩天（台灣時間）每天 usage_user 的最大值。
+  hints:
+    - "aggregateWindow(every: 1d, fn: max)"
+    - "要依台灣時間切成一天：import \"timezone\" 再加上 option location = timezone.location(name: \"Asia/Taipei\")"
+  answer: |
+    import "timezone"
+    option location = timezone.location(name: "Asia/Taipei")
+
+    from(bucket: "metrics")
+      |> range(start: 2026-09-18T00:00:00+08:00, stop: 2026-09-20T00:00:00+08:00)
+      |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user" and r.host == "db-01")
+      |> aggregateWindow(every: 1d, fn: max)
+  explanation: |
+    aggregateWindow ≈ InfluxQL 的 GROUP BY time()：每個區間算一次，_time 是區間的「結束」時間（InfluxQL 是開始，兩者不一樣！）。
+    option location 讓 1d 的區間依台灣時間對齊；沒有它的話依 UTC 切。createEmpty（預設 true）決定沒有資料的區間要不要輸出。
+
+- id: flux-pivot
+  chapter: Flux
+  title: "pivot + map：把兩個 field 相加"
+  lang: flux
+  prompt: |
+    db-01 在 2026-09-18 14:00 到 14:05（台灣時間）每分鐘的 CPU 總使用率（usage_user + usage_system）。
+    結果只留 _time 與 total 兩欄。
+  hints:
+    - "Flux 每一列只有一個 _value，兩個 field 在不同的表。先 pivot 成同一列：pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")"
+    - "再用 map 新增欄位：map(fn: (r) => ({ r with total: r.usage_user + r.usage_system }))"
+    - "最後 keep(columns: [\"_time\", \"total\"])"
+  answer: |
+    from(bucket: "metrics")
+      |> range(start: 2026-09-18T14:00:00+08:00, stop: 2026-09-18T14:05:00+08:00)
+      |> filter(fn: (r) => r._measurement == "cpu" and r.host == "db-01")
+      |> filter(fn: (r) => r._field == "usage_user" or r._field == "usage_system")
+      |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+      |> map(fn: (r) => ({ r with total: r.usage_user + r.usage_system }))
+      |> keep(columns: ["_time", "total"])
+  explanation: |
+    InfluxQL 可以直接 SELECT usage_user + usage_system；Flux 因為「一列一個值」的資料模型，要先 pivot（類似樞紐分析）才能跨 field 計算。
+    InfluxDB 3 的 SQL 改回「一列多個 field」的寬表，就沒有這個問題。
+
+- id: flux-rank-hosts
+  chapter: Flux
+  title: "group + sort：主機依平均 CPU 排名"
+  lang: flux
+  ordered: true
+  prompt: |
+    9 月整個月（台灣時間）每台主機 usage_user 的平均值，由高到低排序，只留 host 與 _value 兩欄。
+  hints:
+    - "mean() 之後每台主機還是各一張表，要先 group()（全部合成一張表）才能一起排序。"
+    - "sort(columns: [\"_value\"], desc: true) |> keep(columns: [\"host\", \"_value\"])"
+  answer: |
+    from(bucket: "metrics")
+      |> range(start: 2026-09-01T00:00:00+08:00, stop: 2026-10-01T00:00:00+08:00)
+      |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user")
+      |> mean()
+      |> group()
+      |> sort(columns: ["_value"], desc: true)
+      |> keep(columns: ["host", "_value"])
+  explanation: |
+    Flux 的「分組」就是表：from 讀出來時每個 series 一張表；group(columns: […]) 依指定欄位重新分表，group() 是全部合成一張。
+    聚合函式（mean、sum、count）是「每張表各算一次」，排序、limit 也是每張表各自做，所以跨主機排名前一定要 group()。
+
+- id: flux-rate
+  chapter: Flux
+  title: "Flux 的變化率：derivative(nonNegative: true)"
+  lang: flux
+  prompt: |
+    用 Flux 計算 api 服務在 2026-09-15 02:57 到 03:03（台灣時間）每分鐘的請求數（requests 是累計計數器，跳過重啟那一分鐘的負值）。
+    結果只留 _time 與 _value。
+  hints:
+    - "derivative(unit: 1m, nonNegative: true)"
+  answer: |
+    from(bucket: "metrics")
+      |> range(start: 2026-09-15T02:57:00+08:00, stop: 2026-09-15T03:03:00+08:00)
+      |> filter(fn: (r) => r._measurement == "http" and r._field == "requests" and r.service == "api")
+      |> derivative(unit: 1m, nonNegative: true)
+      |> keep(columns: ["_time", "_value"])
+  explanation: |
+    跟 InfluxQL 的 non_negative_derivative 相同：重啟那一分鐘的負值被跳過。Flux 另外有 increase()（自動處理計數器重置的累計增加量）
+    與 difference(nonNegative: true)。
+
+# ================================================================ 寫入（line protocol → scratch bucket）
+
+- id: write-points
+  chapter: 寫入
+  title: "line protocol：寫入三筆讀數"
+  lang: write
+  prompt: |
+    在 scratch bucket 寫入 9 號感測器（sensor_id=9、kind=cold）的三筆讀數，measurement 是 sensors：
+    時間戳記（秒）1790726400、1790726700、1790727000，temperature 分別是 4.1、4.3、4.2。
+  hints:
+    - "格式：measurement,tag1=值,tag2=值 field1=值,field2=值 時間戳記"
+    - "measurement 與 tag 之間用逗號、tag 與 field 之間用一個空白、field 與時間之間用一個空白。"
+    - "sensors,kind=cold,sensor_id=9 temperature=4.1 1790726400"
+  answer: |
+    sensors,kind=cold,sensor_id=9 temperature=4.1 1790726400
+    sensors,kind=cold,sensor_id=9 temperature=4.3 1790726700
+    sensors,kind=cold,sensor_id=9 temperature=4.2 1790727000
+  check: |
+    SELECT * FROM sensors
+  explanation: |
+    line protocol 是 InfluxDB 的寫入格式：一行一個點，可以一次送很多行（批次寫入，建議每批 5,000 行左右）。
+    tag 依名稱排序後再寫入，伺服器處理比較快；空白、逗號、等號要用反斜線跳脫。時間戳記的單位由 precision 參數決定（這裡是秒）。
+
+- id: write-types
+  chapter: 寫入
+  title: "field 的型別：整數要加 i"
+  lang: write
+  prompt: |
+    在 scratch 寫入一筆訂單（measurement orders），時間戳記 1790726400：
+    tag 是 city=台北市、status=paid；field 是 total（整數 1990）、items（整數 2）、coupon（字串 "WELCOME"）、gift（布林 true）。
+  hints:
+    - "整數要在數字後面加 i（1990i）；沒有 i 的數字是浮點數。"
+    - "字串 field 要用雙引號；布林寫 true / false（tag 的值不用引號）。"
+  answer: |
+    orders,city=台北市,status=paid total=1990i,items=2i,coupon="WELCOME",gift=true 1790726400
+  check: |
+    SHOW FIELD KEYS FROM orders;
+    SELECT * FROM orders
+  explanation: |
+    field 有四種型別：浮點數（預設）、整數（i 結尾）、字串（雙引號）、布林。tag 的值永遠是字串。
+    同一個 field 第一次寫入的型別就固定了：之後在同一個 shard 寫入別的型別（例如 total=1.5）會被拒絕（陷阱題有示範）。
+
+- id: write-overwrite
+  chapter: 寫入
+  title: "修正寫錯的值"
+  lang: write
+  prompt: |
+    感測器 sensors,kind=cold,sensor_id=9 在時間戳記 1790726400 的溫度寫錯了。
+    先寫入錯的值 temperature=41.0，再「修正」成 4.1。完成後這個時間點只能有一筆，而且是 4.1。
+  hints:
+    - "InfluxDB 沒有 UPDATE：同一條 series（measurement + tag set）、同一個時間戳記再寫一次，就會覆蓋 field 的值。"
+  answer: |
+    sensors,kind=cold,sensor_id=9 temperature=41.0 1790726400
+    sensors,kind=cold,sensor_id=9 temperature=4.1 1790726400
+  check: |
+    SELECT * FROM sensors
+  explanation: |
+    measurement + tag set + 時間戳記相同的點被視為「同一個點」，後寫的 field 值覆蓋前面的（不同的 field 會合併）。
+    ★ 這也是陷阱：兩個事件剛好同一秒、同一組 tag（例如同一位顧客同一秒下兩筆訂單），後一筆會蓋掉前一筆。
+    解法是時間戳記用更細的精度（ms、ns），或加一個能區分的 tag。刪除資料要用 delete API（依時間範圍 + tag 條件）。

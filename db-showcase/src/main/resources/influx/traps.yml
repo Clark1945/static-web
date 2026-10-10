@@ -1,0 +1,253 @@
+# InfluxDB 陷阱題：先猜結果，再執行對照。answer 是 options 的索引（從 0 開始）。
+# 每段腳本由一或多個步驟組成（lang：influxql / flux / write）；scratch: true 的題目在清空的 scratch bucket 用 learner 執行。
+
+- id: double-quotes
+  title: "字串用雙引號"
+  question: "A 把 tag 的值寫成雙引號 \"db-01\"。會回傳什麼？"
+  scripts:
+    - label: "A：host = \"db-01\""
+      steps:
+        - lang: influxql
+          code: SELECT usage_user FROM cpu WHERE host = "db-01" LIMIT 3
+    - label: "B：host = 'db-01'"
+      steps:
+        - lang: influxql
+          code: SELECT usage_user FROM cpu WHERE host = 'db-01' LIMIT 3
+  options:
+    - "跟 B 一樣，3 筆"
+    - "沒有資料，也不報錯"
+    - "語法錯誤"
+  answer: 1
+  explanation: |
+    InfluxQL 的雙引號代表「識別字」（measurement、tag、field 的名稱），單引號才是字串值。
+    host = "db-01" 的意思是「host 這個 tag 等於 db-01 這個 tag / field 的值」，沒有叫 db-01 的欄位，所以比對不到任何資料，而且不報錯。
+    ★ 規則：值用單引號，名稱用雙引號（名稱有特殊字元或保留字時才一定要加）。
+
+- id: tag-is-string
+  title: "tag 的值是數字嗎"
+  question: "sensor_id 寫入時是 2、3、4…。A 用數字比對 sensor_id = 2，會找到 2 號的資料嗎？"
+  scripts:
+    - label: "A：sensor_id = 2"
+      steps:
+        - lang: influxql
+          code: SELECT temperature FROM sensors WHERE sensor_id = 2 LIMIT 2
+    - label: "B：sensor_id = '2'"
+      steps:
+        - lang: influxql
+          code: SELECT temperature FROM sensors WHERE sensor_id = '2' LIMIT 2
+  options:
+    - "找得到，InfluxDB 會自動轉型"
+    - "找不到：tag 的值一律是字串"
+    - "報錯：型別不符"
+  answer: 1
+  explanation: |
+    tag 的值永遠是字串，"2" 和數字 2 不相等，所以 A 沒有結果（也不報錯）。
+    同理，tag 不能做數值的範圍比較（sensor_id > 3 是字串比較）、不能 sum / mean。需要計算的數值要存成 field。
+
+- id: no-tz
+  title: "GROUP BY time(1d) 沒有 tz()"
+  question: "db-01 在 9/18、9/19 兩天（台灣時間）每天的最大值。A 沒有 tz()，會回傳幾列？"
+  scripts:
+    - label: "A：沒有 tz()"
+      steps:
+        - lang: influxql
+          code: |
+            SELECT max(usage_user) FROM cpu
+            WHERE host = 'db-01' AND time >= '2026-09-18T00:00:00+08:00' AND time < '2026-09-20T00:00:00+08:00'
+            GROUP BY time(1d)
+    - label: "B：tz('Asia/Taipei')"
+      steps:
+        - lang: influxql
+          code: |
+            SELECT max(usage_user) FROM cpu
+            WHERE host = 'db-01' AND time >= '2026-09-18T00:00:00+08:00' AND time < '2026-09-20T00:00:00+08:00'
+            GROUP BY time(1d) tz('Asia/Taipei')
+  options:
+    - "2 列，跟 B 一樣"
+    - "3 列：依 UTC 切，台灣的一天從早上 8 點開始，頭尾各多出一段"
+    - "報錯：時間範圍有時區，GROUP BY 也一定要有"
+  answer: 1
+  explanation: |
+    InfluxDB 的時間都存成 UTC，GROUP BY time(1d) 預設依 UTC 的午夜切。台灣時間 9/18 00:00～08:00 屬於 UTC 的 9/17，所以多出一列，每一天的值也都不對。
+    跟 TimescaleDB 的 time_bucket、Elasticsearch 的 date_histogram 是同一個陷阱；Flux 要設定 option location。
+
+- id: counter-reset
+  title: "計數器重置後的 derivative"
+  question: "requests 是累計計數器，api 在 9/15 03:00 重啟後從 0 開始。A 用 derivative 算每分鐘請求數，03:00 那一列是多少？"
+  scripts:
+    - label: "A：derivative"
+      steps:
+        - lang: influxql
+          code: |
+            SELECT derivative(last(requests), 1m) FROM http
+            WHERE service = 'api' AND time >= '2026-09-15T02:57:00+08:00' AND time < '2026-09-15T03:03:00+08:00'
+            GROUP BY time(1m)
+    - label: "B：non_negative_derivative"
+      steps:
+        - lang: influxql
+          code: |
+            SELECT non_negative_derivative(last(requests), 1m) FROM http
+            WHERE service = 'api' AND time >= '2026-09-15T02:57:00+08:00' AND time < '2026-09-15T03:03:00+08:00'
+            GROUP BY time(1m)
+  options:
+    - "大約 20～30，跟前後差不多"
+    - "0"
+    - "一個非常大的負數"
+  answer: 2
+  explanation: |
+    derivative 是「這一筆減上一筆」：重啟前的累計值是 360 萬，重啟後從頭計算，相減得到 -360 萬，儀表板上會出現一個詭異的深谷，總和也會被拉低。
+    ★ 累計計數器一律用 non_negative_derivative / non_negative_difference（Flux：nonNegative: true，或 increase()）。
+
+- id: group-by-field
+  title: "GROUP BY 一個 field"
+  question: "customer_id 是 field，不是 tag。A 想算每位顧客的訂單數，會得到什麼？"
+  scripts:
+    - label: "A：GROUP BY customer_id"
+      steps:
+        - lang: influxql
+          code: |
+            SELECT count(total) FROM orders
+            WHERE time >= '2026-09-01T00:00:00+08:00' AND time < '2026-10-01T00:00:00+08:00'
+            GROUP BY customer_id
+  options:
+    - "每位顧客一組"
+    - "全部擠在同一組（customer_id 是空的）"
+    - "報錯：不能 GROUP BY field"
+  answer: 1
+  explanation: |
+    GROUP BY 只認得 tag：找不到叫 customer_id 的 tag，就當作每一筆的這個 tag 都是空值，所有訂單算在同一組，而且不報錯。
+    ★ 需要分組的欄位要設計成 tag；但顧客編號這種值很多的欄位當 tag 會讓 series 爆炸。
+    這類「依高基數欄位分組」的分析不是 InfluxDB 擅長的，交給 PostgreSQL、ClickHouse 或 Flux 的 group()（可以依 field 分組，但很慢）。
+
+- id: select-only-tags
+  title: "只 SELECT tag"
+  question: "A 只查 host 這個 tag，想列出每筆資料是哪台主機。結果是？"
+  scripts:
+    - label: "A：SELECT host"
+      steps:
+        - lang: influxql
+          code: SELECT host FROM cpu LIMIT 3
+    - label: "B：加上一個 field"
+      steps:
+        - lang: influxql
+          code: SELECT host, usage_user FROM cpu LIMIT 3
+  options:
+    - "3 筆，每筆一台主機"
+    - "沒有資料"
+    - "列出所有主機名稱（不重複）"
+  answer: 1
+  explanation: |
+    InfluxQL 的 SELECT 至少要有一個 field，只有 tag 時不會回傳任何資料（點是由 field 構成的，tag 只是描述）。
+    要列出 tag 的值用 SHOW TAG VALUES；要看每筆資料的 tag，就跟 field 一起 SELECT。
+
+- id: limit-per-series
+  title: "GROUP BY host 加上 LIMIT 1"
+  question: "SELECT * FROM cpu GROUP BY host LIMIT 1，會回傳幾列？"
+  scripts:
+    - label: "LIMIT 1 + GROUP BY host"
+      steps:
+        - lang: influxql
+          code: SELECT * FROM cpu GROUP BY host LIMIT 1
+  options:
+    - "1 列"
+    - "5 列：每台主機（每條 series）各 1 列"
+    - "報錯"
+  answer: 1
+  explanation: |
+    有 GROUP BY tag 時，LIMIT / OFFSET 是「每條 series 各自」限制筆數；要限制 series 的數量用 SLIMIT / SOFFSET。
+    這種「先分 series、每條 series 各自處理」的思考方式貫穿整個 InfluxDB（Flux 的「每張表各自處理」也是）。
+
+- id: unbounded-flux
+  title: "Flux 沒有 range"
+  question: "A 的 Flux 沒有 range()，想讀出所有 cpu 資料。結果是？"
+  scripts:
+    - label: "A：from |> filter"
+      steps:
+        - lang: flux
+          code: |
+            from(bucket: "metrics")
+              |> filter(fn: (r) => r._measurement == "cpu")
+              |> limit(n: 1)
+  options:
+    - "讀出所有資料（很慢）"
+    - "報錯：一定要用 range 限制時間"
+    - "預設讀最近 1 小時"
+  answer: 1
+  explanation: |
+    Flux 不允許「沒有時間範圍」的讀取：from 後面一定要接 range（cannot submit unbounded read）。
+    儲存引擎依時間把資料切成 shard，一定要知道時間範圍才能決定讀哪些 shard。InfluxQL 沒有時間條件時會讀全部（從 1677 年到現在），一樣很慢。
+
+- id: flux-window-time
+  title: "aggregateWindow 的 _time"
+  question: "同樣切成每小時，InfluxQL（A）的 time 是區間的開始。Flux 的 aggregateWindow（B）的 _time 是？"
+  scripts:
+    - label: "A：InfluxQL GROUP BY time(1h)"
+      steps:
+        - lang: influxql
+          code: |
+            SELECT mean(usage_user) FROM cpu
+            WHERE host = 'db-01' AND time >= '2026-09-18T13:00:00+08:00' AND time < '2026-09-18T15:00:00+08:00'
+            GROUP BY time(1h)
+    - label: "B：Flux aggregateWindow(every: 1h)"
+      steps:
+        - lang: flux
+          code: |
+            from(bucket: "metrics")
+              |> range(start: 2026-09-18T13:00:00+08:00, stop: 2026-09-18T15:00:00+08:00)
+              |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user" and r.host == "db-01")
+              |> aggregateWindow(every: 1h, fn: mean)
+              |> keep(columns: ["_time", "_value"])
+  options:
+    - "也是區間的開始"
+    - "區間的結束"
+    - "區間裡最後一筆資料的時間"
+  answer: 1
+  explanation: |
+    aggregateWindow 預設 timeSrc: "_stop"：_time 是區間的結束（13:00～14:00 的平均標在 14:00）。InfluxQL 標在區間開始（13:00）。
+    兩套查詢混用、或從 InfluxQL 改寫成 Flux 時，圖表會整個位移一格。要對齊可以設 timeSrc: "_start"。
+
+- id: same-timestamp
+  title: "同一秒寫入兩筆"
+  scratch: true
+  question: "同一位顧客（同一組 tag）在同一秒下了兩筆訂單，各寫入一個點。查詢時有幾筆？"
+  scripts:
+    - label: "寫入兩筆，再查詢"
+      steps:
+        - lang: write
+          code: |
+            orders,city=台北市,status=paid order_id=1001i,total=500i 1790726400
+            orders,city=台北市,status=paid order_id=1002i,total=1200i 1790726400
+        - lang: influxql
+          code: SELECT * FROM orders
+  options:
+    - "2 筆"
+    - "1 筆：後面那筆蓋掉了前面那筆"
+    - "寫入失敗：時間戳記重複"
+  answer: 1
+  explanation: |
+    measurement + tag set + 時間戳記相同，就是「同一個點」：後寫入的 field 值直接覆蓋，第一筆訂單消失了，而且沒有任何錯誤。
+    ★ 解法：時間戳記用更細的精度（ms、µs、ns），或把能區分的值放進 tag（但不能是高基數的值）。
+    這也是 InfluxDB 修正資料的方式：同一個時間點重新寫一次。
+
+- id: field-type-conflict
+  title: "同一個 field 寫入不同型別"
+  scratch: true
+  question: "第一次寫入 total=100i（整數），一分鐘後寫入 total=1.5（浮點數）。第二次寫入會怎樣？"
+  scripts:
+    - label: "兩次寫入，再查詢"
+      steps:
+        - lang: write
+          code: orders,city=台北市 total=100i 1790726400
+        - lang: write
+          code: orders,city=台北市 total=1.5 1790726460
+        - lang: influxql
+          code: SELECT * FROM orders
+  options:
+    - "成功，total 自動改成浮點數"
+    - "失敗：field type conflict，只有第一筆在資料庫裡"
+    - "成功，1.5 被截成 1"
+  answer: 1
+  explanation: |
+    同一個 shard 裡，一個 field 只能有一種型別：第一次寫入的是整數，之後的浮點數會被拒絕（field type conflict）。
+    同一批（同一個請求）裡只要有一行衝突，整批都可能被拒絕，所以程式要檢查回應、記錄失敗的資料。
+    ★ 程式送數字時一律明確決定型別（整數加 i），不要依值「看起來像不像整數」自動判斷（例如 100.0 被序列化成 100）。

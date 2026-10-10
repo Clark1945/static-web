@@ -39,6 +39,7 @@
 [data-db="timescaledb"] { --accent: #946B00; --accent-soft: #FBF1D6; }
 [data-db="pgvector"] { --accent: #5B4FC4; --accent-soft: #ECEAFA; }
 [data-db="elasticsearch"] { --accent: #00796F; --accent-soft: #DDF3F1; }
+[data-db="influxdb"] { --accent: #5B45D6; --accent-soft: #ECE9FB; }
 @media (prefers-color-scheme: dark) {
   [data-db="postgres"] { --accent: #6FA3D3; --accent-soft: #1B2C3D; }
   [data-db="redis"] { --accent: #FF7B6E; --accent-soft: #3A1A17; }
@@ -48,6 +49,7 @@
   [data-db="timescaledb"] { --accent: #F5C842; --accent-soft: #33290A; }
   [data-db="pgvector"] { --accent: #A89CFF; --accent-soft: #221E3D; }
   [data-db="elasticsearch"] { --accent: #3FD6CB; --accent-soft: #0E2F2D; }
+  [data-db="influxdb"] { --accent: #A898FF; --accent-soft: #221D3E; }
 }
 
 * { box-sizing: border-box; }

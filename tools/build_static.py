@@ -11,7 +11,7 @@ import json
 import re
 import sys
 import urllib.request
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -232,6 +232,10 @@ DATABASES = [
                 "壓縮、連續聚合的實驗需要互動操作，請到展示台的「實驗室」。"},
     {"id": "pgvector", "name": "pgvector", "dir": "pgvector", "api": "pgvector", "key": "sql", "lang": "sql",
      "lab": None, "labName": None, "labNote": None},
+    {"id": "influxdb", "name": "InfluxDB", "dir": "influx", "api": "influx", "key": "code", "lang": "influx",
+     "lab": "compare-lab.yml", "labName": "InfluxQL vs Flux",
+     "labNote": "每一步是同一個問題的兩種寫法：InfluxQL（類似 SQL）與 Flux（管線式），比較寫法與回傳的資料形狀。"
+                "series 數量（tag vs field）與降低精度的實驗需要寫入資料，請到展示台的「實驗室」。"},
     {"id": "elasticsearch", "name": "Elasticsearch", "dir": "elastic", "api": "elastic", "key": "commands", "lang": "es",
      "lab": "relevance-lab.yml", "labName": "相關性實驗",
      "labNote": "每一步用不同的查詢搜尋同一批資料，比較前幾名與 _score：IDF、欄位長度、欄位權重、function_score、filter 不計分。"
@@ -451,10 +455,42 @@ def es_blocks(results):
     return out
 
 
+def influx_time(v):
+    """InfluxQL 的 time 是 epoch 秒、Flux 的 _time 是 RFC3339（UTC），都轉成台灣時間。"""
+    try:
+        if isinstance(v, (int, float)):
+            if v == 0:
+                return "1970-01-01（沒有時間）"
+            d = datetime.fromtimestamp(v, timezone.utc)
+        else:
+            d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        return (d + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, OSError):
+        return v
+
+
+def influx_blocks(run):
+    """InfluxDB：每個結果區塊（InfluxQL 的一個 series、Flux 的一張表）一個表格，錯誤與訊息是文字。"""
+    out = []
+    for b in (run or {}).get("blocks", []):
+        if b["kind"] != "table":
+            out.append({"cmd": b.get("statement") or None, "text": b["message"], "error": b["kind"] == "error"})
+            continue
+        cols = b["columns"]
+        rows = [[influx_time(v) if cols[i] in ("time", "_time", "_start", "_stop") and v is not None else
+                 (round(v, 4) if isinstance(v, float) else v) for i, v in enumerate(r)] for r in b["rows"][:RESULT_ROWS]]
+        out.append({"cmd": b.get("title") or None, "table": {"columns": cols, "rows": rows, "total": b["total"]}})
+    return out[:12]
+
+
 def blocks(db, run):
     """把一次執行（PostgreSQL 是單一查詢結果，其他是多句指令的結果）轉成共同格式。"""
     if db["id"] in ("postgresql", "timescaledb", "pgvector"):
         return pg_blocks(run)
+    if db["id"] == "influxdb":
+        if isinstance(run, list):                     # 陷阱題：一段腳本有好幾個步驟，各自一個結果
+            return [b for step in run for b in influx_blocks(step)]
+        return influx_blocks(run)
     results = run["results"]
     return {"redis": redis_blocks, "mongodb": mongo_blocks, "cassandra": cql_blocks, "neo4j": cypher_blocks,
             "elasticsearch": es_blocks}[db["id"]](results)
@@ -480,16 +516,26 @@ def normalize(db):
     traps = [{
         "id": t["id"], "title": t["title"], "question": t["question"], "options": t["options"],
         "answer": t["answer"], "explanation": t["explanation"], "setup": t.get("setup"),
-        "scripts": [{"label": s["label"], "code": s.get("sql") or s.get("commands")} for s in (t.get("sqls") or t.get("scripts"))],
+        "scripts": [{"label": s["label"], "code": s.get("sql") or s.get("commands") or steps_code(s.get("steps"))}
+                    for s in (t.get("sqls") or t.get("scripts"))],
     } for t in trap_raw]
     steps = [{
         "id": s["id"], "title": s["title"], "goal": s["goal"], "question": s.get("question"), "takeaway": s["takeaway"],
         "setup": s.get("ddl") or s.get("indexes") or [],
         "queries": [{"label": q["label"], "code": q.get("sql") or q.get("command") or q.get("cql") or q.get("cypher")}
                     for q in (s.get("sqls") or s.get("queries") or [])]
-                   or ([{"label": "請求", "code": s["commands"]}] if s.get("commands") else []),
+                   or ([{"label": "請求", "code": s["commands"]}] if s.get("commands") else [])
+                   or [q for q in ({"label": "InfluxQL", "code": s.get("influxql")}, {"label": "Flux", "code": s.get("flux")}) if q["code"]],
     } for s in step_raw]
     return exercises, traps, steps
+
+
+STEP_LABEL = {"influxql": "-- InfluxQL", "flux": "// Flux", "write": "# line protocol（寫入 scratch）"}
+
+
+def steps_code(steps):
+    """InfluxDB 陷阱題的腳本由好幾個步驟組成：每一步前面加一行註解標出語言。"""
+    return "\n\n".join(STEP_LABEL.get(s["lang"], s["lang"]) + "\n" + s["code"].strip() for s in (steps or []))
 
 
 def fetch_results(db, exercises, traps):
@@ -502,6 +548,8 @@ def fetch_results(db, exercises, traps):
     for e in exercises:
         g = api(f"{base}/exercises/{e['id']}/check", {db["key"]: e["answer"]})
         e["result"] = blocks(db, g.get("result"))
+        if g.get("check"):                            # InfluxDB 寫入題：寫入後用一句查詢檢查
+            e["checks"] = influx_blocks(g["check"])
         if g.get("checks"):
             checks = g["checks"]
             e["checks"] = {"redis": redis_blocks, "mongodb": mongo_blocks, "cassandra": cql_blocks,
@@ -551,7 +599,7 @@ def build_index(stats):
   <span class="sub">面試準備 · shop 練習資料庫</span></div></div></header>
 <main class="home">
   <p class="lead">以一個台灣電商「shop」的模擬資料（會員、訂單、明細、商品、分類，約 30 萬筆）為例，
-    練習 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB、pgvector、Elasticsearch 八種資料庫的查詢、資料模型與面試常考的觀念。</p>
+    練習 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB、pgvector、Elasticsearch、InfluxDB 九種資料庫的查詢、資料模型與面試常考的觀念。</p>
   <div class="home-grid">
     <a class="home-card" href="cheatsheet.html">
       <b>CheatSheet</b>
@@ -562,7 +610,8 @@ def build_index(stats):
         Neo4j：Cypher 圖樣、路徑與最短路徑、MERGE、圖的資料模型、PROFILE。
         TimescaleDB：hypertable 與 chunk、time_bucket、gapfill、連續聚合、壓縮、資料保留。
         pgvector：距離運算子、語意搜尋與推薦、HNSW vs IVFFlat、過濾與多租戶、量化、混合搜尋。
-        Elasticsearch：倒排索引與分析器、Query DSL、BM25 相關性、聚合、nested、寫入與近即時、分片。</span>
+        Elasticsearch：倒排索引與分析器、Query DSL、BM25 相關性、聚合、nested、寫入與近即時、分片。
+        InfluxDB：line protocol、tag vs field 與 cardinality、InfluxQL、Flux、計數器與變化率、保留期限與降低精度。</span>
     </a>
     <a class="home-card" href="question-bank.html">
       <b>題庫</b>

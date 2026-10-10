@@ -57,4 +57,8 @@ showcase:
     admin-password: elastic-lab   # 內建的 elastic：建索引、建帳號、載入資料、實驗室
     reader-password: reader-lab   # 只能讀練習資料：批改查詢題
     learner-password: learner-lab # 練習資料唯讀、scratch* 可寫：主控台與寫入題
+  influx:                         # influx-lab 容器（InfluxDB 2.7）
+    url: http://localhost:8087
+    org: shop
+    admin-token: influx-lab-admin-token   # 初始化時建立的 operator token；reader / learner token 由展示台啟動時建立
   # 之後串接其他資料庫時，各自的設定加在這裡

@@ -16,6 +16,7 @@
 .db-tabs a[data-tab="timescaledb"] { --db: #F5B800; }
 .db-tabs a[data-tab="pgvector"] { --db: #5B4FC4; }
 .db-tabs a[data-tab="elasticsearch"] { --db: #00BFB3; }
+.db-tabs a[data-tab="influxdb"] { --db: #7A65F2; }
 .db-tabs a:hover { color: var(--ink); }
 .db-tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--db); }
 .db-tabs a[aria-current="page"]::before { opacity: 1; }
@@ -31,6 +32,7 @@
   .db-tabs a[data-tab="timescaledb"] { --db: #F5C842; }
   .db-tabs a[data-tab="pgvector"] { --db: #A89CFF; }
   .db-tabs a[data-tab="elasticsearch"] { --db: #3FD6CB; }
+  .db-tabs a[data-tab="influxdb"] { --db: #A898FF; }
 }
 
 @media (max-width: 900px) {

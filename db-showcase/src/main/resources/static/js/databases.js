@@ -33,7 +33,7 @@ export const DATABASES = [
   {
     id: "influxdb", name: "InfluxDB", kind: "時序", mono: "If", color: "#7A65F2", ink: "#FFFFFF",
     tagline: "專為監控指標、IoT 感測資料設計的時序資料庫。",
-    status: "planned",
+    status: "ready", page: () => import("./pages/influxdb/index.js"),
   },
   {
     id: "elasticsearch", name: "Elasticsearch", kind: "搜尋引擎", mono: "Es", color: "#00BFB3", ink: "#002A27",
