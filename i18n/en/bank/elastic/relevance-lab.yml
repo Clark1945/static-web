@@ -1,0 +1,55 @@
+- id: idf
+  title: Rare terms score higher (IDF)
+  question: Which query scores higher, and why?
+  goal: "Both search for one term: 「降噪」 (noise cancelling) appears in only a few reviews, while 「很好」 (very good) is almost everywhere. Compare the top scores of the two queries."
+  takeaway: |
+    The BM25 score ≈ IDF × a TF part × a field-length adjustment.
+    IDF (inverse document frequency): the fewer documents a term appears in, the more discriminating it is and the higher it scores. 「降噪」 appears in a few hundred reviews and 「很好」 in thousands, so 「降噪」 scores much higher.
+    In multi-term queries, rare terms contribute most of the score; terms that are everywhere, like 「的、很、了」, barely affect the ranking (stop words used to be configured for this; BM25 suppresses them naturally).
+
+- id: field-length
+  title: The shorter the field, the higher the score
+  question: Both contain 「音質」 (sound quality) once, so why are the scores different?
+  goal: "Search 「音質」: A is the 3 highest-scoring hits; B sorts by score ascending, giving the 3 lowest. Each contains 「音質」 only once."
+  takeaway: |
+    BM25 adjusts for field length (parameter b, default 0.75): 「音質」 in a short review means it's the review's main point, so it scores higher;
+    appearing once in a long review may be just a passing mention, so it scores lower.
+    The other parameter, k1 (default 1.2), controls term frequency (TF) saturation: 1 vs 2 occurrences differ a lot, 10 vs 11 hardly at all, which prevents keyword stuffing.
+    Clicking "how is the top score computed" on A shows the actual numbers for idf, tf, dl (this document's length in terms) and avgdl (the average length).
+
+- id: boost
+  title: Field boosts
+  question: How do the top 5 and the scores change?
+  goal: "Search 「Sony 耳機」 (\"Sony headphones\"): in A, name and description matter equally; in B, name is multiplied by 3."
+  takeaway: |
+    multi_match defaults to best_fields: each field gets its own score and the highest is taken.
+    A: the top hits are Sony "wired" headphones. Their descriptions are very short (just color and cable length), and BM25's length adjustment gives description a higher score.
+    B: once name's score is multiplied by 3 it dominates, and products with both Sony and 耳機 in their name (wireless and wired) score the same and rank together.
+    ★ Field boosts are the most common tool for tuning relevance: names and titles usually matter more than body text.
+    ★ Scores can only be compared for ranking within the same query; score magnitudes across queries are meaningless (you can't set a threshold like "relevant only if score > 5").
+
+- id: function-score
+  title: "Relevance plus business rules: function_score"
+  question: What are B's top 5 sorted by?
+  goal: Headphones whose description has 「降噪」 all score the same (the descriptions use the same template). A looks only at relevance; B also multiplies by the rating (rating).
+  takeaway: |
+    E-commerce search rarely looks at text relevance alone: ratings, sales, stock, listing date and ads also count. function_score adjusts scores with functions:
+    field_value_factor (by a field's value), gauss / exp / linear (lower scores the further from a value, e.g. price, time, location), script_score, random_score (random but stable ordering).
+    modifier: log1p keeps the gap between ratings 5 and 4 from being exaggerated; boost_mode decides how the original score and the function score combine (multiply, sum, replace…).
+
+- id: filter-no-score
+  title: filter doesn't score
+  question: Do the two queries find the same documents? And the scores?
+  goal: The same conditions, in must for A and in filter for B. Look at the scores.
+  takeaway: |
+    They find exactly the same documents, but must computes scores (term has IDF too), while every filter score is 0.
+    filter doesn't need to compute scores, and frequently used filter results are cached as bitsets and reused next time.
+    ★ Yes/no conditions (category, price range, status, permissions, time) go in filter; only full-text conditions that should affect ranking go in must / should.
+
+- id: should-bonus
+  title: should as a bonus
+  question: Does B's total change? What about the top 5?
+  goal: Search products whose description has 「降噪」; B also uses should to boost those tagged 「熱銷」 (best seller).
+  takeaway: |
+    With must present, should is no longer required, just "a bonus if it matches": the total doesn't change, but best sellers move to the top.
+    This is the standard way to write "soft conditions": prefer a brand, a region, or in-stock items, without excluding the rest.

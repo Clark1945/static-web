@@ -1,0 +1,314 @@
+- id: get-doc
+  chapter: クエリの基本
+  title: _id でドキュメントを 1 件取得
+  prompt: |
+    products インデックスから _id が 806 の商品を取得してください。
+  hints:
+    - GET /インデックス/_doc/_id
+  explanation: |
+    _id でのドキュメント取得は「リアルタイム」です（realtime GET）：書き込んだばかりでまだ refresh されていなくても取得できます（_search ではそうとは限りません。実験室を参照）。
+    レスポンスの _version、_seq_no、_primary_term は楽観的ロック（if_seq_no / if_primary_term）に使います。
+
+- id: match-basic
+  chapter: クエリの基本
+  title: 全文検索：match
+  prompt: |
+    商品説明（description）で「降噪」（ノイズキャンセリング）に触れている商品を、関連度順に上位 5 件。
+  hints:
+    - 'GET /products/_search、body は { "size": 5, "query": { "match": { フィールド: テキスト } } }'
+  explanation: |
+    match はまずフィールドのアナライザ（description は cjk）で「降噪」を語に分析し、転置インデックスでその語を含むドキュメントを探し、BM25 で関連度スコア（_score）を計算します。
+    スコアが同じ場合は、インデックス内のドキュメントの順で並びます。レスポンスの hits.total は一致した総数です（1 万を超えると既定では「≥ 10000」とだけ報告します）。
+
+- id: term-keyword
+  chapter: クエリの基本
+  title: 完全一致：term
+  prompt: |
+    ブランド（brand）が Sony の商品は何件ですか？_count で件数を返します。
+  hints:
+    - brand は keyword 型です：値全体をそのまま 1 つの語として保存し、term で完全一致させます。
+    - 'GET /products/_count { "query": { "term": { … } } }'
+  explanation: |
+    term はクエリのテキストを分析せず、「Sony」をそのまま転置インデックスで探します。keyword フィールドにも元の「Sony」が保存されているので一致します。
+    ★ text フィールドに term を使うと見つからないことがよくあります：text フィールドには分析後の語（小文字化、分割）が保存されており、例えば name には「sony」が入っています（落とし穴問題で実演しています）。
+
+- id: bool-filter
+  chapter: クエリの基本
+  title: bool + filter：複数の条件
+  prompt: |
+    カテゴリ（category）が「無線耳機」（ワイヤレスイヤホン）、価格 3000〜6000（両端を含む）、タグ（tags）に「熱銷」（人気）がある商品を、価格の安い順にすべて一覧にしてください。
+  hints:
+    - bool の filter には「はい／いいえ」の条件を書きます：スコアを計算せず、キャッシュできます。
+    - '価格には range を使います：{ "range": { "price": { "gte": 3000, "lte": 6000 } } }'
+    - '並び順："sort": [{ "price": "asc" }]'
+  explanation: |
+    bool には 4 種類の句があります：must（一致が必要、スコアあり）、filter（一致が必要、スコアなし）、should（加点。must / filter がないときは少なくとも 1 つ一致が必要）、must_not（一致してはいけない、スコアなし）。
+    ★ 関連度が不要な条件（カテゴリ、価格、ステータス、時刻）は常に filter に入れましょう：スコアを計算しなくてよく、結果がキャッシュされるので、繰り返しのクエリが速くなります。
+    tags は keyword の配列で、term は配列のいずれかの値が一致すれば一致とみなします。
+
+- id: time-range
+  chapter: クエリの基本
+  title: 時間範囲 + 数値範囲
+  prompt: |
+    logs で、2026-09-18 14:00 から 14:40（台湾時間、14:40 を含まない）の間に、status が 500 以上の記録は何件ですか？
+  hints:
+    - '時刻は ISO 8601 にタイムゾーンを付けて直接書けます："2026-09-18T14:00:00+08:00"'
+    - 2 つの range はどちらも bool の filter に入れます。
+  explanation: |
+    date フィールドは Elasticsearch では UTC のミリ秒として保存されます。クエリではタイムゾーン（+08:00）を書くか、range の "time_zone" パラメータを使います。
+    この 40 分間が決済の障害の時間帯です：支払いのタイムアウト（504）と注文の失敗（500）。
+
+- id: sort-source
+  chapter: クエリの基本
+  title: 並べ替えと一部のフィールドだけを返す
+  prompt: |
+    評価（rating）が最も高い 5 件の商品。評価が同じならレビュー数（review_count）の多い方を前に、レビュー数も同じなら価格の安い方を前にします。
+    name、rating、review_count の 3 つのフィールドだけを返します。
+  hints:
+    - '"sort": [{ "rating": "desc" }, { "review_count": "desc" }, …]'
+    - '"_source": ["name", "rating", "review_count"] でこれらのフィールドだけを返します。'
+  explanation: |
+    sort があると関連度スコアは計算されず（_score は null）、フィールドの値で並べ替えます（列指向ストレージの doc values を使う）。
+    ★ 評価 5.0 の商品はレビューが 1 件だけかもしれません。実務の「人気順」ではレビュー数も考慮に入れたり（例えばベイズ平均）、function_score でスコアを調整したりします。
+
+- id: analyze-cjk
+  chapter: 全文検索とアナライザ
+  title: アナライザがどんな語に分けるかを見る
+  prompt: |
+    cjk アナライザで「主動降噪耳機」（アクティブノイズキャンセリングイヤホン）を分析し、どんな語に分けられるかを見てください。
+  hints:
+    - 'POST /_analyze { "analyzer": "cjk", "text": "…" }'
+  explanation: |
+    cjk アナライザは中国語・日本語・韓国語の文字を 2 文字ずつ（bigram）にします：主動、動降、降噪、噪耳、耳機。
+    standard アナライザは 1 文字 1 語なので（主、動、降、噪、耳、機）、「降噪」がばらばらになり、検索すると無関係なドキュメントが大量に見つかりがちです。
+    どちらも本当の「形態素解析」ではありません：中国語の分かち書きにはプラグイン（IK、smartcn、jieba）が必要で、それで初めて「主動 / 降噪 / 耳機」に分けられます。
+    インデックスのフィールドを指定することもできます：POST /products/_analyze { "field": "name", "text": "…" } とすると、そのフィールドに設定されたアナライザを使います。
+
+- id: match-and
+  chapter: 全文検索とアナライザ
+  title: すべての語が必要：operator and
+  prompt: |
+    レビュー内容（content）で「音質」と「降噪」の両方に触れているレビューは何件ですか？
+  hints:
+    - match は既定で OR です：いずれかの語が一致すれば一致とみなします。
+    - '{ "match": { "content": { "query": "音質 降噪", "operator": "and" } } }'
+  explanation: |
+    match の既定の operator は or です：「音質 降噪」は「音質」か「降噪」のどちらかがあれば一致するので、結果がずっと多くなります。
+    operator and ではすべての語が必要です。その中間には minimum_should_match（例えば "75%"、"2"）を使います。
+
+- id: match-phrase
+  chapter: 全文検索とアナライザ
+  title: フレーズ：match_phrase
+  prompt: |
+    内容に「通勤戴很舒服」（通勤中に着けてもとても快適）という完全なフレーズがあるレビューは何件ですか？
+  hints:
+    - match_phrase：すべての語が出現し、しかも順序と位置が隣り合っている必要があります。
+  explanation: |
+    match はいずれかの語（通勤、勤戴、戴很、很舒、舒服）があれば一致するので、2 千件以上見つかります。match_phrase はこれらの語が順に隣り合っていることを求めるので、本当にこの文を含むレビューだけになります。
+    転置インデックスは「どのドキュメントにこの語があるか」だけでなく、語がドキュメント内のどの位置（position）にあるかも記録しており、match_phrase はその位置で判断します。
+    slop パラメータを使うと、間にいくつかの語が入ることを許容できます。
+
+- id: multi-match
+  chapter: 全文検索とアナライザ
+  title: 複数のフィールド + 重み
+  prompt: |
+    「Sony 耳機」（Sony イヤホン）を検索します：name と description の両方を検索し、name の重みを description の 3 倍にして、上位 5 件を取ります。
+  hints:
+    - multi_match の fields には "name^3" と書くと 3 倍になります。
+  explanation: |
+    multi_match の既定は best_fields です：フィールドごとにスコアを計算し、最も高いものを取ります（さらに他のフィールドの tie_breaker 倍を加える）。
+    他の種類：most_fields（各フィールドのスコアを合計）、cross_fields（複数のフィールドを 1 つの大きなフィールドとして扱う。姓と名を別々に保存している場合に向く）、phrase。
+    重み（boost）は関連度を調整する最もよく使う道具です：タイトルや名称は通常、本文より重要です。
+
+- id: fuzzy
+  chapter: 全文検索とアナライザ
+  title: 打ち間違えても見つかる：fuzziness
+  prompt: |
+    ユーザーが Samsung を「Samsng」と打ち間違えました。match に fuzziness（"AUTO"）を付けて name フィールドを検索すると、商品は何件ですか？
+  hints:
+    - '{ "match": { "name": { "query": "Samsng", "fuzziness": "AUTO" } } }'
+  explanation: |
+    fuzziness は編集距離（Levenshtein）で近い語を探します：samsng → samsung は 1 文字挿入するだけ（距離 1）です。
+    AUTO：1〜2 文字は誤りを許さず、3〜5 文字は 1 つまで、それより長ければ 2 つまで許します。
+    ★ 中国語の bigram にはあまり役立ちません（2 文字の語で 1 文字間違えると別の語になる）。中国語の誤字や同音字は、通常は同義語辞書やピンインのプラグインで対処します。
+
+- id: should-minimum
+  chapter: 全文検索とアナライザ
+  title: そのうち少なくともいくつか一致：minimum_should_match
+  prompt: |
+    レビュー内容が「音質」「續航」（バッテリー持続時間）「降噪」の 3 つの語のうち「少なくとも 2 つ」に触れているレビューは何件ですか？
+  hints:
+    - 'bool の should に 3 つの match_phrase を入れ、"minimum_should_match": 2 を加えます'
+  explanation: |
+    should は既定では「加点」です：多く一致するほどスコアが高くなります。must / filter がないときは少なくとも 1 つの一致が必要で、minimum_should_match を加えると「少なくともいくつか一致」になります。
+    match で書いても構いません：「音質」「續航」「降噪」はどれも 2 文字なので、cjk で分析するとちょうど 1 つの語になります。
+
+- id: terms-agg
+  chapter: 集約
+  title: グループごとの件数：terms
+  prompt: |
+    商品数が最も多い 5 つのブランド（brand）と、それぞれの商品数。集約の結果だけが必要で、ドキュメントは不要です（size: 0）。
+  hints:
+    - '"aggs": { "by_brand": { "terms": { "field": "brand", "size": 5 } } }'
+  explanation: |
+    terms 集約 ≈ SQL の GROUP BY … ORDER BY count(*) DESC LIMIT 5。既定では doc_count の多い順で、同数なら key 順です。
+    ★ シャードが多いと terms の件数は近似値です：各シャードがまずそれぞれ上位 shard_size 件を取ってからマージするので、数え漏れが起こり得ます（doc_count_error_upper_bound が起こり得る誤差です）。
+    terms は keyword や数値のような doc values のあるフィールドにしか使えません。text フィールドには使えません（その .keyword サブフィールドを使います）。
+
+- id: avg-by-category
+  chapter: 集約
+  title: グループごとの平均 + サブ集約での並べ替え
+  prompt: |
+    カテゴリ（category）ごとの平均価格を、平均価格の高い順に並べます（全カテゴリ、計 19 個）。
+  hints:
+    - terms の中に avg サブ集約を入れます。
+    - 'terms の "order": { "サブ集約名": "desc" } でサブ集約の値で並べ替えられます。'
+  explanation: |
+    集約は 1 段ずつ入れ子にできます：外側でグループ化し（bucket aggregation：terms、date_histogram、range…）、内側で計算します（metric aggregation：avg、sum、max、percentiles、cardinality…）。
+    サブ集約での並べ替えは、シャードが多いと誤差がさらに大きくなります（各シャードの上位が全体の上位とは限らない）。
+
+- id: orders-per-day
+  chapter: 集約
+  title: 時間でグループ化：date_histogram
+  prompt: |
+    2026 年 9 月 1 日から 9 月 7 日（台湾時間、7 日間）の日ごとの注文数。
+  hints:
+    - 'まず range でこの 7 日間に絞り込み、次に date_histogram の calendar_interval: day を使います。'
+    - 'date_histogram に "time_zone": "+08:00" を加えると、1 日が台湾時間の 0 時から始まります。'
+  explanation: |
+    date_histogram ≈ TimescaleDB の time_bucket：calendar_interval（day、week、month。暦に従う）か fixed_interval（1h、10m。固定長）を使います。
+    ★ time_zone がないと UTC で区切られ、台湾の 1 日が午前 8 時から始まって、毎日の数値がずれます（time_bucket と同じ落とし穴）。
+    Kibana の棒グラフや折れ線グラフの裏側は date_histogram です。
+
+- id: p95-latency
+  chapter: 集約
+  title: サービスごとの P95 レイテンシ
+  prompt: |
+    logs のサービス（service）ごとのリクエスト数と、latency_ms の 95 パーセンタイル（P95）。サービスはリクエスト数の多い順に、すべて（7 個）一覧にします。
+  hints:
+    - 'terms のサブ集約に percentiles を入れます：{ "percentiles": { "field": "latency_ms", "percents": [95] } }'
+  explanation: |
+    監視で見るのは平均ではなく P95、P99 です：平均値は大量の速いリクエストに引き下げられ、「一部のユーザーが長く待たされている」ことが見えません。
+    payment の P95 が 30 秒近いのは、9/18 の障害のタイムアウトに引っ張られたためです。
+    percentiles は近似値（TDigest アルゴリズム）で、ごくわずかなメモリで非常に正確なパーセンタイルを計算します。
+
+- id: incident-hours
+  chapter: 集約
+  title: 障害を見つける：1 時間ごとの 5xx
+  prompt: |
+    9 月の status ≥ 500 の記録を 1 時間ごと（台湾時間）にグループ化し、20 件を超える時間帯だけを表示します（min_doc_count: 21）。
+  hints:
+    - 'query では range で status を絞り込み、aggs では date_histogram（fixed_interval: 1h、time_zone: +08:00、min_doc_count: 21）を使います。'
+  explanation: |
+    2 つの障害が一目で分かります：9/18 の 14 時（決済のタイムアウト）と 9/25 の午前 3 時（カートが Redis に接続できなかった）。
+    min_doc_count の既定は 0 です（データのない区間も表示されるので、グラフが途切れない）。異常を探すときはこれを上げて、「量の多い」区間だけを見ます。
+
+- id: top-404-ip
+  chapter: 集約
+  title: 誰がサイトをスキャンしているか
+  prompt: |
+    status が 404 の記録のうち、回数が最も多い 3 つの IP と回数。
+  hints:
+    - ip フィールドは ip 型で、terms 集約も使えます。
+  explanation: |
+    198.51.100.66 という 1 つの IP だけで 404 が 1,500 回以上あります（9/12 の未明に /.env、/wp-login.php のような URL を探していた）。普通のユーザーは 1 桁だけです。
+    これが SIEM（セキュリティ情報イベント管理）でよく行うことです：集約で異常な送信元を見つけます。
+
+- id: unique-users
+  chapter: 集約
+  title: 異なるユーザーは何人いるか：cardinality
+  prompt: |
+    logs には異なる user_id がいくつありますか？
+  hints:
+    - '{ "cardinality": { "field": "user_id" } }'
+  explanation: |
+    cardinality ≈ count(DISTINCT …) ですが近似値です（HyperLogLog++）：異なる値が何百万あっても、メモリ使用量は一定です。
+    precision_threshold（既定 3000）以下ではほぼ正確で、それを超えると誤差は約 1〜2% です。正確な数値が必要なら、composite 集約ですべての値をめくっていくしかありません。
+
+- id: nested-query
+  chapter: ネストしたドキュメント
+  title: 同じ明細が同時に一致：nested
+  prompt: |
+    orders の items は nested 型です。「カテゴリが手機（スマートフォン）で、数量が 2 以上」の同じ明細を含む注文は何件ありますか？
+  hints:
+    - '{ "nested": { "path": "items", "query": { "bool": { "filter": [ … ] } } } }'
+    - nested の中のフィールドは完全なパスで書きます：items.category、items.quantity
+  explanation: |
+    nested 型では各明細が独立した隠しドキュメントになり、nested クエリは「同じ明細」の中で 2 つの条件を比較します。
+    ★ items が普通の object（orders_object）だと、明細は items.category = [手機, 男裝]、items.quantity = [1, 3] のように平らにされ、
+    「手機」と「数量 3」が別々の明細から来ていても一致してしまいます（落とし穴問題で実演しています）。
+    代償：明細 1 件ごとに 1 つの Lucene ドキュメントになり（_cat/indices の docs.count は 8 万ではなく 28 万）、注文を更新するとまるごと書き直しになります。
+
+- id: nested-agg
+  chapter: ネストしたドキュメント
+  title: 明細の集約：nested aggregation
+  prompt: |
+    すべての注文明細をカテゴリ（items.category）でグループ化し、カテゴリごとの販売総数（items.quantity の合計）を求め、数量の多い上位 5 カテゴリを取ります。
+  hints:
+    - '外側で { "nested": { "path": "items" } } 集約を使い、その中で初めて items.* フィールドでグループ化できます。'
+    - 'terms をサブ集約で並べ替える："order": { "qty": "desc" }'
+  explanation: |
+    nested フィールドを集約するには、必ず先に nested 集約で明細に「入る」必要があります。items.category に直接 terms を使うと空の結果になります。
+    明細から注文のレベルに戻る（例えばカテゴリごとの「注文」数）には reverse_nested を使います。
+
+- id: index-doc
+  chapter: 書き込み
+  title: ドキュメントを 1 件追加
+  prompt: |
+    scratch_reviews にレビューを 1 件追加し、_id を review-1 に指定します：
+    product_id 806、rating 5、title「很滿意」（とても満足）、content「降噪效果很棒，通勤戴很舒服」（ノイズキャンセリングが素晴らしく、通勤中も快適）、verified true。
+  hints:
+    - PUT /scratch_reviews/_doc/review-1 に JSON ドキュメントを付けます（_id を指定するなら PUT、Elasticsearch に _id を自動生成させるなら POST /インデックス/_doc）。
+  explanation: |
+    PUT で _id を指定すると、既に存在すれば丸ごと上書きします（_version + 1）。「存在しないときだけ追加」したいなら PUT /インデックス/_create/review-1 を使います。
+    書き込み後は refresh（既定 1 秒）を待たないと検索できませんが、_id での取得はリアルタイムです。大量の書き込みには _bulk を使います。
+
+- id: partial-update
+  chapter: 書き込み
+  title: 部分更新：_update
+  prompt: |
+    scratch_products の商品 806 の価格を 2990 に、在庫を 0 に変更し、他のフィールドはそのままにします。
+  hints:
+    - 'POST /scratch_products/_update/806 { "doc": { … } }'
+  explanation: |
+    Elasticsearch のドキュメントは変更できません：_update は実は「全体を読み出す → マージする → 全体を書き直し、古いものに削除マークを付ける」で、PUT で丸ごと上書きするのとコストはほぼ同じです。送るデータが少ないだけです。
+    古いバージョンはセグメントのマージで初めて本当に消去されるので、同じドキュメントを頻繁に更新するワークロード（例えばカウンタ）は Elasticsearch に向いていません。
+
+- id: update-by-query
+  chapter: 書き込み
+  title: 一括更新：_update_by_query
+  prompt: |
+    scratch_products でカテゴリが「無線耳機」（ワイヤレスイヤホン）の商品すべての tags に「週年慶」（周年セール）を追加します。
+  hints:
+    - POST /scratch_products/_update_by_query。body には query と script を書きます。
+    - '"script": { "source": "ctx._source.tags.add(params.tag)", "params": { "tag": "週年慶" } }'
+  explanation: |
+    _update_by_query は条件に合う各ドキュメントに painless スクリプトを実行し（ctx._source がドキュメントの内容）、レスポンスの updated が更新した件数です。
+    ★ 値は params で渡し、スクリプトの文字列に連結しないこと：スクリプトはコンパイルされてキャッシュされるので、内容が変わり続けると毎回再コンパイルされます（コンパイル回数の上限に達することもあります）。
+    バージョン競合（他の人が同時に変更している）に出会うと既定では中止します。conflicts=proceed を付けると、競合したドキュメントを飛ばして続行します。
+
+- id: bulk
+  chapter: 書き込み
+  title: 複数件を一度に書き込む：_bulk
+  prompt: |
+    「1 つの」_bulk リクエストで scratch_reviews に 3 つのことを行います：
+    _id が b1 のレビュー（rating 5）を追加、_id が b2 のレビュー（rating 1）を追加、そして b1 の helpful を 10 に更新します。
+    content は自由に書き、product_id は 806 を使います。
+  hints:
+    - _bulk は NDJSON です：1 行がアクション（index / create / update / delete）、次の行が内容です（delete には内容がない）。
+    - '{"index": {"_id": "b1"}} の次の行にドキュメント、{"update": {"_id": "b1"}} の次の行に {"doc": {…}} を書きます'
+  explanation: |
+    _bulk は多数の書き込みアクションを 1 つのリクエストにまとめ、毎回のネットワーク往復を省きます。大量書き込みの標準的なやり方です（1 バッチ 5〜15 MB 程度）。
+    ★ _bulk はトランザクションではありません：各アクションがそれぞれ成功・失敗するので、レスポンスの errors が true のときは items を 1 つずつ確認して失敗したものを探す必要があります。
+    この問題の確認は b1 の rating、helpful と b2 の rating だけを見るので、content は何を書いても構いません。
+
+- id: delete-by-query
+  chapter: 書き込み
+  title: 条件で削除：_delete_by_query
+  prompt: |
+    scratch_reviews のうち、星 1 つ（rating 1）で、検証されていない（verified が false）レビューをすべて削除します。
+  hints:
+    - 'POST /scratch_reviews/_delete_by_query { "query": { "bool": { "filter": [ … ] } } }'
+  explanation: |
+    _delete_by_query はまず検索し、それから一括で削除します（スナップショット時点で一致したドキュメント）。削除はマークを付けるだけで、容量はセグメントのマージで初めて回収されます。
+    ★「ある期間の古いデータをまるごと」（例えば 30 日前のログ）削除するのに delete_by_query を使ってはいけません：時間でインデックスを分け（logs-2026.09、または data stream）、インデックスごと削除すれば、速くてゴミも残りません。

@@ -1,0 +1,593 @@
+# PostgreSQL exercises: English translation (only the translated fields; everything else comes from the Chinese original)
+- id: status-count
+  chapter: Basic aggregation
+  title: Orders per status
+  prompt: |
+    Count how many orders there are for each order status.
+    Show: status, number of orders.
+    Sort: number of orders, highest first.
+  hints:
+    - GROUP BY status puts orders with the same status into one group.
+    - count(*) counts the rows in each group; ORDER BY can use the alias defined in SELECT.
+  explanation: |
+    The most basic grouped aggregation. Note that ORDER BY can use the SELECT alias orders, but WHERE can't:
+    when WHERE runs, SELECT hasn't run yet, so the alias doesn't exist.
+
+- id: having
+  chapter: Basic aggregation
+  title: Customers with more than 50 orders
+  prompt: |
+    Find the customers who have placed more than 50 orders.
+    Show: customer id, number of orders.
+    Sort: number of orders, highest first; ties by customer id ascending.
+  hints:
+    - First GROUP BY customer_id to count each customer's orders.
+    - Conditions that apply "after grouping" go in HAVING, not WHERE.
+  explanation: |
+    ★ Interview favorite: WHERE filters rows "before" grouping; HAVING filters groups "after" grouping.
+    Aggregate functions (count, sum…) can only appear in HAVING; putting them in WHERE is an error.
+
+- id: distinct-city
+  chapter: Basic aggregation
+  title: Distinct shipping cities
+  prompt: |
+    List every shipping city (shipping_city) that appears in any order, without duplicates.
+    Show: city.
+    Sort: city name.
+  hints:
+    - SELECT DISTINCT merges identical rows into one.
+  explanation: |
+    DISTINCT gives the same result as GROUP BY shipping_city. For plain de-duplication DISTINCT reads better;
+    use GROUP BY when you also need counts.
+
+- id: vip-count
+  chapter: Basic aggregation
+  title: Customers per VIP level
+  prompt: |
+    Count how many customers there are at each VIP level (vip_level).
+    Show: vip_level, number of customers.
+    Sort: any order.
+  hints:
+    - Same as the first exercise, on the customers table.
+  explanation: |
+    This one doesn't require an order, so it's correct without ORDER BY.
+    But remember: without ORDER BY the database does "not guarantee" any order; it can differ between runs.
+
+- id: never-ordered
+  chapter: JOIN
+  title: Customers who never ordered
+  prompt: |
+    List the customers who have never placed an order.
+    Show: customer id, name, signup date.
+    Sort: signup date, earliest first; same day by id ascending. Only the first 10 rows.
+  hints:
+    - INNER JOIN drops customers without orders; use LEFT JOIN to keep every customer.
+    - When LEFT JOIN finds no order, all order columns are NULL; pick those rows with WHERE o.id IS NULL.
+  explanation: |
+    There are two standard ways to "find rows with no matching data":
+    LEFT JOIN … WHERE right_table.id IS NULL, or WHERE NOT EXISTS (subquery).
+    Both give the same result, and PostgreSQL usually optimizes them into the same plan (Anti Join).
+
+- id: products-per-category
+  chapter: JOIN
+  title: Products per category (including 0)
+  prompt: |
+    Count the products in each category. Categories without products must be listed too, with 0.
+    Show: category id, category name, number of products.
+    Sort: category id.
+  hints:
+    - Use categories as the driving table and LEFT JOIN products.
+    - count(*) counts the "NULL-filled row" as 1; use count(p.id) instead.
+  explanation: |
+    ★ Trap: with count(*) after a LEFT JOIN, a category with no products gets 1 instead of 0,
+    because the LEFT JOIN still produces a row (all NULL on the right). count(column) skips NULL, so it gives 0.
+
+- id: category-parent
+  chapter: JOIN
+  title: Categories and their parent (SELF JOIN)
+  prompt: |
+    List every category with the name of its parent category. Top-level categories have no parent; show 「無」 ("none").
+    Show: category id, category name, parent category name.
+    Sort: category id.
+  hints:
+    - categories joins to itself, so the same table needs two different aliases, e.g. c and p.
+    - Top-level categories have parent_id NULL; LEFT JOIN keeps them, then COALESCE turns NULL into 「無」.
+  explanation: |
+    A SELF JOIN uses one table as if it were two. Typical cases: employees and managers, categories and parent categories, referrers and referees.
+
+- id: top-categories-2026
+  chapter: JOIN
+  title: Best-selling categories of 2026
+  prompt: |
+    For orders placed in 2026 with status delivered, count the items sold per category (sum of quantity).
+    Show: category name, items sold.
+    Sort: items sold, highest first; top 5 only.
+  hints:
+    - "Four tables are chained: orders → order_items → products → categories."
+    - Write the date range as order_date >= '2026-01-01' AND order_date < '2027-01-01'.
+  explanation: |
+    ">= start AND < next start" is the safest date range: it never misses the afternoon of the last day, and it can use an index.
+    extract(year FROM order_date) = 2026 gives the same result, but once the column is wrapped in a function a regular index can't be used.
+
+- id: profile-completeness
+  chapter: 'NULL'
+  title: Customer profile completeness
+  prompt: |
+    Measure how complete customer profiles are. The result is a single row.
+    Show: total customers, customers with a birthday, customers with a city.
+  hints:
+    - count(*) counts rows; count(column) only counts rows where that column is "not NULL".
+  explanation: |
+    ★ count(*) vs count(column) is a classic interview question. sum, avg, max and min also ignore NULL,
+    so avg(column) is the average of "the rows that have a value", not of everyone.
+
+- id: city-with-unknown
+  chapter: 'NULL'
+  title: Customers per city (including missing)
+  prompt: |
+    Count customers per city. Customers without a city go into 「未填寫」 ("not filled in").
+    Show: city, number of customers.
+    Sort: number of customers, highest first; ties by city name.
+  hints:
+    - COALESCE(city, '未填寫') replaces NULL with 「未填寫」.
+    - GROUP BY must use the same COALESCE expression (or GROUP BY 1).
+  explanation: |
+    Actually you don't need COALESCE: GROUP BY city already puts all NULLs in one group.
+    COALESCE just makes the report friendlier.
+
+- id: phones-above-avg
+  chapter: Subqueries
+  title: Phones pricier than the store average
+  prompt: |
+    List products in the 「手機」 (phones) category priced above the "average price of all products".
+    Show: product id, name, price.
+    Sort: price, highest first; same price by id ascending.
+  hints:
+    - "The average of all products can come from a subquery: (SELECT avg(price) FROM products)."
+    - JOIN categories to filter by the category name 「手機」.
+  explanation: |
+    A subquery returning a single value is a "scalar subquery"; it can go anywhere a value is expected.
+    It doesn't depend on the outer query, so it runs only once.
+
+- id: never-sold
+  chapter: Subqueries
+  title: Products never sold (NOT EXISTS)
+  prompt: |
+    Find products that never appear in any order item.
+    Show: product id, name, listing date (created_at).
+    Sort: product id.
+  hints:
+    - WHERE NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.product_id = p.id)
+  explanation: |
+    EXISTS only cares "whether there is one" and stops at the first match, so the subquery is usually SELECT 1.
+    ★ To find what "doesn't exist", prefer NOT EXISTS over NOT IN: if the subquery returns a single NULL, NOT IN returns nothing at all (see the traps).
+
+- id: gold-returned
+  chapter: Subqueries
+  title: Gold customers with returns
+  prompt: |
+    How many customers have VIP level gold and have at least one returned order (status = 'returned')?
+    The result is a single number.
+  hints:
+    - Use EXISTS to check "does this customer have a returned order".
+    - If you use JOIN, remember a customer can have several returns; use count(DISTINCT c.id).
+  explanation: |
+    ★ JOIN makes it easy to miscount: a customer with 3 returns becomes 3 rows after the JOIN, and count(*) counts them 3 times.
+    EXISTS never duplicates, which is why it fits "is there any" better than JOIN.
+
+- id: price-level
+  chapter: CASE WHEN
+  title: Product price tiers
+  prompt: |
+    Split products into three tiers by price: 10000 and up is 「高價」 (high), 1000 and up is 「中價」 (mid), everything else is 「平價」 (budget).
+    Count the products in each tier.
+    Show: tier, number of products.
+    Sort: any order.
+  hints:
+    - CASE WHEN price >= 10000 THEN '高價' WHEN price >= 1000 THEN '中價' ELSE '平價' END
+    - GROUP BY 1 means "group by the first column in SELECT".
+  explanation: |
+    CASE WHEN is evaluated top to bottom and stops at the first match, so the order of conditions matters.
+    If price >= 1000 came first, high-priced products would also land in 「中價」.
+
+- id: cancel-rate-by-year
+  chapter: CASE WHEN
+  title: Cancellation rate per year
+  prompt: |
+    For each year (by order time), count orders, cancellations (status = 'cancelled') and the cancellation rate.
+    The rate is a percentage rounded to 1 decimal place (e.g. 9.8).
+    Show: year, orders, cancellations, cancellation rate.
+    Sort: year.
+  hints:
+    - extract(year FROM order_date) gives the year.
+    - Count cancellations with count(*) FILTER (WHERE status = 'cancelled'), or sum(CASE WHEN … THEN 1 ELSE 0 END).
+    - ★ Integer divided by integer is an integer (9 / 100 = 0); write 100.0 * … to get decimals.
+  explanation: |
+    "Conditional aggregation" is the most common reporting technique: one scan computes counts for several conditions.
+    FILTER is PostgreSQL syntax; sum(CASE WHEN …) works in every database. Know both.
+
+- id: union-members
+  chapter: Set operations
+  title: Customers who cancelled or returned (UNION)
+  prompt: |
+    How many customers have at least one cancelled or returned order?
+    The result is a single number. Try writing it with UNION.
+  hints:
+    - "Write two queries: customer_ids that cancelled, and customer_ids that returned; combine them with UNION (which removes duplicates)."
+    - Put the combined result in FROM ( … ) t and count(*) outside.
+  explanation: |
+    ★ UNION removes duplicates; UNION ALL doesn't. We count "customers", and someone with both kinds should count once, so UNION it is.
+    A simpler version: count(DISTINCT customer_id) … WHERE status IN ('cancelled', 'returned').
+
+- id: except-churned
+  chapter: Set operations
+  title: Bought in 2025, not in 2026 (EXCEPT)
+  prompt: |
+    How many customers ordered in 2025 but placed no orders at all in 2026?
+    The result is a single number.
+  hints:
+    - "A EXCEPT B: rows in A that are not in B."
+    - A = customer_ids that ordered in 2025; B = customer_ids that ordered in 2026.
+  explanation: |
+    This is how "churned customers" are counted. EXCEPT also removes duplicates.
+    The same thing can be written with NOT EXISTS, which usually optimizes better on large data.
+
+- id: first-order
+  chapter: Window functions
+  title: Each customer's first order (DISTINCT ON)
+  prompt: |
+    For customers 1 to 10, each customer's first order (the earliest order time).
+    Show: customer id, order id, order time.
+    Sort: customer id.
+  hints:
+    - "PostgreSQL-only: SELECT DISTINCT ON (customer_id) … ORDER BY customer_id, order_date"
+    - "Portable: number rows with row_number() OVER (PARTITION BY customer_id ORDER BY order_date) and keep number 1 outside."
+  explanation: |
+    DISTINCT ON (columns) keeps the first row of each group according to ORDER BY; it's PostgreSQL's most concise "first row per group".
+    ORDER BY must start with the DISTINCT ON columns. If the interviewer isn't using PostgreSQL, use row_number() instead.
+
+- id: top-product-per-category
+  chapter: Window functions
+  title: Most expensive product per category
+  prompt: |
+    Find the most expensive product in each category (on ties, the smaller product id). Only categories that have products.
+    Show: category id, product id, product name, price.
+    Sort: category id.
+  hints:
+    - row_number() OVER (PARTITION BY category_id ORDER BY price DESC, id) numbers the products within each category.
+    - Window functions can't go directly in WHERE; wrap them in a subquery or CTE and filter rn = 1 outside.
+  explanation: |
+    ★ "Top N per group" is the most frequently asked window function question.
+    For the top 3 per group use rn <= 3; to let ties share a place use rank() or dense_rank().
+
+- id: monthly-revenue-diff
+  chapter: Window functions
+  title: Monthly revenue and change (LAG)
+  prompt: |
+    For January–September 2026, the monthly revenue of delivered orders and how much it changed from the previous month.
+    Revenue = sum of quantity × unit_price × (1 − discount), rounded to an integer; the change is the difference of the rounded revenues.
+    The first month has no previous month, so its change is NULL.
+    Show: month (a date, e.g. 2026-01-01), revenue, change.
+    Sort: month.
+  hints:
+    - date_trunc('month', order_date)::date truncates a time to the 1st of the month.
+    - Compute monthly revenue in a CTE first, then use lag(revenue) OVER (ORDER BY month) outside to get the previous month.
+  explanation: |
+    lag() reads the previous row and lead() the next one; they're the usual tools for month-over-month, year-over-year and days-between.
+    Putting monthly revenue in a CTE first makes the outer window function much clearer.
+
+- id: cumulative-signups
+  chapter: Window functions
+  title: Cumulative signups
+  prompt: |
+    For January–June 2026, the number of new customers each month and the running total from January 2026 to that month.
+    Show: month (a date, e.g. 2026-01-01), new customers, running total.
+    Sort: month.
+  hints:
+    - "Running total: sum(…) OVER (ORDER BY month)."
+    - Count each month in a CTE first and accumulate outside; it's harder to get wrong.
+  explanation: |
+    sum() with OVER (ORDER BY …) becomes a running total; the default window is "from the first row to the current row".
+    Remove ORDER BY and every row gets the grand total.
+
+- id: order-gap-days
+  chapter: Window functions
+  title: Days between orders
+  prompt: |
+    The first 10 orders of customer 1 by order time, and how many days each is after the "previous" one.
+    Days between = this order's date − the previous order's date (dates only); the first row shows NULL.
+    Show: order id, order date (date), days between.
+    Sort: order time.
+  hints:
+    - order_date::date turns a timestamp into a date; date minus date gives an integer number of days.
+    - lag(order_date::date) OVER (ORDER BY order_date) gets the previous order's date.
+  explanation: |
+    Mind the execution order: WHERE → window functions → ORDER BY → LIMIT.
+    So lag() sees every row that passed WHERE; LIMIT 10 only truncates the output at the end.
+
+- id: category-descendants
+  chapter: Recursive CTE
+  title: All categories under 3C電子
+  prompt: |
+    List every descendant category under 「3C電子」 (consumer electronics), not including 3C電子 itself.
+    Depth: direct children are 1, the next level is 2.
+    Show: category id, name, depth.
+    Sort: category id.
+  hints:
+    - WITH RECURSIVE t AS ( anchor UNION ALL recursive part ) SELECT … FROM t
+    - "Anchor: categories whose parent_id is the id of 3C電子, depth 1."
+    - "Recursive part: categories JOIN t ON categories.parent_id = t.id, depth + 1."
+  explanation: |
+    A recursive CTE has two parts: the anchor runs once; the recursive part takes the previous round's result and keeps going until no new rows appear.
+    Typical uses: org charts, category trees, comment threads, bills of materials.
+
+- id: jsonb-storage
+  chapter: JSONB
+  title: 256GB phones
+  prompt: |
+    products.specs is JSONB. List products in the phones category (category_id = 2) whose spec storage_gb is 256.
+    Show: product id, name, color (color inside specs).
+    Sort: product id.
+  hints:
+    - "->> extracts text: specs->>'color'; -> extracts JSONB: specs->'warranty'."
+    - |-
+      Filter with (specs->>'storage_gb')::int = 256, or with the containment operator specs @> '{"storage_gb": 256}'.
+  explanation: |
+    -> returns JSONB, ->> returns text. To compare numbers, cast the ->> result first: (specs->>'storage_gb')::int.
+    @> means "contains": does the JSON on the left contain the fragment on the right. Its advantage is that it can use a GIN index (shown in the index lab).
+
+- id: jsonb-color-count
+  chapter: JSONB
+  title: Clothing products per color
+  prompt: |
+    Count menswear and womenswear products (category_id 13, 14) per color; products without specs (specs is NULL) don't count.
+    Show: color, number of products.
+    Sort: number of products, highest first; ties by color.
+  hints:
+    - GROUP BY specs->>'color' groups by a value inside the JSON.
+  explanation: |
+    Values inside JSONB can be used in SELECT, WHERE, GROUP BY and ORDER BY just like regular columns.
+    Flexible attributes (each category has different specs) suit JSONB well; you don't need a column for every kind of spec.
+
+- id: jsonb-noise-cancelling
+  chapter: JSONB
+  title: Average price of noise-cancelling products
+  prompt: |
+    What is the average price of products whose spec noise_cancelling is true? Round to an integer.
+    The result is a single number.
+  hints:
+    - |-
+      Write (specs->>'noise_cancelling')::boolean, or specs @> '{"noise_cancelling": true}'.
+  explanation: |
+    Note that JSON true is a boolean, not the string "true": '{"noise_cancelling": "true"}' matches nothing.
+
+- id: jsonb-nested
+  chapter: JSONB
+  title: Products with a two-year warranty (nested JSON)
+  prompt: |
+    Count products whose spec warranty.years equals 2, per category. (warranty is a nested object, e.g. {"years": 2, "type": "原廠"})
+    Show: category name, number of products.
+    Sort: number of products, highest first; ties by category name.
+  hints:
+    - |-
+      Step by step: specs->'warranty'->>'years', or with a path: specs #>> '{warranty,years}'.
+  explanation: |
+    Use -> for the intermediate levels (it stays JSONB so you can keep going down) and ->> only at the last level to get text.
+    #> and #>> take the whole path at once.
+
+- id: jsonb-key-exists
+  chapter: JSONB
+  title: Products with a battery-life spec
+  prompt: |
+    How many products have the key battery_hours in their specs?
+    The result is a single number.
+  hints:
+    - |-
+      The ? operator checks whether JSONB has a key: specs ? 'battery_hours'.
+  explanation: |
+    ? checks a single key; ?| checks "any of the keys exists"; ?& checks "all of the keys exist".
+    ★ In a JDBC PreparedStatement, ? is treated as a parameter placeholder, so Java code must write ?? or use the jsonb_exists() function instead. A common real-world gotcha.
+
+- id: jsonb-array-elements
+  chapter: JSONB
+  title: Clothing per size (expanding a JSON array)
+  prompt: |
+    For menswear and womenswear (category_id 13, 14), specs.sizes is a JSON array, e.g. ["M", "L", "XL"].
+    Count how many products are offered in each size.
+    Show: size, number of products.
+    Sort: any order.
+  hints:
+    - jsonb_array_elements_text(specs->'sizes') expands the array into rows.
+    - "Put it in FROM: FROM products p, jsonb_array_elements_text(p.specs->'sizes') AS s(size)."
+  explanation: |
+    A function in FROM can reference columns of earlier tables (an implicit LATERAL), so each product expands into "one row per size".
+    Products with NULL specs expand to no rows, so they're naturally not counted.
+
+- id: array-any
+  chapter: Array
+  title: Products on sale (ANY)
+  prompt: |
+    products.tags is text[]. How many products have the tag 「特價」 (on sale)?
+    The result is a single number.
+  hints:
+    - |-
+      '特價' = ANY(tags): true if any element of the array equals 「特價」.
+  explanation: |
+    ANY(array) means "any one of them". You can also write tags @> ARRAY['特價'], which can use a GIN index.
+    In Java, = ANY(?) with setArray is the usual way to pass a list of ids, instead of building an IN (…) string yourself.
+
+- id: array-contains
+  chapter: Array
+  title: Best-selling and limited (@>)
+  prompt: |
+    Products that have both tags 「熱銷」 (best seller) and 「限量」 (limited edition).
+    Show: product id, name.
+    Sort: product id.
+  hints:
+    - "tags @> ARRAY['熱銷', '限量']: the left array \"contains\" every element on the right."
+  explanation: |
+    @> contains (must have all), <@ is contained by, && overlaps (has at least one in common).
+
+- id: array-overlap
+  chapter: Array
+  title: Eco-friendly or exclusive (&&)
+  prompt: |
+    How many products have either the 「環保」 (eco-friendly) or the 「獨家」 (exclusive) tag?
+    The result is a single number.
+  hints:
+    - "&& means \"overlaps\": true if the two arrays share at least one element."
+  explanation: |
+    Equivalent to '環保' = ANY(tags) OR '獨家' = ANY(tags), but && is more concise and can use a GIN index.
+
+- id: array-unnest
+  chapter: Array
+  title: Products per tag (unnest)
+  prompt: |
+    Count the products for each tag.
+    Show: tag, number of products.
+    Sort: number of products, highest first; ties by tag.
+  hints:
+    - unnest(tags) expands an array into rows, one element per row.
+  explanation: |
+    unnest is the array version of "expand", like jsonb_array_elements for JSONB.
+    The reverse, aggregating rows into an array, is array_agg().
+
+- id: array-empty
+  chapter: Array
+  title: Products with no tags
+  prompt: |
+    How many products have no tags at all (an empty array)?
+    The result is a single number.
+  hints:
+    - cardinality(tags) returns the number of elements in the array.
+    - "You can also compare directly: tags = '{}'."
+  explanation: |
+    ★ Beware array_length(tags, 1): for an empty array it returns NULL, not 0, so array_length(tags, 1) = 0 finds nothing.
+    cardinality() returns 0 for an empty array and is less error-prone.
+
+- id: gs-daily-zero
+  chapter: generate_series
+  title: Orders per day (show 0 for days without orders)
+  prompt: |
+    For every day of September 2026, how many orders were shipped to 「台東縣」 (Taitung County)? Days with no orders must be listed too, with 0.
+    Show: date (date), number of orders.
+    Sort: date.
+  hints:
+    - If you GROUP BY the order date directly, days without orders simply don't appear. You need to "generate" the full list of dates first.
+    - generate_series('2026-09-01'::date, '2026-09-30'::date, interval '1 day') produces 30 rows.
+    - Then LEFT JOIN the orders; count(o.id) gives 0 when there are no orders.
+  explanation: |
+    The standard way to "fill in zeros" in a report: generate the full timeline with generate_series, then LEFT JOIN the real data.
+    Note the city condition must go in ON: in WHERE, days without orders would be filtered out (the lesson of trap #1).
+
+- id: gs-monthly-signups
+  chapter: generate_series
+  title: New customers per month in 2026 (including 0)
+  prompt: |
+    For each month from January to December 2026, how many new customers signed up? Months with no signups show 0.
+    Show: month (date, e.g. 2026-01-01), new customers.
+    Sort: month.
+  hints:
+    - generate_series('2026-01-01'::date, '2026-12-01'::date, interval '1 month')
+  explanation: |
+    The data only goes up to June 2026, so July–December are all 0. A plain GROUP BY on customers would return only 6 rows.
+
+- id: write-insert-returning
+  chapter: Writes (RETURNING / UPSERT)
+  title: Insert a customer and get the row back (INSERT … RETURNING)
+  prompt: |
+    Add a customer: name 「王小明」, email "xiaoming@example.com", signup date 2026-10-01.
+    Use RETURNING to return: name, email, vip_level (not specified, so see what the default is).
+  hints:
+    - INSERT INTO customers (name, email, signup_date) VALUES (…) RETURNING …
+  explanation: |
+    RETURNING makes INSERT / UPDATE / DELETE return the affected rows directly, saving a second query. The most common use is getting back the generated id.
+    ★ This exercise deliberately doesn't compare the id: sequences (serial) aren't transactional, so even after ROLLBACK the used numbers aren't given back, and the id differs on every run.
+    That's also why production ids often have "gaps"; a good answer if an interviewer asks.
+
+- id: write-update-returning
+  chapter: Writes (RETURNING / UPSERT)
+  title: Raise drink prices by 10% (UPDATE … RETURNING)
+  prompt: |
+    Raise the price of every product in the 「飲料」 (drinks) category by 10%, rounding the new price to an integer.
+    Use RETURNING to return: product id, new price.
+    Sort: any order.
+  hints:
+    - UPDATE products SET price = round(price * 1.1) WHERE … RETURNING id, price
+    - "Find the category with a subquery: category_id = (SELECT id FROM categories WHERE name = '飲料')"
+  explanation: |
+    RETURNING returns the values "after" the update. Since PostgreSQL 18 you can write RETURNING old.price, new.price to get both.
+    The sandbox can run several statements at once: add a SELECT afterwards to see the data already changed inside the transaction (but grading uses the last result returned, so remove it before submitting).
+
+- id: write-delete-returning
+  chapter: Writes (RETURNING / UPSERT)
+  title: Delete pending orders (DELETE … RETURNING)
+  prompt: |
+    Delete every order with status pending. Use RETURNING to return: order id, customer id.
+    Sort: any order.
+  hints:
+    - The foreign key on order_items has ON DELETE CASCADE, so deleting an order deletes its items too.
+  explanation: |
+    DELETE … RETURNING is often used to "move data": WITH moved AS (DELETE … RETURNING *) INSERT INTO archive SELECT * FROM moved;
+    One statement deletes and archives, inside the same transaction.
+
+- id: write-upsert-update
+  chapter: Writes (RETURNING / UPSERT)
+  title: Update if it exists, insert if not (UPSERT)
+  prompt: |
+    Write two categories in one statement:
+    (2, '智慧型手機', parent 1): id 2 already exists; update its name to 「智慧型手機」 (smartphones)
+    (28, '寵物用品', no parent): id 28 doesn't exist; insert it
+    Use RETURNING to return: id, name, parent_id.
+    Sort: any order.
+  hints:
+    - INSERT … ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+    - EXCLUDED means "the row we tried to insert that hit the conflict".
+  explanation: |
+    ★ UPSERT is atomic: there's no race condition where someone else sneaks in between "check whether it exists" and "decide INSERT or UPDATE".
+    ON CONFLICT needs a column with a UNIQUE or primary key constraint. JPA's save() can't do this, so in practice you often write native SQL.
+
+- id: write-upsert-nothing
+  chapter: Writes (RETURNING / UPSERT)
+  title: Skip duplicates (ON CONFLICT DO NOTHING)
+  prompt: |
+    Add two customers in one statement (both with signup date 2026-10-01):
+    「舊會員」 (existing member), email user00001@example.com (this email already exists)
+    「新會員」 (new member), email new0001@example.com
+    Skip rows with a duplicate email without raising an error. Use RETURNING to return: name, email.
+  hints:
+    - ON CONFLICT (email) DO NOTHING
+  explanation: |
+    A row skipped by DO NOTHING doesn't appear in RETURNING, so only one row comes back.
+    This pattern is very common for data imports and for handling duplicate requests (idempotency).
+
+- id: write-update-from
+  chapter: Writes (RETURNING / UPSERT)
+  title: Downgrade gold customers with returns (UPDATE … FROM)
+  prompt: |
+    Downgrade gold customers who have "ever had a returned order" to silver.
+    Use RETURNING to return: customer id.
+    Sort: any order.
+  hints:
+    - UPDATE customers c SET … FROM orders o WHERE o.customer_id = c.id AND …
+    - You can also use WHERE EXISTS (…).
+  explanation: |
+    UPDATE … FROM is PostgreSQL's way to update using data from other tables (MySQL uses UPDATE … JOIN).
+    A customer with several returns is still updated once and returned once.
+    ★ But if SET uses a column from the FROM table and several rows match, "which row's value is used" is undefined. In that case aggregate first, then update.
+
+- id: write-jsonb-merge
+  chapter: Writes (RETURNING / UPSERT)
+  title: Add a field inside JSONB
+  prompt: |
+    For products tagged 「特價」 (on sale) that have specs (specs is not NULL), add "on_sale": true to specs.
+    Use RETURNING to return: product id, the value of on_sale in specs (as text).
+    Sort: any order.
+  hints:
+    - |-
+      Merge JSONB with ||: specs || '{"on_sale": true}'; keys on the right overwrite the same keys.
+    - You can also use jsonb_set(specs, '{on_sale}', 'true').
+  explanation: |
+    ★ Trap: NULL || '{"on_sale": true}' is NULL (shown in the traps).
+    To include products without specs, write COALESCE(specs, '{}') || '{"on_sale": true}'.
+    Remove a key with minus: specs - 'on_sale'.

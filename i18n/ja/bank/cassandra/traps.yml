@@ -1,0 +1,157 @@
+- id: insert-is-upsert
+  title: 既に存在する主キーを INSERT する
+  question: customers_by_email には既に user04242@example.com の行（customer_id 4242）があります。同じ email でもう一度 INSERT すると何が起きますか？
+  options:
+    - エラー：主キーの重複
+    - 成功し、元の行が 99999 で上書きされる
+    - 成功し、同じ email の行が 2 行になる
+  scripts:
+    - label: 同じ主キーを INSERT
+  explanation: |
+    Cassandra は書き込み前に読まないので、この主キーが「既に存在する」ことを知りません。INSERT も UPDATE も upsert で、新しいバージョンを書き込み、読み取り時にタイムスタンプの新しい方が勝ちます。
+    「存在しないときだけ書き込む」には IF NOT EXISTS（軽量トランザクション）が必要で、代償はノード間の往復が何回も増えることです。
+    面接でよく聞かれる「なぜ Cassandra の書き込みはこんなに速いのか」の理由の 1 つが、この「書き込み前に読まない」ことです。
+
+- id: update-creates-row
+  title: 存在しない商品を UPDATE する
+  question: products に商品 99999 はありません。UPDATE products SET stock = 5 WHERE product_id = 99999 を実行した後、この商品は見つかりますか？
+  options:
+    - 見つかる：stock だけに値がある行が 1 行増える
+    - 見つからない：UPDATE は行を見つけられず、0 行に影響
+    - エラー：行が存在しない
+  scripts:
+    - label: 存在しない主キーを UPDATE
+  explanation: |
+    UPDATE も upsert で、行が存在するかを先に確認しないので、stock だけを持つ商品の行が「生えて」きます。
+    これを避けるには UPDATE … IF EXISTS（軽量トランザクション）と書きます。
+    細かな違い：INSERT は「行マーカー」（row marker）を書き込みますが、UPDATE は書き込みません。そのため UPDATE で作られた行は、stock を削除すると行全体が消えます。
+
+- id: filter-needs-key
+  title: 主キーでない列で検索する
+  question: orders テーブルの主キーは order_id です。WHERE customer_id = 4242 で直接検索すると（ALLOW FILTERING なし）、結果は？
+  options:
+    - どちらも 6 件返るが、1 つ目の方が遅いだけ
+    - 1 つ目は 0 件を返す
+    - 1 つ目は拒否され、ALLOW FILTERING が必要
+  scripts:
+    - label: orders：customer_id は主キーではない
+    - label: orders_by_customer：customer_id はパーティションキー
+  explanation: |
+    パーティションキーがないと、Cassandra はデータがどのノードにあるか分からず、すべてのノードに問い合わせてテーブル全体をスキャンするしかありません。黙ってスキャンするのではなく、はっきり拒否します。
+    ALLOW FILTERING を付ければ実行されます（実験室で計測しています：6 行のために 8 万行を読む）。
+    正しい解決策は customer_id をパーティションキーにしたテーブル（orders_by_customer）を作ること、あるいは少量のデータなら SAI インデックスを使うことです。
+
+- id: order-by-non-clustering
+  title: 金額で並べ替える
+  question: 会員 4242 の注文を金額の高い順に見たい：SELECT … FROM orders_by_customer WHERE customer_id = 4242 ORDER BY total DESC。結果は？
+  options:
+    - エラー：ORDER BY にはクラスタリングキーしか使えない
+    - 金額の高い順に並ぶ
+    - 成功するが順序は変わらない（ORDER BY は無視される）
+  scripts:
+    - label: クラスタリングキーでない列で ORDER BY
+  explanation: |
+    Cassandra はクエリ時に並べ替えをしません。「保存されている順」か「完全な逆順」でしか読めません。
+    パーティション内の順序はクラスタリングキーで決まるので、ORDER BY にはクラスタリングキーしか書けません。
+    金額で並べ替えたいなら、この会員の注文を取得してからアプリケーションで並べ替える（1 つのパーティションは通常小さい）か、total をクラスタリングキーにした別のテーブルを作ります。
+
+- id: skip-clustering
+  title: 前のクラスタリングキーを飛ばす
+  question: orders_by_day の主キーは ((order_day), order_time, order_id) です。WHERE order_day = '2026-09-01' AND order_id = 77082（order_time を限定しない）の結果は？
+  options:
+    - 注文 77082 が返る
+    - エラー：order_id の前の order_time が限定されていない
+    - 0 件が返る
+  scripts:
+    - label: order_time を飛ばして order_id を限定
+  explanation: |
+    パーティション内の行は (order_time, order_id) で並んでいます。電話帳が「姓、名」で並んでいるようなもので、「名」だけでは正しい位置を引けません。
+    クラスタリングキーは左から順にしか限定できず、しかも前の列で範囲（>、<）を使ったら、それ以降の列は限定できません。
+    これは SQL の複合インデックスの「最左プレフィックス」と同じ理屈です。
+
+- id: count-star
+  title: テーブル全体の COUNT(*)
+  question: SELECT COUNT(*) FROM orders（WHERE なし）はどうなりますか？
+  options:
+    - エラー：ALLOW FILTERING が必要
+    - すぐに 80000 を返す（Cassandra は件数を記録している）
+    - 80000 を返すが、テーブル全体を読み、警告も付く
+  scripts:
+    - label: パーティションキーなしの COUNT(*)
+    - label: 単一パーティションの COUNT(*)
+  explanation: |
+    Cassandra は「テーブルに何行あるか」を記録していないので、COUNT(*) は実際にすべての行を読んで数えるしかありません（所要時間を見てください：数百ミリ秒 vs 数ミリ秒）。
+    サーバーは「Aggregation query used without partition key」という警告も返します。データ量が多いとタイムアウトします。
+    件数を知るには：書き込み時にカウンタテーブルで集計する、nodetool tablestats で推定値を見る、Spark のようなツールを使う、などの方法があります。
+
+- id: avg-int
+  title: int 列の AVG
+  question: 会員 4242 の 6 件の注文の合計は 58033 で、平均は 9672.17 です。SELECT AVG(total)（total は int）は何を返しますか？
+  options:
+    - 9672（小数は切り捨て）
+    - '9672.17'
+    - エラー：AVG は int に使えない
+  scripts:
+    - label: AVG(int)
+    - label: 先に double に CAST
+  explanation: |
+    CQL の AVG は入力と同じ型を返します。int の平均は int で、小数はそのまま切り捨てられます（PostgreSQL なら numeric を返します）。
+    小数が必要なら先に double か decimal に CAST します。SUM(int) も同様に int で、金額が大きいとオーバーフローすることがあるので、先に bigint / varint に CAST できます。
+
+- id: older-timestamp
+  title: 古いタイムスタンプで書き込む
+  question: まず UPDATE products USING TIMESTAMP 1000 SET stock = 999（タイムスタンプ 1000 マイクロ秒、つまり 1970 年）を実行し、次に stock を読むといくつですか？現在の stock は 11 です。
+  options:
+    - 999：最後に実行した文が勝つ
+    - 11：タイムスタンプが古いので、古い書き込みとして扱われる
+    - エラー：タイムスタンプを既存のデータより前にはできない
+  scripts:
+    - label: とても古いタイムスタンプで書き込む
+  explanation: |
+    Cassandra は実行の順序ではなく、「列ごとのタイムスタンプ」で勝者を決めます（last write wins）。
+    この書き込みは成功していますが、読み取り時に 2 つのバージョンがあり、タイムスタンプの新しい 11 が勝つので、999 は無視されたのと同じです。
+    実務での影響：アプリケーションサーバーの時計がずれていると、後から書いたデータが先に書いたデータに「負ける」ことがあります。
+
+- id: ttl-per-cell
+  title: TTL は何に設定される？
+  question: UPDATE customers USING TTL 86400 SET city = '台南市' WHERE customer_id = 4242。1 日後、この会員のデータはどうなりますか？
+  options:
+    - 行全体が消える
+    - 何も変わらない。TTL は INSERT にしか効かない
+    - city だけが消え、他の列は残る
+  scripts:
+    - label: city だけに TTL を設定
+  explanation: |
+    TTL は列の値（cell）ごとに属し、今回書き込んだ city だけが 86400 秒の TTL を持ちます。name の TTL は null（期限切れにならない）です。
+    時間が来ると city はトゥームストーンになり、行自体は残ります。行全体を期限切れにしたいなら、INSERT … USING TTL で行全体を書き直すか、
+    テーブル作成時に default_time_to_live を設定します。
+
+- id: null-is-tombstone
+  title: null を書き込む
+  question: 会員を INSERT するとき、city 列を明示的に null と書きました。Cassandra はどう処理しますか？（クエリトレースの tombstone cells を見てください）
+  options:
+    - null を書くとトゥームストーン（tombstone）が保存される
+    - 両者は同じ：null は値がないので何も保存されない
+    - エラー：null は書き込めない
+  scripts:
+    - label: city に null を書く
+    - label: city を書かない（INSERT に含めない）
+  explanation: |
+    Cassandra では「列を null にする」ことは「列を削除する」ことと同じで、トゥームストーンが書き込まれ、読み取り時にそれを読んでから飛ばす必要があります。
+    トレースを見てください：null を書いた方は「Read 1 live rows and 1 tombstone cells」、書かなかった方は 0 です。
+    ORM や prepared statement を使うときに特にはまりやすい点です（すべての列をバインドし、値がないものは null をバインドしてしまう）。
+    driver 4 ではそのパラメータをバインドしない（unset）ことができ、このプロジェクトのデータ読み込みもそうしています。
+
+- id: counter-insert
+  title: カウンタテーブルへの INSERT
+  question: product_sales はカウンタテーブルです。INSERT INTO product_sales (product_id, units, orders) VALUES (99999, 1, 1) はどうなりますか？
+  options:
+    - 成功する。UPDATE と同じ
+    - エラー：カウンタテーブルには UPDATE しか使えない
+    - 成功するが、units と orders はどちらも 0
+  scripts:
+    - label: カウンタに INSERT
+    - label: カウンタを UPDATE
+  explanation: |
+    counter は加減算しかできず、特定の値を直接設定できないので、INSERT も UPDATE … SET units = 5 もできません。
+    存在しない counter は 0 から加算されます。カウンタテーブルには主キー以外に counter 列しか置けず、TTL も設定できません。

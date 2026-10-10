@@ -207,10 +207,24 @@ mvn spring-boot:run
 | `docs/cheatsheet.html` | CheatSheet：目錄、搜尋、SQL 上色、一鍵複製 |
 | `docs/question-bank.html` | 題庫：PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB、pgvector、InfluxDB、Elasticsearch 各一個分頁，每個分頁有練習題、陷阱題、實驗，附提示、答案與正確答案的實際執行結果 |
 
+網站有中、英、日三種語言：中文在 `docs/`，英文在 `docs/en/`，日文在 `docs/ja/`。右上角可以切換（記在瀏覽器裡）；沒選過時依瀏覽器的語言（`navigator.languages`）自動跳轉，zh → 中文、ja → 日文、其他 → 英文。
+
+| 翻譯的來源 | 內容 |
+|---|---|
+| `tools/ui_strings.json` | 介面文字（按鈕、標題、提示訊息），三種語言各一份 |
+| `i18n/{en,ja}/CHEATSHEET.md` | CheatSheet 全文；標題的層級與順序要跟中文版一致（章節的錨點依順序編號） |
+| `i18n/{en,ja}/bank/<資料庫>/<檔名>.yml` | 題庫：只放翻譯的欄位（依 id 對應），其他欄位、答案與執行結果都沿用中文原檔 |
+
 改了 `CHEATSHEET.md` 或題庫 YAML 之後，重新產生（展示台有在執行時，會順便更新執行結果）：
 
 ```bash
 python tools/build_static.py
+```
+
+中文改了、翻譯還沒跟上時，產生時會列出還沒翻譯的項目（先用中文顯示）。檢查翻譯檔跟原檔對不對得上（id、提示與選項的數量）：
+
+```bash
+python tools/check_i18n.py
 ```
 
 **部署到 Render**：New → Static Site → 選這個 repo，Publish Directory 填 `docs`，Build Command 留空或填 `echo ok`。

@@ -1,0 +1,52 @@
+- id: raw
+  title: 生データを読む
+  question: 両方の結果は同じ形をしていますか？
+  goal: db-01 の 9/18 14:00〜14:05 の usage_user。
+  takeaway: |
+    InfluxQL は「1 つの series、複数の列」のテーブル（time、usage_user）を返し、SQL とよく似ています。
+    Flux が返す各行は完全な情報を持っています：_start、_stop（クエリの範囲）、_time、_value、_field、_measurement、そしてすべての tag。
+    Flux のデータモデルは「1 行に 1 つの値」です：2 つの field を同時に見るには pivot が必要です（ステップ 4 を参照）。
+
+- id: group
+  title: ホストごとの平均
+  question: Flux には GROUP BY host がないのに、なぜホストごとに 1 つずつ平均が出るのでしょう？
+  goal: 9/18 の 1 日の各ホストの usage_user の平均。
+  takeaway: |
+    InfluxQL は既定で measurement 全体をまとめて計算し、GROUP BY tag で分けます。
+    Flux はちょうど逆です：from で読み出した時点で series（measurement + tag + field）ごとに 1 つのテーブルになっており、mean() はテーブルごとに 1 回計算するので、既定で「series ごとに 1 つの値」になります。
+    すべてをまとめて計算するには先に group()、特定の tag でグループ化するには group(columns: ["role"]) を使います。
+
+- id: timezone
+  title: 台湾時間での 1 日ごと
+  question: 両方の時刻の列は同じですか？
+  goal: db-01 の 9/18、9/19 の日ごとの最大値。
+  takeaway: |
+    値は同じで、時刻が違います：InfluxQL の time は区間の開始（9/18 00:00）、Flux の aggregateWindow は既定で区間の終了（9/19 00:00）に表示します。
+    タイムゾーン：InfluxQL は tz()、Flux は option location を使い、どちらも明示的に指定しないと UTC で区切られます。
+
+- id: arithmetic
+  title: 2 つの field を足し合わせる
+  question: なぜ Flux には pivot が 1 つ余分に必要なのでしょう？
+  goal: db-01 の 9/18 14:00〜14:05 の usage_user + usage_system。
+  takeaway: |
+    InfluxQL の 1 行には複数の field があるので、直接足し算できます。Flux の 2 つの field は別々のテーブル・別々の行にあるので、まず pivot で同じ行にまとめ（_field の値が列名になる）、それから map で計算します。
+    map は任意の新しい列を作れ、InfluxQL の四則演算より強力です（文字列処理、条件分岐、measurement をまたいだ join）。
+
+- id: ranking
+  title: series をまたいだ順位付け
+  question: 2 つの書き方は何が違いますか？
+  goal: 9 月 1 か月間で、平均 usage_user が最も高い 3 台のホスト。
+  takeaway: |
+    InfluxQL では値で ORDER BY できず、top(field, tag, N)「tag でグループ化して各グループの最大を取り、上位 N グループを取る」しか使えません。series をまたいだ順位付けにはサブクエリとの組み合わせが必要です。
+    Flux は group() で 1 つのテーブルにまとめてから sort、limit するので、SQL と同じ考え方です。
+    1 位は db-01 です（データベースは普段から忙しく、さらに 9/18 の障害もあった）。
+
+- id: join
+  title: measurement をまたぐ：CPU とメモリ
+  question: InfluxQL で 2 つの measurement を同じ行に並べられますか？
+  goal: 9/30 の 1 日の各ホストの平均 CPU と平均メモリ使用率を、同じ行に並べます。
+  takeaway: |
+    InfluxQL には JOIN がありません：2 つのクエリに分けて、アプリケーションで結合するしかありません。
+    Flux は異なる measurement、異なる bucket、さらには（sql パッケージで）リレーショナルデータベースのデータまで join できます。これが Flux が設計された主な理由の 1 つです。
+    web-03 は 9/20 にオフラインになり 9/30 のデータがないので、結果は 4 台のホストだけです。
+    （InfluxDB 3 は SQL に戻りました：JOIN、サブクエリ、ウィンドウ関数はすべて標準 SQL で書きます。）

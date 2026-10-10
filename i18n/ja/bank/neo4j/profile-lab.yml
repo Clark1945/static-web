@@ -1,0 +1,63 @@
+- id: label-scan
+  title: インデックスなし：NodeByLabelScan
+  question: インデックスがないときの実行計画は？db hits はおよそいくつですか？インデックスを作成した後は？
+  goal: email で会員を探します。Customer には id の一意制約（インデックス付き）しかなく、email にはインデックスがありません。まず 1 回実行し、インデックスを作成してから再実行します。
+  takeaway: |
+    インデックスなし：NodeByLabelScan が 20,000 人の会員をすべて読み（20,001 db hits）、Filter で email を 1 人ずつ比較し（さらに 20,000）、合計約 40,000 db hits。
+    インデックス作成後：NodeIndexSeek でその 1 人を直接見つけ、合計 4 db hits。
+    db hits は Neo4j がストレージ層にアクセスした回数（ノード、プロパティ、リレーションシップの読み取り）で、クエリのコストを比べる最も安定した指標です。ミリ秒はキャッシュの影響を受けます。
+    ★ グラフデータベースのインデックスは「起点」を見つけるためだけに使います。起点を見つけた後はリレーションシップをたどるだけで、インデックスは不要です（index-free adjacency）。
+  queries:
+    - label: email で会員を探す
+
+- id: index-defeated
+  title: プロパティに演算をするとインデックスが使えない
+  question: 3 つの文の結果は同じですが、実行計画も同じですか？
+  goal: id には一意制約のインデックスがあります。c.id = 4242 と c.id + 0 = 4242（結果は同じ）を比較します。
+  takeaway: |
+    A：NodeUniqueIndexSeek、3 db hits。B、C：NodeByLabelScan + Filter、約 40,000 db hits。
+    プロパティに演算をする（c.id + 0、toString(c.id)）と、クエリプランナーはインデックスを使えず、各ノードのプロパティを計算してから比較するしかありません。
+    SQL と同じ理屈です：WHERE id + 0 = 4242、WHERE lower(email) = … もインデックスを無効にします。
+    正しいやり方は演算を「値」の側に置くことです：WHERE c.id = toInteger($id)。
+  queries:
+    - label: A：c.id = 4242
+    - label: B：c.id + 0 = 4242
+    - label: C：toString(c.id) = '4242'
+
+- id: range-index
+  title: 範囲検索：期間
+  question: インデックス作成前後で、実行計画の最初のステップはそれぞれ何ですか？db hits はどれだけ違いますか？
+  goal: 2026 年 9 月の注文は何件ですか？まずインデックスなしで実行し、次に Order.orderDate に RANGE インデックスを作成します。
+  takeaway: |
+    インデックスなし：NodeByLabelScan で 8 万件の注文を読み、Filter で時刻を比較し、約 160,000 db hits。
+    RANGE インデックスあり：NodeIndexSeekByRange がインデックスから 9 月の区間を直接切り出し、2,919 件、約 2,900 db hits。
+    RANGE インデックス（Neo4j 5 の既定）は、等号、範囲（< > >= <=）、STARTS WITH、IS NOT NULL に対応しています。
+  queries:
+    - label: 2026 年 9 月の注文
+
+- id: text-index
+  title: 文字列の部分一致：TEXT インデックス
+  question: TEXT インデックスを作成した後、A と B の実行計画はそれぞれ何ですか？
+  goal: 商品名に「Sony」を含む商品。RANGE インデックスは等号、範囲、STARTS WITH にしか使えず、CONTAINS / ENDS WITH には TEXT インデックスが必要です。
+  takeaway: |
+    インデックスなし：どちらも NodeByLabelScan + Filter で、約 3,000 db hits。
+    TEXT インデックス作成後：A は NodeIndexContainsScan、B は NodeIndexSeekByRange になり、どちらも 60 db hits で済みます。
+    RANGE インデックスは CONTAINS / ENDS WITH に使えないので、TEXT インデックスを使います。本格的な全文検索（分かち書き、関連度スコア）には FULLTEXT インデックスを使います：
+    CREATE FULLTEXT INDEX … の後、db.index.fulltext.queryNodes() で検索します。
+  queries:
+    - label: A：CONTAINS 'Sony'
+    - label: B：STARTS WITH 'Sony'
+
+- id: supernode
+  title: スーパーノードから出発する
+  question: 2 つの文の実行計画は同じです。db hits は何倍違いますか？
+  goal: 「自分のフォロワーは何件注文したか」：会員 4242 のフォロワーは 4 人、会員 1 は 895 人です。同じクエリで起点だけを変えます。
+  takeaway: |
+    2 つの実行計画はまったく同じです：一意インデックスで起点を見つける → フォロワーを Expand → 注文を Expand。
+    違いはデータにあります：4242 はフォロワーが 4 人で合計 106 db hits、会員 1 はフォロワーが 895 人で合計約 18,700 db hits と、170 倍以上になります。
+    グラフの走査コストは「何本のリレーションシップをたどるか」で決まり、データベース全体の大きさとは関係ありません。しかしスーパーノード（supernode。有名人のアカウント、人気のタグなど）に出会うと、
+    そこから出発したりそこを通過したりするクエリは高くつきます。よくある対策：方向とリレーションシップの型で制限する、時期でリレーションシップを分割する（例：FOLLOWED_2026）、
+    スーパーノードに統計値を事前計算しておく、などです。
+  queries:
+    - label: A：会員 4242 から出発
+    - label: B：会員 1 から出発

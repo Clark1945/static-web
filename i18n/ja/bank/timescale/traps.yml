@@ -1,0 +1,85 @@
+- id: utc-bucket
+  title: time_bucket の「1 日」は何時から始まる？
+  question: 9/8〜9/10（台湾時間）の 3 日間の日ごとの閲覧数を検索します。A はタイムゾーンの引数を渡していません。何行返りますか？
+  options:
+    - 3 行、B と同じ
+    - 4 行：UTC で区切られ、各日が台湾時間の午前 8 時から始まるので、先頭と末尾にそれぞれ区間ができる
+    - エラー：timestamptz には必ずタイムゾーンが必要
+  sqls:
+    - label: A：time_bucket('1 day', view_time)
+    - label: B：'Asia/Taipei' を付ける
+  explanation: |
+    timestamptz に対する time_bucket は既定で UTC で区切ります：台湾時間の「1 日」が 2 つに分かれてしまいます（00:00〜08:00 は前の UTC の日に属する）。
+    結果は 1 行多くなり、しかも毎日の数値が正しくありません（9/9 の買い物祭りの 3 倍のトラフィックが 2 日に分かれてしまう）。
+    区間が「日、週、月」なら、必ずタイムゾーンの引数を付けましょう。データベースの timezone 設定は time_bucket に影響しません。
+
+- id: thirty-days
+  title: '''30 days'' は 1 か月？'
+  question: time_bucket('30 days', view_time, 'Asia/Taipei') の各区間の開始日は、毎月 1 日ですか？
+  options:
+    - いいえ：固定の起点から 30 日ごとに区切るので、開始日は 3/17、4/16… となり、7 つの区間に分かれる
+    - はい、30 days は自動で各月に揃う
+  sqls:
+    - label: A：'30 days'
+    - label: B：'1 month'
+  explanation: |
+    固定長の区間（'30 days'）は起点（origin、既定は 2000-01-03）から 30 日ごとに区切るので、暦の月とは揃わず、
+    先頭と末尾にも半端な区間ができます。月ごとに集計するなら '1 month' を使います（time_bucket は月・年単位の区間に対応しています）。
+
+- id: chunk-exclusion
+  title: 時刻の列を型変換する
+  question: どちらの文も 9/1 の 1 日分のデータだけが必要です。B は view_time を ::date に型変換しています。B の実行計画はいくつの chunk を読みますか？
+  options:
+    - 1 個、A と同じ
+    - 2 個（2 つの chunk にまたがる）
+    - 27 個すべて：型変換した後は chunk の範囲を判断できないので、すべての chunk を読む必要がある
+  sqls:
+    - label: A：時間範囲
+    - label: B：view_time::date =
+  explanation: |
+    chunk exclusion（関係する chunk だけを読む）は「時刻の列そのもの」に対する範囲条件に頼っています。列に型変換や関数（::date、date_trunc(…)、AT TIME ZONE）を使うと、
+    プランナーは chunk の時間範囲で除外できず、すべての chunk を読むしかありません。普通のインデックスが効かなくなるのと同じ理屈です。
+    ★ 常に time >= 開始 AND time < 終了 という半開区間で書きましょう。
+
+- id: gapfill-range
+  title: 範囲を指定しない time_bucket_gapfill
+  question: WHERE に時間範囲がないと、time_bucket_gapfill はどうなりますか？
+  options:
+    - データの最も早い時刻と最も遅い時刻を自動で範囲にする
+    - データのある時間帯だけを返す。time_bucket と同じ
+    - エラー：WHERE から開始と終了を推定する必要があり、推定できなければ失敗する
+  sqls:
+    - label: 時間範囲のない gapfill
+  explanation: |
+    gapfill は「どこからどこまで埋めるか」を知る必要があるので、WHERE には時刻の列の開始と終了の条件が必ず必要です（または関数の引数に start、finish を直接渡します）。
+    エラーメッセージ：missing time_bucket_gapfill argument: could not infer start from WHERE clause。
+
+- id: cagg-stale
+  title: 連続集約に最新のデータがない
+  question: page_views には 9/24 以降にも 7 万件以上の閲覧があります。連続集約 page_views_daily から 9/24 以降の閲覧数を検索すると、いくつになりますか？
+  options:
+    - B と同じ：連続集約は最新のデータを自動で含む
+    - 0：まだ refresh されていない区間は連続集約に含まれない
+    - エラー
+  sqls:
+    - label: A：連続集約から検索
+    - label: B：元データから検索
+  explanation: |
+    page_views_daily は 9/24 までしか refresh されていません。TimescaleDB 2.13 以降、新しく作成した連続集約は既定で materialized_only = true で、マテリアライズ済みのデータしか返しません。
+    実務では refresh ポリシーを追加します：add_continuous_aggregate_policy('page_views_daily', start_offset => …, end_offset => …, schedule_interval => …)。
+    またはリアルタイム集約を有効にします：ALTER MATERIALIZED VIEW page_views_daily SET (timescaledb.materialized_only = false)
+    （検索時に「まだマテリアライズされていない部分」を元データからその場で計算して合わせます。実験室で実演しています）。
+
+- id: cagg-count-rows
+  title: 連続集約の count(*)
+  question: page_views_daily は「日 × 商品」ごとに 1 行です。9/1〜9/22 の count(*) と sum(views) のどちらが、この期間の閲覧数に等しいですか？
+  options:
+    - sum(views)
+    - count(*)
+    - どちらも同じ
+  sqls:
+    - label: 連続集約から検索
+    - label: 元データから検索（正解）
+  explanation: |
+    集約テーブルの 1 行は既に「1 グループ」の結果なので、count(*) が数えるのはグループ数（3 万以上：日数 × 閲覧された商品）であって、元の閲覧数ではありません。
+    集約後の数値をさらに集計するには sum(views) を使います。同様に、平均値をさらに平均することはできません：sum と count を保存しておき、最後に割り算します。

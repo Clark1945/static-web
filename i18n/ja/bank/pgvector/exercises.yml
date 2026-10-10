@@ -1,0 +1,265 @@
+- id: dims-norm
+  chapter: ベクトルと距離
+  title: ベクトルの次元数と長さ
+  prompt: |
+    商品 806 のベクトルは何次元ですか？長さ（L2 ノルム）はいくつですか？
+    2 列を返します：次元数、長さ（小数第 3 位に四捨五入）。
+  hints:
+    - vector_dims(embedding) は次元数を、vector_norm(embedding) は長さを返します。
+    - vector_norm は double precision を返すので、小数第 3 位に round するには先に numeric に変換します。
+  explanation: |
+    ここのベクトルはすべて長さ 1 に正規化（l2_normalize）されています。本物の埋め込みモデル（例：OpenAI text-embedding-3）が出力するベクトルも通常は長さ 1 です。
+    長さがすべて 1 なら、cosine 距離、L2 距離、内積の順位はまったく同じになるので、最も速い内積（<#>）を選べます。
+    ★ 列を vector(64) と宣言すると、次元数の違うベクトルは書き込めません。1 つの列には同じモデルが生成したベクトルだけを入れます。
+
+- id: operators
+  chapter: ベクトルと距離
+  title: 4 種類の距離演算子
+  prompt: |
+    '[3,4]' と '[6,8]' の 2 つのベクトルの間の 4 種類の距離を計算し、1 行 4 列で返します：
+    L2 距離、cosine 距離（この 2 つは小数第 3 位に四捨五入）、負の内積、L1 距離。
+  hints:
+    - <-> は L2（ユークリッド）距離、<=> は cosine 距離、<#> は負の内積、<+> は L1（マンハッタン）距離です。
+    - 文字列は先に型変換します：'[3,4]'::vector
+  explanation: |
+    2 つのベクトルは同じ方向で、長さが 2 倍違います：L2 距離は 5（長さを見る）、cosine 距離は 0（方向だけを見る）、内積は 50。
+    ★ <#> が返すのは「負の」内積（-50）です。PostgreSQL のインデックスは「小さい順」にしか並べないので、符号を反転すれば ORDER BY の小さい順が内積の大きい順になります。
+    cosine 距離 = 1 - cosine 類似度で、範囲は 0〜2：0 は完全に同じ向き、1 は直交、2 は完全に逆向きです。
+
+- id: similar-products
+  chapter: ベクトルと距離
+  title: ある商品に最も似た商品
+  prompt: |
+    商品 806 に最も似た 5 件の商品（806 自身を除く）を、類似度の高い順に。
+    id、name、cosine 類似度（= 1 - cosine 距離、小数第 3 位に四捨五入）を返します。
+  hints:
+    - ORDER BY embedding <=> (SELECT embedding FROM products WHERE id = 806) LIMIT 5
+    - 806 自身を除くのを忘れずに：自分との距離は 0 なので、必ず 1 位になります。
+  explanation: |
+    「この商品を見た人はこんな商品も見ています」の最も簡単な作り方：商品自身のベクトルで最近傍を探します。
+    ★ ORDER BY には「距離」の小さい順（embedding <=> x）を書き、1 - 距離 DESC とは書かないこと：結果は同じですが、後者ではベクトルインデックスを使えません（落とし穴問題で実演しています）。
+    類似度は人が見るために SELECT で計算するだけで十分です。
+
+- id: pairwise
+  chapter: ベクトルと距離
+  title: 2 つずつ類似度を比べる
+  prompt: |
+    商品 806（Sony のワイヤレスイヤホン）と、537、469、1132 の 3 つの商品それぞれとの cosine 類似度はいくつですか？
+    id、name、類似度（小数第 3 位に四捨五入）を、類似度の高い順に返します。
+  hints:
+    - 806 を a、残りの 3 つを b とします：FROM products a, products b WHERE a.id = 806 AND b.id IN (…)
+  explanation: |
+    同じくワイヤレスイヤホンの 537 は類似度 0.66、スキンケア用品やノートパソコンは 0 に近く、負にさえなります（ほぼ直交）。
+    高次元空間では関係のないもの同士は「直交」し、類似度は 0 付近になります。そのため類似度のしきい値を決めるとき、0.3 と 0.6 では意味が大きく違い、実際のデータを見て決める必要があります。
+
+- id: semantic-search
+  chapter: セマンティック検索
+  title: テキストで商品を探す
+  prompt: |
+    embed() で「通勤 安靜」（通勤、静か）をベクトルに変換し、最も合う 5 件の商品を探します。id、name を最も合う順に返します。
+  hints:
+    - embed('通勤 安靜') は vector(64) を返すので、embedding との距離を比べるだけです。
+    - SELECT tokens('通勤 安靜') で、embed() がどの語を認識するか確認できます。
+  explanation: |
+    見つかるのはすべてアクティブノイズキャンセリングのワイヤレスイヤホンですが、商品説明には「通勤」「安靜」という語はまったくありません：
+    語彙の中で「通勤」のベクトルは「降噪」（ノイズキャンセリング）「無線」（ワイヤレス）に近いので、意味の近い商品が上位に来るのです。これがセマンティック検索とキーワード検索の最大の違いです。
+    実際のシステムでは embed() は埋め込みモデルの API 呼び出しです（アプリケーション側でベクトルを計算して SQL に渡します）。ここでは語彙で作ったミニモデルで代用しています。
+
+- id: similar-words
+  chapter: セマンティック検索
+  title: 語彙の中の類義語
+  prompt: |
+    語彙（vocab）の中で「露營」（キャンプ）に最も近い 5 つの語（「露營」自身を除く）。
+    word、cosine 距離（小数第 3 位に四捨五入）を近い順に返します。
+  hints:
+    - vocab の embedding もベクトルです：ORDER BY embedding <=> (SELECT embedding FROM vocab WHERE word = '露營')
+  explanation: |
+    「戶外」（アウトドア）「帳篷」（テント）は「露營」とほとんど同じで、「登山」「野餐」（ピクニック）も近いです。recipe 列を見れば理由が分かります：どれも「アウトドア」というトピックを含んでいます。
+    本物の埋め込みモデルも同じ理屈ですが、「トピック」はモデルが大量のテキストから自分で学んだ数百〜数千の次元で、人間には各次元の意味が分かりません。
+
+- id: filtered-search
+  chapter: セマンティック検索
+  title: セマンティック検索に通常の条件を加える
+  prompt: |
+    予算 1000 元以内（price <= 1000）のメンズ・レディースのうち、「冬天 保暖」（冬、暖かい）に最も合う 5 件。
+    id、name、price を最も合う順に返します。
+  hints:
+    - 通常の WHERE 条件はそのまま書き、ベクトルの距離で ORDER BY します。
+  explanation: |
+    ベクトルを PostgreSQL に置く最大の利点：ベクトル検索を価格、カテゴリ、在庫、権限などの通常の条件と同じ SQL 文に書け、JOIN もできることです。
+    専用のベクトルデータベース（Pinecone、Milvus）では、絞り込むためにこれらのフィールド（metadata）を別途保存する必要があります。
+    見つかるのはすべてウール素材の服です：「羊毛」（ウール）のベクトルには「暖かさ」のトピックが含まれています。
+    ★ データ量が多く、ベクトルインデックスを使う場合、絞り込み条件のせいで結果が 5 件に満たないことがあります（実験室の「フィルタ」で実演しています）。
+
+- id: threshold
+  chapter: セマンティック検索
+  title: 距離のしきい値で絞り込む
+  prompt: |
+    「露營 輕量」（キャンプ、軽量）との cosine 距離が 0.35 未満の商品は何件ですか？1 つの数値を返します。
+  hints:
+    - WHERE embedding <=> embed('露營 輕量') < 0.35
+  explanation: |
+    RAG でよくあるやり方：「十分に関連する」データだけを LLM に渡し、遠すぎるものは渡さない（無関係な内容でモデルが誤解しないように）。
+    ★ 距離のしきい値だけで ORDER BY … LIMIT のないクエリは HNSW / IVFFlat インデックスを使えず（これらは「最も近い k 件を探す」ことしかできない）、テーブル全体を計算します。
+    大きなテーブルでは「ORDER BY 距離 LIMIT k」と書き、その結果から遠すぎるものを除きます。
+
+- id: keyword-and-semantic
+  chapter: セマンティック検索
+  title: ブランドを限定したセマンティック検索
+  prompt: |
+    名称が「Sony 」で始まる商品のうち、「通勤 安靜」（通勤、静か）に最も合う 3 件。id、name を最も合う順に返します。
+  hints:
+    - WHERE name LIKE 'Sony %'
+  explanation: |
+    ブランドや型番のような「固有名詞」はセマンティックモデルが苦手なことが多いので（ここの語彙は Sony をまったく知りません）、キーワード条件の方が確実です。
+    「通勤、静か」のようなニーズの記述にはセマンティック検索の方が強いです。両者を組み合わせたものがハイブリッド検索（hybrid search）で、実験室では RRF で順位を合わせる方法を紹介しています。
+
+- id: best-per-category
+  chapter: セマンティック検索
+  title: カテゴリごとに最も合う 1 件
+  prompt: |
+    各カテゴリ（category）で「送禮」（贈り物）に最も合う商品を 1 件ずつ。
+    category、id、name を返し、category 順に並べます。
+  hints:
+    - DISTINCT ON (category) … ORDER BY category, 距離
+  explanation: |
+    DISTINCT ON は PostgreSQL の「グループごとに最初の 1 件」です：ORDER BY で並べた後、各 category の最初の行だけを残します。
+    検索結果ページで「カテゴリごとに 1 件ずつおすすめ」して、結果が 1 つのカテゴリに偏らないようにするときに使えます（多様化 diversification）。
+
+- id: neighbors-lateral
+  chapter: レコメンドと分類
+  title: 各商品について近傍を 2 件ずつ
+  prompt: |
+    商品 806、469、1132 のそれぞれに最も似た 2 件の商品（自分自身を除く）。
+    source_id（元の商品）、id、name を返し、source_id 順、同じ商品の中では似ている順に並べます。
+  hints:
+    - FROM products s CROSS JOIN LATERAL (SELECT … ORDER BY p.embedding <=> s.embedding LIMIT 2) n
+    - LATERAL サブクエリは左側のテーブルの列（s.embedding）を参照でき、行ごとに 1 回ずつ実行されます。
+  explanation: |
+    「各行について最も近い k 件」を探すには LATERAL が必要です：通常のサブクエリは外側の行を参照できず、JOIN でも「グループごとの上位 k 件」はできません。
+    LATERAL 内の ORDER BY … LIMIT もベクトルインデックスを使えます（行ごとに 1 回インデックス検索）。
+
+- id: knn-classify
+  chapter: レコメンドと分類
+  title: k-NN 分類：投票でカテゴリを決める
+  prompt: |
+    新しい商品の説明は「上班 通勤」（仕事、通勤）です。embed('上班 通勤') に最も近い 15 件の商品を探し、それぞれのカテゴリを調べます：
+    category と票数を、票数の多い順（同数なら category 順）に返します。
+  hints:
+    - まずサブクエリで最も近い 15 件を取り、外側で GROUP BY category します。
+  explanation: |
+    k-NN（k nearest neighbors）分類：最も近い k 個の近傍の多くがどのカテゴリかを見て、そのカテゴリと判定します。
+    モデルの学習は不要で、新しいカテゴリはデータを追加するだけです。商品の自動分類、問い合わせチケットの振り分け、スパム検出などに使えます。
+
+- id: customer-taste
+  chapter: レコメンドと分類
+  title: 購入履歴からおすすめ
+  prompt: |
+    顧客 224 が購入したすべての商品（purchases）のベクトルを平均して、その人の「好み」とします。
+    まだ買っていない商品のうち、この好みに最も近い 5 件をおすすめします。id、name を近い順に返します。
+  hints:
+    - avg(embedding) でベクトルの平均を計算できます（pgvector は vector の avg、sum 集約関数を提供しています）。
+    - WITH taste AS (SELECT avg(p.embedding) AS v FROM purchases u JOIN products p ON p.id = u.product_id WHERE u.customer_id = 224)
+    - 購入済みを除く：WHERE id NOT IN (SELECT product_id FROM purchases WHERE customer_id = 224)
+  explanation: |
+    最も単純なコンテンツベースのレコメンド（content-based）：ユーザーのベクトル = 関わったアイテムのベクトルの平均。
+    ★ 欠点：興味がばらばらな人（この顧客は寝具、生鮮食品、服、家電を買っている）では、平均すると「何でも少しずつ」の中間に落ち、おすすめがぼやけます。
+    実務ではクラスタに分ける（興味ごとにベクトルを 1 つ）、時間で重み付けする（最近の購入ほど重く）、あるいは協調フィルタリングや Two-Tower モデルに切り替えます。
+
+- id: category-centroid
+  chapter: レコメンドと分類
+  title: カテゴリごとの代表商品
+  prompt: |
+    各カテゴリで「そのカテゴリの全商品の平均ベクトル」に最も近い商品（最も典型的な商品）。
+    category、id、name を返し、category 順に並べます。
+  hints:
+    - まず GROUP BY category で avg(embedding) を計算し、products に JOIN し直して、DISTINCT ON でカテゴリごとに最も近い 1 件を取ります。
+  explanation: |
+    カテゴリの中心（centroid）はクラスタリング、分類、異常検知で使われます：中心から特に遠いものは、分類を間違えているかデータに問題がある商品かもしれません。
+    IVFFlat インデックスも同じ考え方です：まず k-means でベクトルを lists 個のクラスタに分け、検索時は最も近いいくつかのクラスタ（probes）だけを見ます。
+
+- id: near-duplicates
+  chapter: レコメンドと分類
+  title: ほぼ同じ商品を探す
+  prompt: |
+    cosine 距離が 0.015 未満の商品の「ペア」は何組ありますか？（同じペアは 1 回だけ数える）1 つの数値を返します。
+  hints:
+    - 自己結合：products a JOIN products b ON a.id < b.id
+    - a.id < b.id により (1, 2)、(2, 1) を 1 回だけ数え、自分自身とのペアも除外できます。
+  explanation: |
+    重複商品、重複記事、盗用の検出はどれもこの方法です。ここでは 1500 × 1499 / 2 ≈ 112 万ペアを比較し、1 秒もかかりません。
+    データ量が多いときは、すべてのペアを比較する（N² で爆発する）のではなく、「各行についてインデックスで最も近い数件を探す」（LATERAL + LIMIT）方法に切り替えます。
+
+- id: ann-search
+  chapter: インデックスと量子化
+  title: 10 万件の中から最も近い 5 件を探す
+  prompt: |
+    questions の第 1 問のベクトルについて、passages の中で最も近い 5 件。id、tenant_id を近い順に返します。
+  hints:
+    - passages の embedding 列には HNSW インデックス（vector_cosine_ops）があり、<=> を使ったときに使われます。
+    - 先頭に EXPLAIN を付けると、Index Scan using passages_hnsw が見えます。
+  explanation: |
+    HNSW インデックスを使えれば 1 ms もかかりません。使わないと 10 万回の距離計算と並べ替えが必要です（約 15 ms、データが多いほど遅くなる）。
+    ベクトルインデックスは「近似」最近傍（ANN）です：本当に最も近い数件を見つける保証はなく、正確さは再現率（recall）で測ります（実験室で計測しています）。
+    ★ インデックスを使うには 3 つの条件がすべて必要です：ORDER BY 距離の小さい順、LIMIT がある、演算子がインデックス作成時の ops と一致する（cosine インデックスには <=>）。
+
+- id: tenant-exact
+  chapter: インデックスと量子化
+  title: マルチテナント：自分のデータだけを検索
+  prompt: |
+    テナント 7（tenant_id = 7）のデータの中で、questions の第 1 問に最も近い 5 件。id を近い順に返します。
+    注意：WHERE tenant_id = 7 を付けるだけでは 5 件に満たないことがあります。必ず正しい 5 件を返す方法を考えてください。
+  hints:
+    - WHERE を付けただけだと、HNSW はまず ef_search（既定 40）個の候補を探してから絞り込みます。テナント 7 は 2% しかないので、候補には 0〜2 件しか残らないことがあります。
+    - ここでは 1 つのクエリしか送れません（SET は不可）。まずテナント 7 のデータを取り出し、その小さな集合の中で正確に並べ替えます：
+    - WITH mine AS MATERIALIZED (SELECT id, embedding FROM passages WHERE tenant_id = 7) SELECT id FROM mine ORDER BY …
+  explanation: |
+    MATERIALIZED にすると CTE が先に実行され（テナント 7 の約 2000 件を取り出す）、外側では HNSW を通らずに正確に並べ替えるので、必ず正しい 5 件になります。
+    マルチテナントのベクトル検索は面接でよく出る問題です。他のやり方：
+    1. pgvector 0.8 の iterative scan：SET hnsw.iterative_scan = relaxed_order とすると、候補が足りないときにさらに探し続けます（実験室で計測しています）。
+    2. 大きなテナントごとに部分インデックスを作る（CREATE INDEX … WHERE tenant_id = 7）、または tenant_id でパーティション分割する。
+    3. 絞り込み条件が非常に厳しい（数千件しか残らない）なら、正確な検索でも十分速いので、ベクトルインデックスはそもそも不要です。
+
+- id: quantization-size
+  chapter: インデックスと量子化
+  title: ベクトル 1 つはどれだけの容量を使うか
+  prompt: |
+    商品 806 のベクトルを 3 種類の型で保存したとき、それぞれ何バイトになりますか？1 行 3 列で返します：
+    vector（元の float4）、halfvec（float2）、binary_quantize した後の bit。
+  hints:
+    - pg_column_size(値) は値が実際に使うバイト数を返します。
+    - embedding::halfvec で半精度に変換し、binary_quantize(embedding) は各次元の符号だけを残します（1 bit）。
+  explanation: |
+    64 次元：vector は 1 次元あたり 4 バイト（256 + 8 バイトのヘッダー = 264）、halfvec は 2 バイト（136）、bit は 1 次元あたり 1 ビット（8 バイト + ヘッダー = 16）。
+    1536 次元（OpenAI の埋め込み）なら 1 件で 6 KB、1000 万件ではベクトルだけで 60 GB になり、HNSW インデックスにもう 1 部必要です。
+    量子化（quantization）とは精度と容量の交換です：halfvec は再現率をほぼ変えずに容量を半分にし、bit は 32 分の 1 ですが不正確なので、通常は「リランク（rerank）」と組み合わせます。
+    実験室の「量子化」で、インデックスのサイズと再現率を実際に計測しています。
+
+- id: insert-with-embedding
+  chapter: 書き込み
+  title: 商品を追加してベクトルを生成
+  prompt: |
+    商品を 1 つ追加します：id 9001、名称「Bose 無線耳機 Z001」（Bose ワイヤレスイヤホン Z001）、カテゴリ「無線耳機」（ワイヤレスイヤホン）、価格 8990、
+    説明「Bose 無線耳機 Z001 黑色 主動降噪 續航24小時」（黒、アクティブノイズキャンセリング、24 時間駆動）、ベクトルは embed(説明) で生成します。
+    追加した後、それに最も似た 3 件の商品（自分自身を除く）の id を、似ている順に検索します。
+  hints:
+    - INSERT INTO products (id, name, category, price, description, embedding) VALUES (…, embed('…'))
+    - 2 つ目の SELECT の結果が採点に使われます。
+  explanation: |
+    実際のシステムでは通常、アプリケーションが先に埋め込みモデルの API を呼んでベクトルを得てから一緒に INSERT します（またはバックグラウンドジョブに後から埋めさせます）。
+    追加後すぐに検索できます：HNSW インデックスは INSERT 時に同期して更新され、再構築は不要です（IVFFlat も更新されますが、クラスタの中心は変わらないので、データ分布が大きく変わったら再構築します）。
+
+- id: update-reembed
+  chapter: 書き込み
+  title: 説明を変えたらベクトルも再計算
+  prompt: |
+    商品 469（ノートパソコン）の説明の末尾に「 打電動」（ゲーム）を追加し、ベクトルも再計算します。
+    id、新しい説明、新しいベクトルと embed('打電動') の cosine 距離（小数第 3 位に四捨五入）を返します。
+  hints:
+    - UPDATE … SET description = description || ' 打電動', embedding = embed(description || ' 打電動')
+    - SET の中で参照する description は「更新前」の値なので、両方に新しいテキストを自分でつなげる必要があります。
+    - RETURNING で更新後の値を返せます。
+  explanation: |
+    ベクトルはテキストから計算した「派生データ」で、テキストが変わってもベクトルは自動では更新されません。再計算を忘れると、検索結果が内容と合わなくなります。
+    よくあるやり方：アプリケーションがテキストと一緒にベクトルも更新する。またはトリガーで「再埋め込みが必要な」id をキューに書き込み、バックグラウンドジョブがモデルを呼びます。
+    ★ 埋め込みモデルを変えるときは、すべてのベクトルを再計算する必要があります（異なるモデルのベクトル同士は比較できない）。そのため各ベクトルをどのモデルが生成したかを記録しておきましょう。

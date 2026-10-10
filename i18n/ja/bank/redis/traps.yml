@@ -1,0 +1,123 @@
+- id: multi-no-rollback
+  title: トランザクションが失敗すると ROLLBACK される？
+  question: A のトランザクションでは HSET の文が失敗します（a は Hash ではなく String）。EXEC の後、a はいくつですか？
+  options:
+    - 1：トランザクション全体が元に戻る
+    - 2：他のコマンドはそのまま反映される
+    - EXEC 全体が拒否され、何も実行されない
+  scripts:
+    - label: A：実行時にエラー（型の誤り）
+    - label: B：キューに入れる時点でエラー（構文エラー）
+  explanation: |
+    ★ Redis のトランザクションには ROLLBACK がありません。2 つのケースがあります：
+    A：コマンドの形式は正しく、実行時にエラーになる（例：型が違う）：その文だけが失敗し、他の文はそのまま反映されるので、a = 2、b = 3。
+    B：キューに入れる時点で構文エラーが見つかる：EXEC は EXECABORT を返し、トランザクション全体が実行されず、a は 1 のままです。
+    公式の理由は「実行時のエラーはプログラムの誤りであり、開発中に見つけるべき」というものです。オール・オア・ナッシングが必要なら Lua スクリプトを使います。
+
+- id: set-drops-ttl
+  title: SET は有効期限を消してしまう
+  question: A はまず 100 秒後に期限切れになるキーを SET し、もう一度新しい値を SET します。最終的な TTL はいくつですか？
+  options:
+    - 約 100
+    - -1（有効期限なし）
+    - -2（キーが存在しない）
+  scripts:
+    - label: A：そのままもう一度 SET
+    - label: B：KEEPTTL を付ける
+  explanation: |
+    ★ SET はキー全体を上書きし、元の有効期限も一緒に消してしまいます。キャッシュの更新でとてもはまりやすい点です：
+    30 分後に期限切れになるはずのキャッシュが、1 回の「SET 新しい値」で永遠に期限切れにならなくなり、最終的にメモリを使い果たします。
+    更新時は EX を付け直すか、KEEPTTL（Redis 6.0+）で元の有効期限を保持します。
+    INCR、HSET、LPUSH のような「変更」コマンドは TTL に影響しません。値全体を上書きする SET、GETSET だけが影響します。
+
+- id: ttl-codes
+  title: TTL の -1 と -2
+  question: 「存在しない」キーに TTL を実行すると何が返りますか？
+  options:
+    - '-1'
+    - '-2'
+    - '0'
+    - nil
+  scripts:
+    - label: A：存在しないキー
+    - label: B：存在するが有効期限が設定されていない
+  explanation: |
+    -2：キーが存在しない（または期限切れで削除済み）。
+    -1：キーは存在するが、有効期限がない。
+    正の数：残り秒数。PTTL はミリ秒版で、ルールは同じです。
+
+- id: list-range-inclusive
+  title: LRANGE の終端は含まれる
+  question: List に 12 個の要素があります。LRANGE list 0 10 は何個返しますか？
+  options:
+    - '10'
+    - '11'
+    - '12'
+  scripts:
+    - label: A：LRANGE list 0 10
+    - label: B：LRANGE list 0 -1
+  explanation: |
+    LRANGE、ZRANGE、GETRANGE の終端はすべて「含まれる」ので、0 10 は 11 個です。
+    Java の subList(0, 10) や Python の list[0:10]（終端を含まない）とはちょうど逆で、ページングで 1 つずれやすいポイントです。
+    -1 は最後の要素を表すので、0 -1 はすべてになります。
+
+- id: zset-tie-order
+  title: 同点のときの並び順
+  question: alice、bob、carol はいずれも 100 点です。A は高い順（REV）に並べます。同点の 3 人の順序は？
+  options:
+    - 追加した順：alice、bob、carol
+    - 名前の逆順：carol、bob、alice
+    - 実行のたびに変わる
+  scripts:
+    - label: A：高い順（REV）
+    - label: B：低い順
+  explanation: |
+    Sorted Set は同点のとき member の辞書順に並びます。REV を付けると全体が逆になるので、carol、bob、alice になります。
+    ランキングで「同点なら先に到達した人を上位にしたい」場合、よくあるのは時刻をスコアに組み込む方法です：スコア = ポイント × 10^10 + (大きな数 − タイムスタンプ)。
+
+- id: get-wrong-type
+  title: 型に合わないコマンドで読む
+  question: product:540 は Hash です。これに GET を実行すると何が返りますか？
+  options:
+    - nil
+    - WRONGTYPE エラー
+    - Hash 全体の内容
+  scripts:
+    - label: A：GET
+    - label: B：HGETALL
+  explanation: |
+    すべてのキーには決まった型があり、型に合わないコマンドを使うと WRONGTYPE エラーになります。分からないときはまず TYPE key で確認しましょう。
+    Java で最もよくあるケース：同じキーを opsForValue() と opsForHash() の両方で操作してしまうことです。
+
+- id: hll-is-estimate
+  title: HyperLogLog は推定値
+  question: HyperLogLog で 9 月の 30 日分を合わせて「9 月のユニーク注文者数」を推定します。Bitmap で求めた正確な値と同じですか？
+  options:
+    - 完全に同じ
+    - とても近いが、少し誤差がある
+    - 大きくずれる
+  scripts:
+    - label: A：HyperLogLog の推定
+    - label: B：Bitmap の正確な計算
+  explanation: |
+    HyperLogLog は確率的アルゴリズムで、標準誤差は約 0.81% です。データが少ないときはちょうど一致することも多く、量が増えるほど誤差が見えてきます。
+    その代わりメモリは一定です：1 千人を数えても 1 億人を数えても、1 つの HyperLogLog は最大 12 KB です。
+    Bitmap は正確ですが、サイズは「最大の id」に比例します：id が 1 億まであれば 12 MB 必要です。
+    面接でよく聞かれる「毎日の UV をどう集計するか」：少量なら Set、id が連続なら Bitmap、大量で誤差を許容できるなら HyperLogLog。
+
+- id: keys-vs-scan
+  title: KEYS と SCAN
+  question: A と B はどちらも product:99 で始まるキーを探しています。B の SCAN は 1 回で該当するキーをすべて返しますか？
+  options:
+    - はい、KEYS と同じ結果
+    - とは限らない。返されたカーソルで続けてスキャンし、カーソルが 0 に戻るまで繰り返す
+    - エラーになる
+  scripts:
+    - label: A：KEYS（データベース全体をスキャン）
+    - label: B：SCAN（カーソル 0 から、1 回に約 100 個）
+  explanation: |
+    ★ KEYS はすべてのキー（ここでは約 4 万個）を一度にスキャンします。Redis はコマンドをシングルスレッドで実行するので、KEYS の実行中は他のリクエストがすべて待たされます。
+    本番環境でキーが数百万個あると、KEYS 1 回でサービスが数秒止まることがあるため、ショーケースの learner アカウントでは KEYS をまったく使えません。
+    SCAN は毎回少しずつだけ見ます（COUNT は「だいたい何個見るか」であって、返す件数ではありません）。返り値は [次のカーソル, この回で該当したキー] です。
+    この回に該当するキーが 1 つもないこともあるので、カーソルが 0 に戻るまで新しいカーソルで呼び続けて、ようやくスキャン完了です。
+    SCAN は重複したキーを返すことがあるので、プログラム側で重複を除く必要があります。

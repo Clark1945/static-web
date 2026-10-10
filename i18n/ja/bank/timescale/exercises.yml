@@ -1,0 +1,220 @@
+- id: daily-views
+  chapter: time_bucket の基本
+  title: 日ごとの閲覧数（台湾時間）
+  prompt: |
+    2026-09-08 から 2026-09-10（台湾時間、3 日間）の各日の閲覧数はいくつですか？
+    「その日の開始時刻」と件数を返し、日付順に並べます。
+  hints:
+    - time_bucket('1 day', view_time, 'Asia/Taipei') で台湾時間の 1 日ごとに区切ります。
+    - 第 3 引数を付けないと time_bucket は UTC で区切るので、1 日が台湾時間の午前 8 時から始まってしまいます。
+  explanation: |
+    time_bucket は TimescaleDB で最もよく使う関数です：時間を固定長の区間に区切ります（date_trunc に似ていますが、5 分、15 分など任意の長さにできます）。
+    ★ timestamptz は既定で UTC で区切られます。台湾の「1 日」にはタイムゾーンの引数が必要です。9/9 は買い物祭りで、閲覧数は普段の 3 倍です。
+
+- id: peak-hours
+  chapter: time_bucket の基本
+  title: 1 日で最も人気の時間帯
+  prompt: |
+    2026-09-01（台湾時間）の 1 日で、閲覧数が最も多い 3 つの時間帯：
+    その時間の開始時刻と閲覧数を、閲覧数の多い順に返します。
+  hints:
+    - time_bucket('1 hour', view_time)：1 時間ごとの区間。正時は UTC でも台湾時間でも同じです。
+  explanation: |
+    夜 8〜10 時は EC のトラフィックのピークです。1 時間や 1 分のような「日をまたがない」区間は、UTC と台湾時間の境界が同じなので、タイムゾーンの引数は不要です。
+    1 日、1 週間、1 か月のように日をまたぐ区間で必要になります。
+
+- id: monthly-views
+  chapter: time_bucket の基本
+  title: 月ごとの閲覧数
+  prompt: |
+    page_views の月ごと（台湾時間）の件数はいくつですか？月の開始時刻と件数を返し、月順に並べます。
+  hints:
+    - time_bucket には '1 month'（暦の月で区切る）も指定できます。
+  explanation: |
+    '1 month' は暦の月で区切り（区間ごとに長さが違う）、'30 days' は固定の 30 日なので月とは揃いません（落とし穴問題で実演しています）。
+    このクエリは 190 万件すべてを読む必要があります。連続集約（後の問題）は、このようなレポートを毎回計算し直さずに済むようにするためのものです。
+
+- id: device-share
+  chapter: time_bucket の基本
+  title: デバイス別の閲覧比率
+  prompt: |
+    2026 年 9 月（台湾時間）のデバイス（device）ごとの閲覧数と、その月の総閲覧数に占める割合（小数第 1 位に四捨五入）を、
+    閲覧数の多い順に返します。
+  hints:
+    - 割合にはウィンドウ関数を使えます：count(*) * 100.0 / sum(count(*)) OVER ()
+  explanation: |
+    TimescaleDB は完全に PostgreSQL です：ウィンドウ関数、JOIN、CTE もそのまま使えます。利用者にとって hypertable はただの普通のテーブルです。
+
+- id: weekly-orders
+  chapter: time_bucket の基本
+  title: 週ごとの注文数と売上
+  prompt: |
+    2026 年第 3 四半期（7/1〜9/30、台湾時間）の週ごとの注文数と売上（total の合計）を、週順に返します。
+    週は月曜日から始まります。
+  hints:
+    - time_bucket('1 week', …) は既定で月曜日から始まります。
+  explanation: |
+    time_bucket の起点（origin）は既定で 2000-01-03（月曜日）なので、週の区間は月曜日から始まります。
+    最初の週の開始は 6/29 です：7/1 は水曜日なので、その週には 7/1 以降の注文しかありません（最初の 2 日は WHERE で除外されています）。
+    日曜日から始めたいなら origin を指定します：time_bucket('1 week', order_time, 'Asia/Taipei', origin => '2000-01-02')。
+
+- id: last-reading
+  chapter: 時系列分析
+  title: 各センサーの最後の測定値
+  prompt: |
+    各センサーの 2026-09-30（台湾時間）の最後の温度。
+    sensor_id と温度を返し、sensor_id 順に並べます。
+  hints:
+    - last(値, 時刻)：時刻順に並べた最後の行の値を取ります。first() は最初の行です。
+  explanation: |
+    first() / last() は TimescaleDB の集約関数で、「各デバイスの最新の値」のようなクエリが 1 行で書けます。
+    純粋な PostgreSQL では DISTINCT ON (sensor_id) … ORDER BY sensor_id, time DESC、またはウィンドウ関数 ROW_NUMBER() で書きます。
+
+- id: cold-alarm
+  chapter: 時系列分析
+  title: 冷蔵室の温度異常
+  prompt: |
+    冷蔵エリア（sensors.kind = '冷藏'）のセンサーで、温度が 8°C を超えた測定値：
+    センサーごとにまとめ、sensor_id、倉庫、最初に超えた時刻、最後に超えた時刻、超えた件数、最高温度を返します。
+  hints:
+    - sensor_readings JOIN sensors USING (sensor_id)
+    - min(time)、max(time)、count(*)、max(temperature)
+  explanation: |
+    hypertable は普通のテーブルと JOIN できます（センサーの基本情報は普通のテーブル sensors にあります）。
+    9/18 の午前 2:10〜2:30、桃園倉庫 B 区画の冷蔵温度が一時 12.5°C まで上がりました。おそらくドアがきちんと閉まっていなかったのでしょう。
+
+- id: gapfill
+  chapter: 時系列分析
+  title: データのない時間帯を埋める
+  prompt: |
+    センサー 7 の 2026-09-10 08:00〜16:00（台湾時間）の 1 時間ごとの平均温度。
+    データのない時間も表示し（平均温度は NULL）、時刻順に全 8 行を返します。
+  hints:
+    - 普通の time_bucket は「データがある」区間しか表示しません。
+    - time_bucket_gapfill は範囲内のすべての区間を表示します。範囲は WHERE の条件から推定されます。
+  explanation: |
+    センサー 7 は 10:00〜14:00 にオフラインだったので、普通の time_bucket では 4 行しか返らず、グラフにすると途中の空白が「消えて」しまいます。
+    time_bucket_gapfill は空の区間を NULL で埋めるので、フロントエンドのグラフやその後の計算が誤解されません。
+
+- id: locf
+  chapter: 時系列分析
+  title: 前の値で欠損を埋める（LOCF）
+  prompt: |
+    前の問題と同じ（センサー 7、9/10 08:00〜16:00 の 1 時間ごとの平均温度）ですが、
+    データのない時間は「直前のデータがある値」で埋めます。時刻と埋めた温度を全 8 行返します。
+  hints:
+    - locf(avg(temperature))：Last Observation Carried Forward。
+  explanation: |
+    locf() は最後に観測した値を後ろに引き継ぎ、「状態」系のデータ（温度設定、在庫量、オン／オフの状態）に向いています。
+    もう 1 つの選択肢は interpolate() で、前後 2 つの値で線形補間するので、連続的に変化する量に向いています。
+
+- id: moving-average
+  chapter: 時系列分析
+  title: 3 日移動平均
+  prompt: |
+    2026-09-01 から 2026-09-14（台湾時間）の日ごとの閲覧数と、「その日を含む直近 3 日」の平均閲覧数（整数に四捨五入）。
+    日の開始時刻、その日の閲覧数、3 日平均を、日付順に返します。
+  hints:
+    - まず time_bucket で日ごとの件数を求め、ウィンドウ関数 avg(…) OVER (ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) を使います。
+  explanation: |
+    移動平均を使うと、1 日だけの山（9/9 の買い物祭り）をならして、傾向を読み取れます。最初の 2 日は 3 日分に満たないので、それぞれ 1 日分、2 日分の平均になります。
+    ウィンドウ関数と time_bucket の組み合わせは、時系列分析で最もよく使われます。
+
+- id: day-over-day
+  chapter: 時系列分析
+  title: 前日との比較
+  prompt: |
+    2026-09-08 から 2026-09-11（台湾時間）の日ごとの閲覧数と、前日からの増加数（最初の日は NULL）。
+    日の開始時刻、閲覧数、差分を、日付順に返します。
+  hints:
+    - lag(views) OVER (ORDER BY day)
+  explanation: |
+    lag() は前の行の値を取ります。最初の日には「前日」がないので NULL になります。範囲外の 9/7 と比べたいなら、検索範囲を 1 日多く取ってから除外します。
+
+- id: cagg-hourly
+  chapter: 連続集約
+  title: 連続集約から 1 時間ごとの統計を検索
+  prompt: |
+    連続集約 sensor_hourly には、各センサーの 1 時間ごとの平均・最低・最高温度が既に計算されています。
+    これを使って、センサー 2 の 2026-09-18 00:00〜06:00（台湾時間）の 1 時間ごとの最高温度を、時刻順に検索します。
+  hints:
+    - 連続集約はビューと同じように使えます：SELECT hour, max_temp FROM sensor_hourly WHERE …
+  explanation: |
+    連続集約（continuous aggregate）は「自動で増分更新されるマテリアライズドビュー」です：元データは 1 分に 1 行、集約後は 1 時間に 1 行なので、
+    クエリは 6 行を読むだけで済み、360 行の元データをスキャンする必要はありません。データ量が多く、レポートを頻繁に検索するほど差ははっきりします（実験室で比較しています）。
+
+- id: cagg-top-products
+  chapter: 連続集約
+  title: 人気商品（日次集約から）
+  prompt: |
+    連続集約 page_views_daily を使って、2026-09-01 から 2026-09-22（台湾時間、両端を含む）で閲覧回数が最も多い 5 つの商品を検索します：
+    product_id と総閲覧数を、閲覧数の多い順に返します。
+  hints:
+    - page_views_daily は「日 × 商品」ごとに 1 行なので、さらに sum(views) します。
+  explanation: |
+    日次集約からさらに上位へ集計する（日次 → 月次、商品ごと → カテゴリごと）のは安価です。
+    ★ 再度 sum できるのは count と sum です。平均値はそのまま再平均できない（日ごとに件数が違う）ので、sum と count を保存しておき、最後に割り算します。
+
+- id: chunk-count
+  chapter: hypertable と chunk
+  title: chunk はいくつあるか
+  prompt: |
+    page_views という hypertable はいくつの chunk に分割されていますか？1 つの数値を返します。
+  hints:
+    - show_chunks('page_views') ですべての chunk を一覧にできます。timescaledb_information.chunks を検索してもかまいません。
+  explanation: |
+    hypertable の内部は多数の小さなテーブル（chunk）で、各 chunk はある期間のデータ（ここでは 7 日分）を保存しています。
+    検索時は時間範囲に関係する chunk だけを読み（chunk exclusion）、古いデータを削除するときは chunk ごと丸ごと捨てるので（drop_chunks）、1 行ずつ DELETE する必要はありません。
+
+- id: chunk-range
+  chapter: hypertable と chunk
+  title: ある時点はどの chunk にあるか
+  prompt: |
+    2026-09-01 12:00（台湾時間）の閲覧記録は、page_views のどの chunk に保存されていますか？
+    その chunk の時間範囲（range_start、range_end）を返します。
+  hints:
+    - timescaledb_information.chunks には各 chunk の hypertable_name、range_start、range_end があります。
+  explanation: |
+    chunk の境界は「UTC の固定間隔」に揃えられているので、範囲は 8/27 08:00〜9/3 08:00（台湾時間、木曜日の午前 8 時）となり、
+    月初や月曜日から始まるわけではありません。chunk の大きさの目安：最近のデータ（書き込み中の chunk とそのインデックス）がメモリの 25% 程度に収まること。
+
+- id: insert-reading
+  chapter: 書き込み
+  title: 新しい測定値を 1 件書き込む
+  prompt: |
+    センサー 2 が 2026-10-01 00:00（台湾時間）に報告しました：温度 4.2、湿度 85.0。
+    sensor_readings に書き込み、RETURNING で time、sensor_id、temperature、humidity を返します。
+  hints:
+    - INSERT INTO sensor_readings (time, sensor_id, temperature, humidity) VALUES (…) RETURNING …
+  explanation: |
+    hypertable への書き込みは普通のテーブルへの書き込みとまったく同じです。このデータの時刻は既存の chunk の範囲を超えているので、TimescaleDB が自動で新しい chunk を作成します
+    （このトランザクション内で。サンドボックスは最後に ROLLBACK します）。時系列の書き込みはほとんどが「末尾への追加」で、書き込み中の chunk は小さくインデックスもメモリにあるので、書き込みは高速です。
+
+- id: late-data
+  chapter: 書き込み
+  title: 遅れて届いたデータを書き込む
+  prompt: |
+    センサー 7 は接続が回復した後、2026-09-10 11:00（台湾時間）の測定値を送ってきました：温度 21.5、湿度 61.0。
+    書き込んだ後、センサー 7 の 9/10（台湾時間）の測定値が全部で何件あるかを検索します。
+  hints:
+    - 先に INSERT し、次に SELECT count(*) …（サンドボックスは複数の文を一度に実行できます）
+  explanation: |
+    遅れて届いたデータ（late data）は古い chunk に書き込まれます。その期間が既に連続集約でマテリアライズされていても、集約は自動では気づきません：
+    次の refresh を待つ必要があります（refresh は「データが変更された区間」を再計算し、TimescaleDB は変更された時間範囲を記録しています）。
+    古い chunk が既に圧縮されていれば、書き込みのコストも高くなります。
+
+- id: retention-delete
+  chapter: 書き込み
+  title: 古いデータを削除
+  prompt: |
+    最も古い 1 週間分のデータはもう不要です：2026-04-08（台湾時間）より前の page_views を削除し、
+    削除した件数を返します（1 行、1 つの数値）。
+  hints:
+    - WITH removed AS (DELETE … RETURNING 1) SELECT count(*) FROM removed
+  explanation: |
+    この問題には数秒かかります：DELETE は 1 行ずつ削除し、インデックスを更新し、WAL を書き、後で VACUUM も必要です。実測で 7 万件の削除に約 5 秒かかり、
+    1 か月分（30 万件）を削除するとショーケースの 15 秒の上限を超えます。
+    ★ TimescaleDB のやり方は chunk を丸ごと捨てることです：SELECT drop_chunks('page_views', older_than => '2026-05-01'::timestamptz)。
+    実測で 5 つの chunk を捨てるのに数ミリ秒しかかからず（DROP TABLE と同じ）、VACUUM が必要な不要データも残りません。
+    自動の保持ポリシーも設定できます：add_retention_policy('page_views', INTERVAL '5 months')。
+    drop_chunks が捨てるのは「範囲全体が条件より古い」chunk だけで、境界の chunk は残る点に注意しましょう。

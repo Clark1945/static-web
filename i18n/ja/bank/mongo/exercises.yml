@@ -1,0 +1,308 @@
+- id: find-pending
+  chapter: クエリの基本
+  title: 処理待ちの注文
+  prompt: |
+    ステータス（status）が pending の注文を探し、_id、customerId、total だけを表示してください。
+    _id の昇順で、先頭 5 件を取ります。
+  hints:
+    - 'db.orders.find(フィルタ, 射影)：射影は { customerId: 1, total: 1 } と書きます。_id は既定で表示されます。'
+    - "続けて .sort({ _id: 1 }).limit(5) をつなげます"
+  explanation: |
+    find の第 2 引数は「射影」（projection）で、どのフィールドを返すかを決めます。SQL の SELECT の列指定に相当します。
+    1 は含める、0 は除外。_id は既定で返されるので、不要なら _id: 0 と書きます。_id 以外では、同じ射影の中で 1 と 0 を混在できません。
+
+- id: count-gold
+  chapter: クエリの基本
+  title: ゴールド会員は何人か
+  prompt: |
+    vipLevel が gold の会員は何人ですか？
+  hints:
+    - db.customers.countDocuments(フィルタ)
+  explanation: |
+    countDocuments は条件に従って実際に数えます。estimatedDocumentCount() は条件を付けられませんが、コレクションの統計情報を直接読むので非常に高速です。
+    古い count() は現在推奨されていません。
+
+- id: distinct-city
+  chapter: クエリの基本
+  title: 配送先の都市一覧
+  prompt: |
+    全注文に登場する配送先都市（shipping.city）を重複なしで一覧にしてください。
+  hints:
+    - db.orders.distinct("フィールド")。埋め込みフィールドはドット記法で："shipping.city"
+  explanation: |
+    埋め込みドキュメントのフィールドには「ドット記法」でアクセスします：shipping.city。find の条件、射影、ソートでも同じです。引用符を忘れずに。
+
+- id: find-nested-projection
+  chapter: クエリの基本
+  title: 商品のカテゴリパス
+  prompt: |
+    商品 540 の名称（name）とカテゴリパス（category.path）を調べてください。_id は表示しません。
+  hints:
+    - 'findOne({ _id: 540 }, { _id: 0, name: 1, "category.path": 1 })'
+  explanation: |
+    商品ドキュメントにはカテゴリ名と完全なパスが直接保存されている（非正規化）ので、categories を検索し直す必要はありません。
+    代償として、カテゴリ名が変わったときはすべての商品も更新する必要があります（updateMany）。読み取りが多く書き込みが少ないデータに向いた方法です。
+
+- id: price-range
+  chapter: クエリ演算子
+  title: 価格 1000〜2000 の商品数
+  prompt: |
+    価格（price）が 1000 から 2000 まで（1000 と 2000 を含む）の商品は何件ですか？
+  hints:
+    - '{ price: { $gte: 1000, $lte: 2000 } }'
+  explanation: |
+    比較演算子：$eq、$ne、$gt、$gte、$lt、$lte、$in、$nin。同じフィールドの複数の条件を同じオブジェクトに書くと AND になります。
+
+- id: status-in
+  chapter: クエリ演算子
+  title: キャンセルまたは返品の注文数
+  prompt: |
+    ステータスが cancelled または returned の注文は何件ですか？
+  hints:
+    - '{ status: { $in: ["cancelled", "returned"] } }'
+  explanation: |
+    同じフィールドを複数の値と比較するなら、$or より $in の方が簡潔で、インデックスも使われやすくなります。
+
+- id: or-condition
+  chapter: クエリ演算子
+  title: 東部のゴールド会員
+  prompt: |
+    花蓮縣または台東縣に住んでいて、gold レベルの会員。
+    name、city（_id を含む）だけを表示し、_id 順に並べます。
+  hints:
+    - "city: { $in: [...] } でも、$or: [ {…}, {…} ] でも書けます。"
+  explanation: |
+    $or は「異なるフィールド」の OR に使います：{ $or: [ { city: "花蓮縣" }, { vipLevel: "gold" } ] }。
+    同じフィールドの OR なら $in で十分です。
+
+- id: exists
+  chapter: クエリ演算子
+  title: 誕生日を入力していない会員
+  prompt: |
+    birthDate フィールドのない会員は何人ですか？
+  hints:
+    - '{ birthDate: { $exists: false } }'
+  explanation: |
+    ドキュメント型データベースではフィールドが「存在しない」ことがあり、「値が null」とは別物です。
+    ★ ただし { birthDate: null } は「値が null」と「フィールドがない」の両方のドキュメントを見つけます（落とし穴問題で実演しています）。
+
+- id: regex
+  chapter: クエリ演算子
+  title: Apple の商品
+  prompt: |
+    名称（name）が「Apple」で始まる商品は何件ですか？
+  hints:
+    - "正規表現を直接書けます：{ name: /^Apple/ }"
+  explanation: |
+    ^ で始まり大文字小文字を区別する正規表現はインデックスを使えます（SQL の LIKE 'Apple%' に相当）。
+    /apple/i や /Pro/ のように先頭が固定されていない書き方は全件スキャンになります。全文検索が必要なら text インデックスか Atlas Search を使います。
+
+- id: array-contains
+  chapter: 配列と埋め込みドキュメント
+  title: 限定商品は何件か
+  prompt: |
+    tags 配列に「限量」（限定）がある商品は何件ですか？
+  hints:
+    - '{ tags: "限量" } と書くだけで、配列の各要素と比較されます。'
+  explanation: |
+    ★ 配列フィールドに等値条件を書くと、「いずれかの要素」が等しければ成立します。わざわざ $in を書く必要はありません。
+    ただし { tags: ["限量"] } は「配列全体が ["限量"] と完全に一致」という意味で、まったく別物です（落とし穴問題で実演しています）。
+
+- id: array-all
+  chapter: 配列と埋め込みドキュメント
+  title: 人気かつ限定（$all）
+  prompt: |
+    「熱銷」（人気）と「限量」（限定）の両方のタグが付いた商品。_id だけを表示し、_id 順に並べます。
+  hints:
+    - '{ tags: { $all: ["熱銷", "限量"] } }'
+  explanation: |
+    $all：配列が指定した要素をすべて含んでいればよく、順序は問いません。{ tags: ["熱銷", "限量"] } は配列が「ちょうど」この 2 つで、しかも同じ順序であることを要求します。
+
+- id: array-size
+  chapter: 配列と埋め込みドキュメント
+  title: タグがちょうど 3 つの商品
+  prompt: |
+    tags の要素がちょうど 3 つの商品は何件ですか？
+  hints:
+    - '{ tags: { $size: 3 } }'
+  explanation: |
+    $size は「ちょうど等しい」しか比較できず、{ $size: { $gt: 2 } } とは書けません。
+    大小比較したいなら { "tags.2": { $exists: true } }（3 番目の要素が存在 = 3 つ以上）か、$expr と { $size: "$tags" } を組み合わせます。
+
+- id: array-dot
+  chapter: 配列と埋め込みドキュメント
+  title: 商品 540 を買った注文
+  prompt: |
+    明細（items）に商品 540 がある注文は何件ですか？
+  hints:
+    - '{ "items.productId": 540 }'
+  explanation: |
+    ドット記法は配列も通り抜けます：items.productId は items 配列の各要素の productId と比較されます。
+    このフィールドにインデックスを作ると「マルチキーインデックス」（multikey）になり、明細 1 件ごとにインデックス項目が 1 つできます。
+
+- id: elem-match
+  chapter: 配列と埋め込みドキュメント
+  title: 同じ明細が 2 つの条件を同時に満たす（$elemMatch）
+  prompt: |
+    「qty が 3 以上」かつ「unitPrice が 10000 以上」を同時に満たす明細が「1 つ」でもある注文は何件ですか？
+    2 つの条件は「同じ」明細で成り立つ必要があります。
+  hints:
+    - '{ items: { $elemMatch: { qty: { $gte: 3 }, unitPrice: { $gte: 10000 } } } }'
+  explanation: |
+    ★ 面接頻出：{ "items.qty": { $gte: 3 }, "items.unitPrice": { $gte: 10000 } } と書くと、
+    2 つの条件を「別々の明細」が満たしてもよいことになり（ある明細は安い品を 3 個、別の明細は高い品を 1 個）、結果が多くなります。
+    同じ要素が複数の条件を同時に満たすことを求めるなら、必ず $elemMatch を使います。
+
+- id: nested-specs
+  chapter: 配列と埋め込みドキュメント
+  title: 512GB のスマートフォン
+  prompt: |
+    仕様 specs.storage_gb が 512 の商品。name（_id を含む）だけを表示し、_id 順に並べます。
+  hints:
+    - '{ "specs.storage_gb": 512 }'
+  explanation: |
+    カテゴリごとに specs のフィールドは異なります。これがドキュメント型データベースの「柔軟なスキーマ」の利点で、仕様の種類ごとに列を作る必要がありません。
+    PostgreSQL の JSONB では specs->>'storage_gb' ですが、MongoDB ではドット記法で済みます。
+
+- id: agg-status
+  chapter: 集約パイプライン
+  title: ステータス別の注文数
+  prompt: |
+    aggregate でステータスごとの注文数を集計し、件数の多い順に並べてください。
+    出力：_id がステータス、count が件数。
+  hints:
+    - '[ { $group: { _id: "$status", count: { $sum: 1 } } }, { $sort: { count: -1 } } ]'
+  explanation: |
+    $group は SQL の GROUP BY に相当します：_id がグループ化の基準、"$フィールド" はフィールドの値、$sum: 1 は count(*) です。
+    集約パイプラインのデータは各ステージを上から下へ流れ、各ステージの出力が次のステージの入力になります。
+
+- id: agg-city-revenue
+  chapter: 集約パイプライン
+  title: 都市別売上トップ 5
+  prompt: |
+    配送済み（delivered）の注文だけを対象に、配送先都市ごとの売上（total の合計）を集計し、上位 5 件を取ります。
+    出力：_id が都市、revenue が売上。売上の高い順。
+  hints:
+    - $match で絞り込み → $group で合計 → $sort → $limit
+    - 都市は埋め込みフィールドです："$shipping.city"
+  explanation: |
+    ★ $match はできるだけ先頭に置きます：先にデータ量を減らせば後のステージが速くなり、しかも先頭の $match はインデックスを使えます。
+    （実際にはオプティマイザが前に移動できる $match を自動で前に移しますが、自分で書いておく方が確実です。）
+
+- id: agg-unwind
+  chapter: 集約パイプライン
+  title: 販売数トップ 5 の商品（$unwind）
+  prompt: |
+    商品ごとの販売総数（items の qty の合計、すべてのステータスを含む）を集計し、上位 5 件を取ります。
+    出力：_id が商品 id、name が商品名、qty が個数。個数の多い順、同数なら _id の昇順。
+  hints:
+    - $unwind は items 配列を分解します：明細が 3 件ある注文は 3 つのドキュメントになります。
+    - '$group は "$items.productId" でグループ化し、名称は { $first: "$items.name" } で取ります。'
+  explanation: |
+    $unwind は埋め込み配列を扱う鍵です：配列を複数のドキュメントに平らにすることで、明細ごとに集計できるようになります。
+    PostgreSQL の unnest()、あるいは orders と order_items の JOIN に相当します。
+
+- id: agg-monthly
+  chapter: 集約パイプライン
+  title: 2026 年の月別注文数（タイムゾーン）
+  prompt: |
+    2026 年（台湾時間で計算）の月ごとの注文数を集計してください。
+    出力：_id が "2026-01" のような月の文字列、count が件数。月順に並べます。
+  hints:
+    - 絞り込み：orderDate が ISODate("2026-01-01T00:00:00+08:00") と ISODate("2027-01-01T00:00:00+08:00") の間。
+    - 'グループ化：{ $dateToString: { format: "%Y-%m", date: "$orderDate", timezone: "Asia/Taipei" } }'
+  explanation: |
+    ★ MongoDB の日付は常に UTC で保存されます。台湾時間 9/1 午前 2 時の注文は、UTC では 8/31 午後 6 時です。
+    絞り込みではタイムゾーン（+08:00）を書き、グループ化でも timezone を指定しないと、各月の境界が 8 時間ずれます（落とし穴問題で実演しています）。
+
+- id: agg-lookup
+  chapter: 集約パイプライン
+  title: 注文に会員名を付ける（$lookup）
+  prompt: |
+    会員 1 の最新 3 件の注文に、会員名を付けます。
+    出力：_id、total、customerName。注文日時の新しい順。
+  hints:
+    - $match → $sort → $limit → customers へ $lookup → $project
+    - '$lookup の結果は配列なので、{ $first: "$customer.name" } で名前を取り出します。'
+  explanation: |
+    $lookup は LEFT OUTER JOIN に相当し、結果は配列フィールドに入ります。
+    ★ $limit してから $lookup：3 件だけを JOIN するのであって、全注文を JOIN してから 3 件取るのではありません。
+    $lookup の foreignField にはインデックスが必要です。ないと 1 件ごとにコレクション全体をスキャンします（実験室で差を実演しています）。
+
+- id: update-set
+  chapter: 書き込み
+  title: 在庫を更新（$set）
+  prompt: |
+    商品 540 の在庫（stock）を 20 に変更し、他のフィールドはそのままにします。
+  hints:
+    - 'db.products.updateOne({ _id: 540 }, { $set: { stock: 20 } })'
+  explanation: |
+    ★ 更新には必ず更新演算子（$set、$inc、$push…）を使います。replaceOne を使うとドキュメント全体が置き換えられ、他のフィールドはすべて消えます（落とし穴問題で実演しています）。
+
+- id: update-inc
+  chapter: 書き込み
+  title: 飲料を一律 5 元値上げ（$inc）
+  prompt: |
+    カテゴリ名（category.name）が「飲料」の商品の価格をすべて 5 元上げます。
+  hints:
+    - 'updateMany に { $inc: { price: 5 } } を指定'
+  explanation: |
+    $inc はアトミックな操作で、カウンタ、在庫、いいね数に向いています。updateOne は最初に一致したドキュメントだけを更新し、updateMany はすべてを更新します。
+
+- id: update-push
+  chapter: 書き込み
+  title: 注文に明細を 1 件追加（$push）
+  prompt: |
+    注文 77621 の items 配列の末尾に明細を 1 件追加します：
+    { productId: 1, name: "測試商品", qty: 1, unitPrice: 100, discount: 0 }
+  hints:
+    - '{ $push: { items: { … } } }'
+  explanation: |
+    配列の更新演算子：$push は末尾に追加、$addToSet は重複しないときだけ追加、$pull は条件で削除、$pop は先頭か末尾を削除。
+    複数を一度に追加するには $push: { items: { $each: [ … ] } } と書き、$slice と組み合わせて最新 N 件だけを残すこともできます。
+    注意：items に明細を追加しても total は自動で更新されません。$inc で一緒に変更する必要があります（ドキュメント型データベースには計算してくれるトリガーがありません）。
+
+- id: update-addtoset
+  chapter: 書き込み
+  title: 重複なしでタグを追加（$addToSet）
+  prompt: |
+    商品 540 に「熱銷」（人気）タグを追加します。既にある場合は重複して追加しません。
+  hints:
+    - '{ $addToSet: { tags: "熱銷" } }'
+  explanation: |
+    $addToSet は配列を集合として扱います。2 回実行しても結果は同じで、この「繰り返し実行しても問題ない」性質を冪等（idempotent）と呼びます。
+
+- id: upsert
+  chapter: 書き込み
+  title: あれば更新、なければ追加（upsert）
+  prompt: |
+    email "new@example.com" を条件に会員を更新します：name を「新會員」（新規会員）に、vipLevel を "normal" に設定します。
+    この email が存在しなければ、新しく追加します。
+  hints:
+    - 'updateOne(条件, { $set: { … } }, { upsert: true })'
+  explanation: |
+    upsert で追加するとき、「検索条件の等値フィールド」（email）と $set のフィールドを合わせて新しいドキュメントを作ります。
+    「追加するときだけ」設定したいフィールドは $setOnInsert を使います（例：作成日時）。
+    ★ 高い並行性の下で同じ email を同時に upsert すると 2 件追加されることがあるので、条件のフィールドには一意インデックスが必要です（customers.email にはあります）。
+
+- id: delete-many
+  chapter: 書き込み
+  title: 古いキャンセル注文を削除
+  prompt: |
+    「ステータスが cancelled で、注文日時が台湾時間 2023-01-01 より前」の注文をすべて削除します。
+  hints:
+    - 'deleteMany({ status: "cancelled", orderDate: { $lt: ISODate("2023-01-01T00:00:00+08:00") } })'
+  explanation: |
+    deleteMany({}) はすべてのドキュメントを削除しますが、コレクションとインデックスは残ります。drop() はコレクションとインデックスもまとめて削除します。
+    期限切れのデータを自動で削除するには TTL インデックスを作ります：createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 })。
+
+- id: find-one-and-update
+  chapter: 書き込み
+  title: 更新して新しい値を受け取る（findOneAndUpdate）
+  prompt: |
+    商品 540 の在庫を 1 減らし、同じ操作の中で「更新後」のドキュメント（name と stock だけ）を受け取ります。
+  hints:
+    - 'findOneAndUpdate(条件, { $inc: { stock: -1 } }, { returnDocument: "after", projection: { name: 1, stock: 1 } })'
+  explanation: |
+    findOneAndUpdate はアトミックな「更新して読み取り」で、既定では更新「前」のドキュメントを返すので、returnDocument: "after" を付けます。
+    条件を { _id: 540, stock: { $gt: 0 } } にすれば、売り越しが起きない在庫の引き当てになります（Redis 実験室の Lua スクリプトと比べてみましょう）。

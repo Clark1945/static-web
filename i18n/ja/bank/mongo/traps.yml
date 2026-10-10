@@ -1,0 +1,115 @@
+- id: array-equality
+  title: 配列の等号
+  question: A と B で数えた商品数は同じですか？
+  options:
+    - 同じ
+    - A の方が多い
+    - B の方が多い
+  scripts:
+    - label: 'A：{ tags: "特價" }'
+    - label: 'B：{ tags: ["特價"] }'
+  explanation: |
+    A：条件は単一の値なので、MongoDB は配列の「各要素」と比較し、いずれかが等しければ成立します。
+    B：条件自体が配列なので、「配列全体が完全に一致」という意味になり、タグがちょうど ["特價"] で他のタグがない商品だけが該当します。
+    「これらをすべて含む」なら $all、「いずれかを含む」なら $in を使います。
+
+- id: elem-match
+  title: 配列に対する複数の条件
+  question: A は「同じ明細」が qty ≥ 3 と unitPrice ≥ 10000 を同時に満たすことを求めていますか？
+  options:
+    - はい、B と同じ
+    - いいえ、A の方が多い
+    - いいえ、A の方が少ない
+  scripts:
+    - label: A：ドット記法の条件 2 つ
+    - label: B：$elemMatch
+  explanation: |
+    A の 2 つの条件は、それぞれ独立に items 配列全体と比較されます：「ある明細」の qty ≥ 3 で、「ある明細」の unitPrice ≥ 10000 なら成立し、2 つは別の明細でも構いません。
+    B の $elemMatch は「同じ」明細が両方を満たすことを求めます。そのため A には「ある明細で安い品を大量に、別の明細で高い品を 1 つ」買った注文も含まれます。
+
+- id: null-matches-missing
+  title: null はフィールドのないドキュメントも見つける
+  question: |-
+    city フィールドがない会員がいます（null ではなく、フィールド自体が存在しない）。A の { city: null } はそれらを見つけますか？
+  options:
+    - 見つける、B と同じ
+    - 見つけない。値が null のものだけなので、結果は 0
+    - エラー
+  scripts:
+    - label: 'A：{ city: null }'
+    - label: 'B：{ city: { $exists: false } }'
+  explanation: |
+    { フィールド: null } は「値が null」と「そのフィールドがない」の両方のドキュメントを見つけます。
+    どちらか一方だけが欲しいなら、フィールドがないものは { $exists: false }、値がちょうど null のものは { $type: "null" } を使います。
+    SQL と比べると：PostgreSQL の city = NULL は決して成立せず IS NULL と書く必要がありますが、MongoDB の振る舞いはちょうど逆なので、混同しやすい点です。
+
+- id: type-mismatch
+  title: 型が違うと見つからない
+  question: 商品の _id は数値の 540 です。A は文字列 "540" で見つけられますか？
+  options:
+    - 見つかる。MongoDB が自動で型変換する
+    - 見つからない。結果は 0
+    - エラー
+  scripts:
+    - label: A：文字列 "540"
+    - label: B：数値 540
+  explanation: |
+    MongoDB の比較では型も一致する必要があり、文字列 "540" と数値 540 は別の値です。自動で型変換されず、エラーにもなりません。
+    Java で最もよくはまるのは、フロントエンドから来た id が String のまま数値型のフィールドを検索して、永遠に見つからないケースです。
+    同様に、ObjectId("…") と文字列 "…" も等しくありません。
+
+- id: replace-drops-fields
+  title: replaceOne はドキュメント全体を置き換える
+  question: A は replaceOne で商品 540 の在庫を 20 にします。実行後、このドキュメントにはどのフィールドが残りますか？
+  options:
+    - すべてのフィールドが残り、stock だけが 20 になる
+    - _id と stock だけが残る
+    - エラー
+  scripts:
+    - label: A：replaceOne
+    - label: B：updateOne + $set
+  explanation: |
+    replaceOne は新しいドキュメントで古いドキュメントを「丸ごと置き換え」ます（_id は保持）。名称、価格、カテゴリはすべて消えます。
+    一部のフィールドだけを変更したいなら、必ず updateOne / updateMany と $set を使いましょう。
+    Spring Data MongoDB の repository.save(entity) も丸ごと置き換えです：一部のフィールドだけを読み込んだ entity を保存すると、他のフィールドが消えてしまいます。
+
+- id: sort-limit-order
+  title: limit してから sort？
+  question: A は .limit(3) を .sort() の前に書いています。A はまず適当に 3 件取ってから並べ替えますか？
+  options:
+    - はい、結果は B と異なる
+    - いいえ、結果は B と同じ
+    - エラー
+  scripts:
+    - label: A：.limit(3).sort(…)
+    - label: B：.sort(…).limit(3)
+  explanation: |
+    find の sort、skip、limit はどの順でつなげても、MongoDB は常に「sort → skip → limit」の順で実行するので、A と B は同じです。
+    ただし集約パイプラインは違います：[ { $limit: 3 }, { $sort: … } ] は本当に 3 件取ってから並べ替えます。パイプラインはステージの順に実行されるからです。
+
+- id: timezone
+  title: 日付とタイムゾーン
+  question: 「台湾時間の 2026 年 9 月」の注文を調べたいとき、A と B の件数は同じですか？
+  options:
+    - 同じ
+    - 違う
+  scripts:
+    - label: A：タイムゾーンなし（UTC）
+    - label: B：+08:00 を明記
+  explanation: |
+    MongoDB の日付は常に UTC で保存されます。ISODate("2026-09-01") は UTC の午前 0 時で、台湾時間では 9/1 午前 8 時です。
+    A は 9/1 午前 0〜8 時の注文が漏れ、10/1 午前 0〜8 時の注文が余分に含まれます。
+    Java の LocalDate、LocalDateTime にはタイムゾーンがないので、Date に変換するときは必ず ZoneId.of("Asia/Taipei") を明示しましょう。
+
+- id: update-one-only
+  title: updateOne は 1 件だけ更新する
+  question: pending の注文が 300 件以上あります。A の updateOne は何件更新しますか？
+  options:
+    - 1 件
+    - pending の注文すべて
+  scripts:
+    - label: A：updateOne
+    - label: B：updateMany
+  explanation: |
+    updateOne、deleteOne、replaceOne は条件に合う「最初の 1 件」だけを処理し、どれが最初かは保証されません。
+    すべてを処理するなら updateMany、deleteMany を使います。返り値の matchedCount と modifiedCount で、何件に影響したか確認できます。

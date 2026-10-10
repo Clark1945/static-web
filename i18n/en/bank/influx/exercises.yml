@@ -1,0 +1,298 @@
+- id: tag-values
+  chapter: Data model and basic queries
+  title: "Which hosts exist: SHOW TAG VALUES"
+  prompt: |
+    What values does the host tag of the cpu measurement have?
+  hints:
+    - SHOW TAG VALUES FROM measurement WITH KEY = "tag name"
+    - InfluxQL identifiers (measurement, tag and field names) use double quotes; string values use single quotes.
+  explanation: |
+    A data point in InfluxDB = measurement + tag set + field set + timestamp, for example:
+    cpu,host=db-01,region=tpe,role=db usage_user=35.8,usage_system=10.2 1790783940
+    Tags are indexed (for filtering and grouping) and their values are always strings; fields aren't indexed (they hold the actual measured values: numbers, strings or booleans).
+    measurement + tag set defines one "series" (time series): cpu has 5 (5 hosts), each stored separately in time order.
+
+- id: field-keys
+  chapter: Data model and basic queries
+  title: "Field types: SHOW FIELD KEYS"
+  prompt: |
+    What fields does orders have, and what type is each?
+  hints:
+    - SHOW FIELD KEYS FROM measurement
+  explanation: |
+    In orders, customer_id, order_id, items and total are fields (integer); city, status and vip_level are tags.
+    ★ Data with many distinct values (order numbers, customer numbers, user IDs, trace ids) must not be tags: every distinct tag combination is a new series,
+    and a series-count (cardinality) explosion eats memory and slows writes and queries. This is the most important rule of InfluxDB's data model.
+    A field's type is fixed by its first write (within a shard); later writes of a different type are rejected.
+
+- id: raw-range
+  chapter: Data model and basic queries
+  title: Time range + tag condition
+  prompt: |
+    db-01's raw usage_user and usage_system from 14:00 to 14:05 on 2026-09-18 (Taiwan time, excluding 14:05).
+  hints:
+    - Write the time condition as time >= '2026-09-18T14:00:00+08:00' AND time < '…'
+    - "Tag values are strings, in single quotes: host = 'db-01'"
+  explanation: |
+    One point per minute, so 5 rows; results are always sorted by time (oldest first by default), and the first column is always time.
+    ★ Always add a time range: InfluxDB splits data into shards (shard groups) by time, and without a time condition every shard must be scanned.
+    InfluxQL has no JOIN; a query operates on "one or more series within one measurement".
+
+- id: last-per-host
+  chapter: Data model and basic queries
+  title: Each host's last report
+  prompt: |
+    The time of each host's (host) last report and its usage_user at that time.
+  hints:
+    - "last() is a selector: it returns the value of the last point, and the time column is that point's time."
+    - GROUP BY host computes it once per host.
+  explanation: |
+    The other hosts' last points are all at 23:59 on 9/30, but web-03 stops at 12:00 on 9/20: it went offline. Monitoring systems use queries like this for "lost contact" alerts (deadman checks).
+    Selectors (first, last, max, min, top, bottom, percentile) return a real existing point, and time is that point's time;
+    aggregates (mean, sum, count…) return a computed value, and time is the start of the interval (0, i.e. 1970-01-01, without GROUP BY time).
+
+- id: latest-orders
+  chapter: Data model and basic queries
+  title: The 3 latest orders
+  prompt: |
+    The 3 latest orders in 台北市 (city = '台北市', Taipei), returning every column (SELECT *), newest first.
+  hints:
+    - ORDER BY time DESC LIMIT 3 (InfluxQL can only sort by time)
+  explanation: |
+    SELECT * returns every tag and field, with columns sorted by name.
+    ★ InfluxQL's ORDER BY can only use time; to "sort by amount" use top() / bottom(), or sort() in Flux.
+    A time series database assumes most of your queries are "some time range, by time", so data is stored by time and other orderings aren't its strength.
+
+- id: hourly-mean
+  chapter: Aggregation and GROUP BY time
+  title: Average CPU per hour
+  prompt: |
+    db-01's average usage_user per hour from 12:00 to 17:00 on 2026-09-18 (Taiwan time).
+  hints:
+    - "GROUP BY time(1h): cut time into one-hour intervals."
+    - Add tz('Asia/Taipei') at the end so result times align to Taiwan time (hours align anyway, but days and weeks depend on it).
+  explanation: |
+    GROUP BY time() ≈ TimescaleDB's time_bucket and Elasticsearch's date_histogram.
+    The 14:00 hour averages 76%: fully loaded from 14:00 to 14:40, back to normal for the last 20 minutes. Hourly averages alone underestimate an incident; look at max or a smaller interval (5m).
+
+- id: daily-max
+  chapter: Aggregation and GROUP BY time
+  title: Each host's daily maximum CPU
+  prompt: |
+    For 2026-09-18 and 09-19 (Taiwan time), the maximum usage_user of each host on each day.
+  hints:
+    - GROUP BY time(1d), host tz('Asia/Taipei')
+  explanation: |
+    GROUP BY can have both time() and tags: one result (series) per host, with one row per day in each.
+    ★ Intervals of a day or more always need tz(): without it they're cut in UTC, and a Taiwan day starts at 8 a.m. (shown in the traps).
+    max is a selector, and the time column is the interval start (with GROUP BY time, a selector's time also becomes the interval start).
+
+- id: sensor-p95
+  chapter: Aggregation and GROUP BY time
+  title: P95 temperature of cold-storage sensors
+  prompt: |
+    For cold-storage sensors (kind = 'cold'), the 95th percentile of temperature for each sensor_id over all of September.
+  hints:
+    - percentile(temperature, 95), GROUP BY sensor_id
+  explanation: |
+    Cold storage should be around 4 degrees; sensor 2's P95 is similar to sensors 1 and 4, because the warm-up on 9/18 lasted only 2 hours, 0.3% of the month.
+    To see "whether anything went wrong" use max or P99.9; to see "what's normal" use the median or P95. percentile is computed exactly in InfluxQL (it sorts every value).
+
+- id: orders-by-city
+  chapter: Aggregation and GROUP BY time
+  title: Orders and revenue per city in September
+  prompt: |
+    For September 2026 (Taiwan time), the number of orders (count) and revenue (sum) per city (city), both computed on the total field.
+  hints:
+    - SELECT count(total), sum(total) FROM orders WHERE … GROUP BY city
+  explanation: |
+    GROUP BY can only use tags (or time): city is a tag, so it can be grouped; if city were a field it couldn't (a trap shows the result of GROUP BY on a field).
+    count() must name a field: InfluxQL has no count(*) "row count" concept; each field is counted separately.
+
+- id: fill-gap
+  chapter: Aggregation and GROUP BY time
+  title: "An outage: fill()"
+  prompt: |
+    Sensor 5's average temperature per hour from 09:00 to 15:00 on 2026-09-10 (Taiwan time). It was disconnected from 10:00 to 14:00;
+    fill hours without data with "the previous hour's value" (fill(previous)).
+  hints:
+    - GROUP BY time(1h) fill(previous) tz('Asia/Taipei')
+    - "sensor_id is a tag and its value is a string: sensor_id = '5'"
+  explanation: |
+    GROUP BY time() lists every interval in the range by default, and intervals without data have null (fill(null)). Other options:
+    fill(none) omits them, fill(0) fills 0, fill(previous) uses the previous value, fill(linear) interpolates linearly.
+    ★ Filling makes charts look nice but also "hides outages": alerts and reports must distinguish what was really measured.
+
+- id: top-orders
+  chapter: Aggregation and GROUP BY time
+  title: "The 5 largest orders: top()"
+  prompt: |
+    The 5 orders with the highest amount (total) in September 2026 (Taiwan time), also returning order_id and city.
+  hints:
+    - top(total, 5) is a selector and can be SELECTed together with other fields and tags.
+  explanation: |
+    top() returns rows sorted by time (not by amount), and time is that order's time.
+    InfluxQL can't ORDER BY total; top / bottom is the only way to "take the top few by value". To sort all data by value, use Flux's sort().
+
+- id: subquery-peak
+  chapter: Aggregation and GROUP BY time
+  title: "Subqueries: each host's busiest hour"
+  prompt: |
+    On 2026-09-18 (Taiwan time), each host's hour with the highest "hourly average usage_user", and that average.
+  hints:
+    - "Inner query: the average per hour per host. Outer query: max(mean) of the inner result, GROUP BY host."
+    - SELECT max(mean) FROM (SELECT mean(usage_user) FROM cpu WHERE … GROUP BY time(1h), host tz('Asia/Taipei')) GROUP BY host
+  explanation: |
+    InfluxQL supports subqueries since 1.2: the inner result's column name (mean) is used as a field in the outer query, and the inner GROUP BY tags are available outside too.
+    The web hosts are busiest at 9 p.m. (the traffic peak); db-01 at 2 p.m. (the incident).
+
+- id: request-rate
+  chapter: Rates and counters
+  title: Cumulative counter → requests per minute
+  prompt: |
+    http's requests is a "cumulative" counter (it only goes up). Compute the api service's requests per minute from 02:57 to 03:03 on 2026-09-15 (Taiwan time).
+    api restarted at 03:00 and the counter started over from 0; that minute must not come out negative.
+  hints:
+    - non_negative_derivative(last(requests), 1m) … GROUP BY time(1m)
+  explanation: |
+    Monitoring systems (Prometheus, Telegraf) mostly collect cumulative counters: they report only "the total so far", and the query side computes differences.
+    The benefit is that missed reports don't undercount; the downside is that a restart resets the counter to zero, and a straight subtraction gives a huge negative number (-3.6 million, shown in the traps).
+    non_negative_derivative drops negative values; Prometheus's rate() detects resets and compensates automatically.
+
+- id: errors-per-10m
+  chapter: Rates and counters
+  title: Errors per 10 minutes
+  prompt: |
+    How many new errors did the api service have per 10 minutes from 13:30 to 15:00 on 2026-09-18 (Taiwan time)? (errors is also a cumulative counter.)
+  hints:
+    - non_negative_difference(last(errors)) computes the difference between adjacent intervals (not divided by time).
+  explanation: |
+    difference is "the next minus the previous"; derivative also divides by a time unit (giving a rate). From 14:00 to 14:40 there are hundreds of errors per 10 minutes; other periods have single digits.
+    Note the first interval has no previous value to subtract from, so the result has one row fewer than the number of intervals.
+
+- id: moving-average
+  chapter: Rates and counters
+  title: "Moving average: moving_average()"
+  prompt: |
+    Sensor 2's average temperature per 30 minutes from 12:00 to 16:00 on 2026-09-18 (Taiwan time), then the moving average over "the last 3 intervals".
+  hints:
+    - moving_average(mean(temperature), 3) … GROUP BY time(30m) tz('Asia/Taipei')
+  explanation: |
+    A moving average smooths the curve to show trends and reduce false alarms (no alert for a brief temperature blip, only for a sustained rise); the cost is slower reaction.
+    The first 2 intervals don't have 3 values yet, so they aren't output.
+
+- id: memory-leak
+  chapter: Rates and counters
+  title: "How much memory grows per day: derivative()"
+  prompt: |
+    web-02's average used_percent per day from 2026-09-10 to 09-20 (Taiwan time), and the change from the previous day (per day).
+  hints:
+    - derivative(mean(used_percent), 1d) … GROUP BY time(1d) tz('Asia/Taipei')
+  explanation: |
+    It grows steadily by about 1.7% a day: a classic memory leak. The big drop on 9/15 is because of a restart at 3 a.m. (the leaked memory was freed).
+    Use the rate of change for "predictive alerts": at this rate it fills up in a few days, which warns earlier than waiting for 95%.
+
+- id: flux-basic
+  chapter: Flux
+  title: A basic Flux pipeline
+  prompt: |
+    Use Flux to compute db-01's average usage_user from 14:00 to 15:00 on 2026-09-18 (Taiwan time).
+  hints:
+    - 'from(bucket: "metrics") |> range(start: …, stop: …) |> filter(fn: (r) => …) |> mean()'
+    - Flux times can be written directly as 2026-09-18T14:00:00+08:00 (no quotes).
+    - In filter, match _measurement, _field and host together.
+  explanation: |
+    Flux is a pipeline (|>): data flows down as "tables", and each function processes them and hands them to the next.
+    from must be followed by range (no time range is an error); filter takes an anonymous function, where r is a row.
+    Flux's data model: each row has only one value (_value), with the field name in _field; one series (measurement + tags + field) is one table.
+    Flux is no longer getting new features (InfluxDB 3 went back to SQL / InfluxQL), but 2.x systems use it heavily.
+
+- id: flux-window
+  chapter: Flux
+  title: "aggregateWindow: the daily maximum"
+  prompt: |
+    Use Flux to compute db-01's maximum usage_user on each of 2026-09-18 and 09-19 (Taiwan time).
+  hints:
+    - 'aggregateWindow(every: 1d, fn: max)'
+    - 'To cut days in Taiwan time: import "timezone", then add option location = timezone.location(name: "Asia/Taipei")'
+  explanation: |
+    aggregateWindow ≈ InfluxQL's GROUP BY time(): computed once per window, and _time is the window's "end" (InfluxQL uses the start; they differ!).
+    option location aligns 1d windows to Taiwan time; without it they're cut in UTC. createEmpty (default true) decides whether windows without data are output.
+
+- id: flux-pivot
+  chapter: Flux
+  title: "pivot + map: add two fields together"
+  prompt: |
+    db-01's total CPU usage (usage_user + usage_system) per minute from 14:00 to 14:05 on 2026-09-18 (Taiwan time).
+    Keep only the two columns _time and total.
+  hints:
+    - 'Each Flux row has only one _value, and the two fields are in different tables. Pivot them into one row first: pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")'
+    - 'Then add a column with map: map(fn: (r) => ({ r with total: r.usage_user + r.usage_system }))'
+    - 'Finally keep(columns: ["_time", "total"])'
+  explanation: |
+    InfluxQL can SELECT usage_user + usage_system directly; because of Flux's "one value per row" data model, you have to pivot first (like a pivot table) to compute across fields.
+    InfluxDB 3's SQL goes back to wide tables with "several fields per row", which removes this problem.
+
+- id: flux-rank-hosts
+  chapter: Flux
+  title: "group + sort: rank hosts by average CPU"
+  prompt: |
+    Each host's average usage_user over all of September (Taiwan time), sorted highest first, keeping only the two columns host and _value.
+  hints:
+    - After mean() each host is still its own table; group() them first (merging everything into one table) to sort them together.
+    - 'sort(columns: ["_value"], desc: true) |> keep(columns: ["host", "_value"])'
+  explanation: |
+    In Flux, "groups" are tables: from produces one table per series; group(columns: […]) regroups by the given columns, and group() merges everything into one.
+    Aggregates (mean, sum, count) run "once per table", and sort and limit also work per table, so group() before ranking across hosts.
+
+- id: flux-rate
+  chapter: Flux
+  title: 'Rates in Flux: derivative(nonNegative: true)'
+  prompt: |
+    Use Flux to compute the api service's requests per minute from 02:57 to 03:03 on 2026-09-15 (Taiwan time) (requests is a cumulative counter; skip the negative value of the restart minute).
+    Keep only _time and _value.
+  hints:
+    - 'derivative(unit: 1m, nonNegative: true)'
+  explanation: |
+    Same as InfluxQL's non_negative_derivative: the negative value of the restart minute is skipped. Flux also has increase() (cumulative increase with automatic counter-reset handling)
+    and difference(nonNegative: true).
+
+- id: write-points
+  chapter: Writes
+  title: "line protocol: write three readings"
+  prompt: |
+    Write three readings for sensor 9 (sensor_id=9, kind=cold) to the scratch bucket, with measurement sensors:
+    timestamps (seconds) 1790726400, 1790726700 and 1790727000, with temperature 4.1, 4.3 and 4.2 respectively.
+  hints:
+    - "Format: measurement,tag1=value,tag2=value field1=value,field2=value timestamp"
+    - A comma between measurement and tags, one space between tags and fields, one space between fields and the time.
+    - sensors,kind=cold,sensor_id=9 temperature=4.1 1790726400
+  explanation: |
+    line protocol is InfluxDB's write format: one point per line, and many lines can be sent at once (batched writes; about 5,000 lines per batch is recommended).
+    Sorting tags by name before writing makes server processing faster; spaces, commas and equals signs must be escaped with a backslash. The timestamp unit is set by the precision parameter (seconds here).
+
+- id: write-types
+  chapter: Writes
+  title: "Field types: integers need an i"
+  prompt: |
+    Write one order to scratch (measurement orders) at timestamp 1790726400:
+    tags city=台北市 (Taipei) and status=paid; fields total (integer 1990), items (integer 2), coupon (string "WELCOME") and gift (boolean true).
+  hints:
+    - Integers need an i after the number (1990i); a number without i is a float.
+    - String fields need double quotes; booleans are written true / false (tag values take no quotes).
+  explanation: |
+    Fields have four types: float (the default), integer (ending in i), string (double quotes) and boolean. Tag values are always strings.
+    A field's type is fixed by its first write: later writing another type in the same shard (e.g. total=1.5) is rejected (shown in the traps).
+
+- id: write-overwrite
+  chapter: Writes
+  title: Fix a wrongly written value
+  prompt: |
+    The temperature of sensor sensors,kind=cold,sensor_id=9 at timestamp 1790726400 was written wrong.
+    First write the wrong value temperature=41.0, then "fix" it to 4.1. Afterwards this point in time must have exactly one value, 4.1.
+  hints:
+    - "InfluxDB has no UPDATE: writing the same series (measurement + tag set) at the same timestamp again overwrites the field values."
+  explanation: |
+    Points with the same measurement + tag set + timestamp are "the same point"; field values written later overwrite earlier ones (different fields are merged).
+    ★ This is also a trap: two events in the same second with the same tags (e.g. one customer placing two orders in the same second) means the later overwrites the earlier.
+    The fix is a finer timestamp precision (ms, ns), or an extra tag that tells them apart. To delete data use the delete API (by time range + tag conditions).

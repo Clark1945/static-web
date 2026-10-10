@@ -1,0 +1,297 @@
+- id: str-get
+  chapter: String
+  title: Read the total number of orders
+  prompt: |
+    The total number of orders is stored in the String stats:orders:total. Read it.
+  hints:
+    - GET key
+  explanation: |
+    String is Redis's most basic type. The value can be text, a number, or serialized JSON, up to 512 MB.
+    Redis keys are conventionally layered with colons: object-type:id:field, e.g. stats:orders:total, product:540.
+
+- id: str-incr
+  chapter: String
+  title: Increment a counter (INCR)
+  prompt: |
+    Another order was placed. Add 1 to stats:orders:total and get the value after the increment.
+    Use a single command.
+  hints:
+    - INCR key adds 1 to the number and returns the new value.
+  explanation: |
+    ★ INCR is atomic: even if 1000 requests increment at once, the result is always correct.
+    With GET → +1 in your code → SET, two requests can read the same value and the total only goes up by 1 (the "stock deduction" lab demonstrates this).
+    Related commands: INCRBY key 10, DECR, INCRBYFLOAT.
+
+- id: str-session
+  chapter: String
+  title: Create a session that expires in 30 minutes
+  prompt: |
+    A user logged in. Create session:zz9 with the value customer:42, expiring automatically after 30 minutes.
+    Use one command (not SET and EXPIRE separately).
+  hints:
+    - SET key value EX seconds
+  explanation: |
+    SET's EX (seconds) / PX (milliseconds) options set the expiry at the same time as the write, as one atomic operation.
+    With SET + EXPIRE as two commands, if the program crashes in between you're left with a key that never expires.
+
+- id: str-lock
+  chapter: String
+  title: Acquire a lock (SET NX)
+  prompt: |
+    The lock for order 1, lock:order:1, is currently held by worker-b (already set up for you, expiring in 30 seconds).
+    Now worker-a wants the lock too: write worker-a only if the key doesn't exist, expiring in 10 seconds.
+    Note: worker-b's existing lock must not be affected.
+  hints:
+    - "SET key value NX EX seconds: NX = write only if the key doesn't exist."
+    - When the lock isn't acquired it returns nil.
+  explanation: |
+    ★ The basic distributed lock: SET key token NX EX/PX.
+    A common mistake is SETNX followed by EXPIRE: SETNX fails, but the EXPIRE that follows changes worker-b's lock to expire in 10 seconds, tampering with someone else's lock.
+    (Try submitting SETNX + EXPIRE once and see what the grader says.)
+    Releasing a lock has a trap too: you can't just DEL; first check the value is still your own token (shown in the lab).
+
+- id: hash-getall
+  chapter: Hash
+  title: All fields of product 540
+  prompt: |
+    Product data is stored as a Hash in product:{id}. Read every field and value of product:540.
+  hints:
+    - HGETALL key
+  explanation: |
+    HGETALL returns an array alternating "field, value, field, value…".
+    ★ Don't use HGETALL on a huge Hash (tens of thousands of fields): it blocks Redis. Read it in batches with HSCAN, or read only the fields you need.
+
+- id: hash-hmget
+  chapter: Hash
+  title: Read only the fields you need
+  prompt: |
+    You only need customer 1's name (name) and city (city). Read these two fields with one command.
+  hints:
+    - HMGET key field1 field2
+  explanation: |
+    HMGET returns values in the order you gave the fields; a missing field gives nil at that position.
+    The advantage of caching objects as a Hash rather than one JSON String: you can read or change just a few fields.
+
+- id: hash-hincrby
+  chapter: Hash
+  title: Deduct stock (HINCRBY)
+  prompt: |
+    Two units of product 540 were sold. Subtract 2 from the stock field and return the new stock.
+  hints:
+    - HINCRBY key field increment; the increment can be negative.
+  explanation: |
+    HINCRBY is atomic like INCR, so it suits counter fields (stock, likes, views).
+    But it doesn't check for "going below zero"; "deduct only if there's enough stock" needs a Lua script or WATCH (shown in the stock deduction lab).
+
+- id: hash-hset-new-field
+  chapter: Hash
+  title: Add a new field
+  prompt: |
+    Add a phone field to customer 1, with the value 0912345678.
+  hints:
+    - HSET key field value; it returns "how many fields were added".
+  explanation: |
+    HSET returns the number of new fields: if the field already existed and only its value changed, it returns 0.
+    Since Redis 7.4 you can set an expiry on a single field: HEXPIRE key seconds FIELDS 1 field.
+
+- id: list-lrange
+  chapter: List
+  title: The 3 most recent orders
+  prompt: |
+    customer:1:recent_orders holds customer 1's most recent order ids; index 0 is the newest.
+    Read the newest 3.
+  hints:
+    - LRANGE key start stop; stop is inclusive.
+  explanation: |
+    ★ LRANGE's stop is "inclusive": 0 2 is 3 items (Java's subList is exclusive).
+    -1 means the last element, so LRANGE key 0 -1 is everything.
+
+- id: list-push-trim
+  chapter: List
+  title: Put the new order first and keep only 10
+  prompt: |
+    Customer 1 just placed order 90001. Put it at the front of customer:1:recent_orders,
+    and keep only the newest 10 in the whole List.
+  hints:
+    - LPUSH pushes from the left (the front).
+    - LTRIM key 0 9 keeps only indexes 0–9.
+  explanation: |
+    LPUSH + LTRIM is the standard "fixed-length latest list": activity feeds, recently viewed, the last N log lines.
+    To make both commands succeed together, wrap them in MULTI / EXEC, or send them at once in a pipeline.
+
+- id: set-scard
+  chapter: Set
+  title: How many products are on sale
+  prompt: |
+    tag:特價 is a Set of the ids of products tagged 「特價」 (on sale). How many are there?
+  hints:
+    - SCARD key returns the number of elements in a Set.
+  explanation: |
+    SCARD is O(1); there's no need to read the whole Set and count.
+
+- id: set-sinter
+  chapter: Set
+  title: Best-selling and limited (SINTER)
+  prompt: |
+    Which product ids have both the 「熱銷」 (best seller) and 「限量」 (limited edition) tags?
+  hints:
+    - SINTER key1 key2 takes the intersection.
+  explanation: |
+    Sets have no order, so this exercise ignores order. SINTER is intersection, SUNION union, SDIFF difference.
+    If you only need the count, use SINTERCARD 2 key1 key2 so the result isn't sent back.
+
+- id: set-sismember
+  chapter: Set
+  title: Is product 540 a best seller?
+  prompt: |
+    Check whether product 540 has the 「熱銷」 (best seller) tag.
+  hints:
+    - "SISMEMBER key member: 1 if it's there, 0 if not."
+  explanation: |
+    SISMEMBER is O(1). Typical uses: whether a user already liked something, already claimed a coupon, or is on a blocklist.
+
+- id: set-sdiffstore
+  chapter: Set
+  title: Best sellers that aren't on sale
+  prompt: |
+    How many products have the 「熱銷」 (best seller) tag but not the 「特價」 (on sale) tag? The last command must return this number.
+  hints:
+    - SDIFF returns the whole list of ids; for the count, SDIFFSTORE stores the result in a new key and returns the number of elements.
+  explanation: |
+    SDIFF A B = in A but not in B. The *STORE versions (SINTERSTORE, SUNIONSTORE, SDIFFSTORE) store the result and return the count,
+    which suits "compute once, reuse later". Remember to set an expiry on the temporary key.
+
+- id: zset-top5
+  chapter: Sorted Set
+  title: Top 5 by sales (leaderboard)
+  prompt: |
+    leaderboard:products:sales ranks products by sales; score = units sold.
+    List the 5 best-selling product ids with their unit counts, highest first.
+  hints:
+    - ZRANGE key 0 4 REV WITHSCORES (before Redis 6.2, ZREVRANGE key 0 4 WITHSCORES)
+  explanation: |
+    ★ Leaderboards are the classic Sorted Set use: updating a score is O(log N), getting the top N is O(log N + N).
+    A SQL leaderboard has to ORDER BY the whole table every time; in Redis it's always already sorted.
+
+- id: zset-rank
+  chapter: Sorted Set
+  title: Customer 1's spending rank
+  prompt: |
+    leaderboard:customers:spend ranks customers by total spend. What rank is customer 1 (more spending = higher rank)?
+    Just return the rank Redis gives you.
+  hints:
+    - "ZREVRANK key member: rank by score, highest first."
+  explanation: |
+    ★ Ranks start at 0: first place returns 0. Add 1 when displaying it.
+    ZRANK ranks from lowest to highest; since Redis 7.2 you can add WITHSCORE to get the score too.
+
+- id: zset-count
+  chapter: Sorted Set
+  title: Customers who spent between 50k and 100k
+  prompt: |
+    How many customers have a total spend between 50000 and 100000 (inclusive)?
+  hints:
+    - ZCOUNT key min max
+  explanation: |
+    ZCOUNT counts by score range in O(log N). For exclusive bounds write (50000 (100000.
+    To fetch members by score range, use ZRANGE key 50000 100000 BYSCORE.
+
+- id: zset-incr
+  chapter: Sorted Set
+  title: Update the leaderboard after a purchase
+  prompt: |
+    Customer 1 completed another order worth 1200. Update their score in leaderboard:customers:spend and return the new score.
+  hints:
+    - ZINCRBY key increment member
+  explanation: |
+    ZINCRBY increases the score atomically and the ranking updates automatically. If the member doesn't exist it's added, starting from 0.
+
+- id: stream-len
+  chapter: Stream
+  title: How many events are in the stream
+  prompt: |
+    orders:stream is the order event stream. How many events does it currently have?
+  hints:
+    - XLEN key
+  explanation: |
+    Stream, added in Redis 5.0, is an "append-only log" that can serve as a lightweight message queue (similar to Kafka).
+
+- id: stream-latest
+  chapter: Stream
+  title: The latest 3 events
+  prompt: |
+    Read the latest 3 events from orders:stream (newest first).
+  hints:
+    - "XREVRANGE key + - COUNT 3: + is the largest ID, - the smallest."
+  explanation: |
+    Stream IDs have the format "millisecond-timestamp-sequence". The IDs in this data use the order time, so you can query by time range directly.
+    Consumer groups (XGROUP, XREADGROUP, XACK) let several workers share the work, with acknowledgements so messages aren't lost.
+
+- id: bitmap-count
+  chapter: Bitmap / HyperLogLog
+  title: How many customers ordered on 9/1 (Bitmap)
+  prompt: |
+    active:2026-09-01 is a Bitmap: bit N is 1 if customer N placed an order that day.
+    Count how many customers ordered on September 1.
+  hints:
+    - BITCOUNT key counts the bits set to 1.
+  explanation: |
+    20,000 customers need only 20,000 bits ≈ 2.5 KB. A Set of 20,000 ids would take hundreds of KB.
+    Typical uses: daily check-ins, daily active users, feature flags.
+
+- id: bitmap-and
+  chapter: Bitmap / HyperLogLog
+  title: Customers who ordered on both 9/1 and 9/2
+  prompt: |
+    How many customers placed orders on "both" September 1 and September 2? The last command must return this number.
+  hints:
+    - "BITOP AND destkey src1 src2: AND the two Bitmaps bit by bit and store the result in destkey."
+    - Then count the result with BITCOUNT.
+  explanation: |
+    BITOP supports AND, OR, XOR and NOT. "Checked in 7 days in a row" is an AND of 7 Bitmaps.
+
+- id: hll-week
+  chapter: Bitmap / HyperLogLog
+  title: Unique customers who ordered 9/1–9/7 (HyperLogLog)
+  prompt: |
+    uv:{date} is a daily HyperLogLog of customers who ordered. Estimate the number of "unique" customers who ordered from September 1 to September 7.
+  hints:
+    - PFCOUNT accepts several keys at once and counts the unique elements of their "union".
+  explanation: |
+    ★ HyperLogLog estimates distinct counts with at most 12 KB, with a standard error of about 0.81%. It can't list who, only how many.
+    It suits statistics like UV (unique visitors) that are "huge and tolerate a small error". For exact numbers use a Bitmap or a Set.
+
+- id: geo-dist
+  chapter: Geo
+  title: Distance from Taipei to Kaohsiung
+  prompt: |
+    store:locations holds the coordinates of the stores in each city. What is the straight-line distance in km from the 台北市 (Taipei) store to the 高雄市 (Kaohsiung) store?
+  hints:
+    - GEODIST key member1 member2 km
+  explanation: |
+    Geo is a Sorted Set underneath: latitude/longitude are encoded as a geohash used as the score, so ZRANGE and ZREM also work on Geo keys.
+
+- id: geo-search
+  chapter: Geo
+  title: Stores within 60 km of Taipei
+  prompt: |
+    Find every store within 60 km of the 台北市 (Taipei) store (including Taipei itself), nearest first. Store names only.
+  hints:
+    - GEOSEARCH key FROMMEMBER 台北市 BYRADIUS 60 km ASC
+  explanation: |
+    GEOSEARCH (Redis 6.2+) replaces the old GEORADIUS. You can also search from any coordinates with FROMLONLAT, or within a rectangle with BYBOX.
+    Adding WITHDIST returns the distances as well. "Stores near me" on delivery apps is queried just like this.
+
+- id: multi-exec
+  chapter: Transactions
+  title: Do two things together (MULTI / EXEC)
+  prompt: |
+    Customer 1 placed order 90001. Use a transaction to run these two things together:
+    1. Add 1 to stats:orders:total
+    2. Put 90001 at the front of customer:1:recent_orders
+  hints:
+    - MULTI starts a transaction; the following commands are queued (returning QUEUED) and only run together at EXEC.
+  explanation: |
+    ★ A Redis transaction guarantees that "no other client's commands run in between", but not all-or-nothing:
+    if one command fails at EXEC, the others still take effect; there's no ROLLBACK (shown in the traps).
+    When you need "run only if a condition holds", use WATCH (optimistic locking) or a Lua script.

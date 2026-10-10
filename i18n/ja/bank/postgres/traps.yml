@@ -1,0 +1,155 @@
+- id: left-join-where
+  title: LEFT JOIN の条件は ON か WHERE か
+  question: この 2 つの SQL で数えた会員数は同じですか？
+  options:
+    - 同じ
+    - 違う、A の方が多い
+    - 違う、B の方が多い
+  sqls:
+    - label: A：条件を ON に書く
+    - label: B：条件を WHERE に書く
+  explanation: |
+    A は条件が ON の中：条件で突き合わせ、対応しない会員もそのまま残る（注文の列は NULL で埋まる）ので、2 万人の会員が全員残ります。
+    B は条件が WHERE：LEFT JOIN の後で絞り込みます。返品のない会員は o.status が NULL で、NULL = 'returned' は成立しないため、すべて除外されます。
+    結果として B の LEFT JOIN は INNER JOIN と同じになってしまいます。
+    覚え方：「左表を残したい」なら右表の条件は ON に、「データを絞り込みたい」ときだけ WHERE に書きます。
+
+- id: not-in-null
+  title: NOT IN と NULL
+  question: 「子カテゴリを持たない」カテゴリ（葉ノード）を探したいとき、A は何件返しますか？
+  options:
+    - B と同じ件数
+    - 0 件
+    - 27 件（全カテゴリ）
+    - エラー
+  sqls:
+    - label: A：NOT IN
+    - label: B：NOT EXISTS
+  explanation: |
+    最上位カテゴリの parent_id は NULL なので、サブクエリの結果に NULL が含まれます。
+    id NOT IN (2, 4, NULL) は id <> 2 AND id <> 4 AND id <> NULL に展開されます。
+    どんな値も NULL との比較は「不明」であり true ではないので、すべての行が不成立になり、結果は 0 件。しかもエラーになりません。
+    ★「存在しない」ものは NOT EXISTS で探しましょう。どうしても NOT IN を使うなら、サブクエリに WHERE parent_id IS NOT NULL を付けます。
+
+- id: count-star-left-join
+  title: LEFT JOIN 後の count(*)
+  question: 会員 19999 は一度も注文したことがありません。A の count(*) はいくつになりますか？
+  options:
+    - '0'
+    - '1'
+    - 'NULL'
+  sqls:
+    - label: A：count(*)
+    - label: B：count(o.id)
+  explanation: |
+    LEFT JOIN で注文が見つからなくても「1 行」は生成されます：会員の列には値があり、注文の列はすべて NULL です。
+    count(*) は行数を数えるので 1、count(o.id) は NULL を数えないので正しく 0 になります。
+    「X ごとの Y の数、なければ 0 を表示」というレポートを作るときは必ず注意しましょう。
+
+- id: count-column-null
+  title: count(*) と count(列)
+  question: count(*) と count(birth_date) の結果は？
+  options:
+    - 同じ
+    - count(birth_date) の方が少ない
+    - count(birth_date) の方が多い
+  sqls:
+    - label: A：count(*)
+    - label: B：count(birth_date)
+  explanation: |
+    count(*) は「行数」を、count(列) はその列が NULL でない行だけを数えます。
+    誕生日を入力していない（NULL の）会員がいるので、B の方が少なくなります。
+    sum、avg、max、min も同様に NULL を飛ばします。
+
+- id: equals-null
+  title: = NULL
+  question: 「都市を入力していない」会員を探したいとき、A は何を返しますか？
+  options:
+    - B と同じ
+    - '0'
+    - エラー
+  sqls:
+    - label: A：= NULL
+    - label: B：IS NULL
+  explanation: |
+    NULL は「不明」を意味し、どんな値も NULL と =、<>、> で比較した結果は不明（true ではない）なので、WHERE を通過する行は 1 つもありません。
+    NULL の判定には IS NULL / IS NOT NULL しか使えません。
+
+- id: integer-division
+  title: 整数の割り算
+  question: A で計算したキャンセル率はいくつですか？
+  options:
+    - 約 0.1
+    - '0'
+    - 約 10
+    - エラー
+  sqls:
+    - label: A：整数同士の割り算
+    - label: B：先に 100.0 を掛ける
+  explanation: |
+    count(*) の型は整数（bigint）で、整数 ÷ 整数の結果も整数になり、小数は切り捨てられます：8000 / 80000 = 0。
+    どちらか一方が小数なら結果も小数になります。よくある書き方は 100.0 * a / b、または a::numeric / b です。
+    Java の int / int も同じ理屈です。
+
+- id: and-or-precedence
+  title: AND と OR の優先順位
+  question: A で見つかるのは「台北市のキャンセルまたは返品の注文」ですか？
+  options:
+    - はい、B と同じ
+    - いいえ、A の方が多い
+    - いいえ、A の方が少ない
+  sqls:
+    - label: A：括弧なし
+    - label: B：括弧あり
+  explanation: |
+    AND は OR より優先順位が高いので、A は実際には次の意味になります：
+    status = 'cancelled' OR (status = 'returned' AND shipping_city = '台北市')
+    つまり「全都市のキャンセル注文」＋「台北市の返品注文」なので、多くなります。
+    OR と AND を混ぜるときは必ず括弧を付けましょう。status IN ('cancelled', 'returned') と書いてもこの問題を避けられます。
+
+- id: between-timestamp
+  title: BETWEEN と日時
+  question: 2026 年 1 月の注文を調べたいとき、A の件数は B と同じですか？
+  options:
+    - 同じ
+    - A の方が少ない
+    - A の方が多い
+  sqls:
+    - label: A：BETWEEN
+    - label: B：>= と <
+  explanation: |
+    order_date はタイムスタンプです。'2026-01-31' は 2026-01-31 00:00:00 として扱われるので、
+    1/31 の 00:00 以降の注文はすべて漏れてしまいます。
+    時間の範囲は常に「>= 開始 AND < 次の期間の開始」と書きましょう。列が date でも timestamp でも間違いません。
+
+- id: jsonb-text-compare
+  title: JSONB から取り出した値はテキスト
+  question: 容量が 64GB より大きいスマートフォンを探したいとき、A の件数は B と同じですか？
+  options:
+    - 同じ
+    - A の方が少ない
+    - A の方が多い
+  sqls:
+    - label: A：->> の結果を直接比較
+    - label: B：先に数値に変換
+  explanation: |
+    ->> で取り出すのは text で、text の大小比較は先頭の文字から 1 文字ずつ行われます：
+    '128' > '64' はまず '1' と '6' を比べ、'1' の方が小さいので false。'256'、'512' も同様に '6' に負けます。
+    結果として A は 1 件も見つからず、エラーメッセージも出ません。
+    JSONB 内の数値を大小比較するときは、必ず先に型変換しましょう：(specs->>'storage_gb')::int。
+
+- id: jsonb-null-concat
+  title: NULL と JSONB の結合
+  question: |-
+    specs が NULL の商品があります。A がそれらに specs || '{"on_sale": true}' を実行した結果は？
+  options:
+    - '{"on_sale": true}'
+    - 'NULL'
+    - エラー
+  sqls:
+    - label: A：そのまま結合
+    - label: B：先に COALESCE で空オブジェクトにする
+  explanation: |
+    SQL では、NULL が関わるほとんどの演算の結果は NULL です：NULL || 何か = NULL、NULL + 1 = NULL。
+    そのため UPDATE … SET specs = specs || '{…}' では、元が NULL の商品に新しいフィールドは追加されず、エラーメッセージも出ません。
+    先に COALESCE(specs, '{}') で空オブジェクトにしておきましょう。

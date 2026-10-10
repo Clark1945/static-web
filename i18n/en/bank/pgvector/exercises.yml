@@ -1,0 +1,265 @@
+- id: dims-norm
+  chapter: Vectors and distance
+  title: A vector's dimensions and length
+  prompt: |
+    How many dimensions does product 806's vector have, and what is its length (L2 norm)?
+    Return two columns: dimensions, length (rounded to 3 decimals).
+  hints:
+    - vector_dims(embedding) returns the dimensions; vector_norm(embedding) returns the length.
+    - vector_norm returns double precision; cast to numeric before rounding to 3 decimals.
+  explanation: |
+    All vectors here are normalized to length 1 (l2_normalize). Vectors from real embedding models (e.g. OpenAI text-embedding-3) usually have length 1 too.
+    When every length is 1, cosine distance, L2 distance and inner product give exactly the same ranking, so you can pick the fastest, the inner product (<#>).
+    ★ When a column is declared vector(64), vectors of the wrong dimension can't be written; a column should only hold vectors from one model.
+
+- id: operators
+  chapter: Vectors and distance
+  title: The four distance operators
+  prompt: |
+    Compute four distances between the vectors '[3,4]' and '[6,8]', returning one row with four columns:
+    L2 distance, cosine distance (both rounded to 3 decimals), negative inner product, L1 distance.
+  hints:
+    - "<-> L2 (Euclidean) distance; <=> cosine distance; <#> negative inner product; <+> L1 (Manhattan) distance."
+    - "Cast the strings first: '[3,4]'::vector"
+  explanation: |
+    The two vectors point the same way but one is twice as long: L2 distance 5 (it looks at length), cosine distance 0 (only direction), inner product 50.
+    ★ <#> returns the "negative" inner product (-50), because PostgreSQL indexes only sort "ascending"; with the sign flipped, ORDER BY ascending means inner product descending.
+    Cosine distance = 1 - cosine similarity, ranging 0–2: 0 same direction, 1 perpendicular, 2 opposite.
+
+- id: similar-products
+  chapter: Vectors and distance
+  title: The products most like a given product
+  prompt: |
+    The 5 products most like product 806 (excluding 806 itself), most similar first.
+    Return id, name and cosine similarity (= 1 - cosine distance, rounded to 3 decimals).
+  hints:
+    - ORDER BY embedding <=> (SELECT embedding FROM products WHERE id = 806) LIMIT 5
+    - "Don't forget to exclude 806 itself: its distance to itself is 0, so it always ranks first."
+  explanation: |
+    The simplest "people who viewed this also viewed": use the product's own vector to find its nearest neighbors.
+    ★ ORDER BY must be "distance" ascending (embedding <=> x), not 1 - distance DESC: same result, but the latter can't use the vector index (shown in the traps).
+    Compute the similarity in SELECT only for display.
+
+- id: pairwise
+  chapter: Vectors and distance
+  title: Pairwise similarity
+  prompt: |
+    What is the cosine similarity of product 806 (Sony wireless headphones) with each of products 537, 469 and 1132?
+    Return id, name and similarity (rounded to 3 decimals), most similar first.
+  hints:
+    - "Treat 806 as a and the other three as b: FROM products a, products b WHERE a.id = 806 AND b.id IN (…)"
+  explanation: |
+    537, also wireless headphones, has similarity 0.66; skincare and a laptop are near 0 or even negative (almost perpendicular).
+    In high-dimensional space unrelated things are "perpendicular", with similarity around 0; so when setting a similarity threshold, 0.3 and 0.6 mean very different things, and the real data should decide.
+
+- id: semantic-search
+  chapter: Semantic search
+  title: Find products by text
+  prompt: |
+    Use embed() to turn 「通勤 安靜」 ("commute, quiet") into a vector and find the 5 best-matching products. Return id and name, best match first.
+  hints:
+    - embed('通勤 安靜') returns a vector(64); just compare its distance to embedding.
+    - SELECT tokens('通勤 安靜') shows which words embed() recognizes.
+  explanation: |
+    The results are all wireless headphones with active noise cancelling, yet their descriptions never contain the words 「通勤」 (commute) or 「安靜」 (quiet):
+    in the vocabulary, the vector for 「通勤」 is close to 「降噪」 (noise cancelling) and 「無線」 (wireless), so products with similar meaning rank first. That's the biggest difference between semantic search and keyword search.
+    In a real system embed() calls an embedding model's API (the application computes the vector and passes it into SQL); here a mini model built from a vocabulary stands in.
+
+- id: similar-words
+  chapter: Semantic search
+  title: Near-synonyms in the vocabulary
+  prompt: |
+    The 5 words in the vocabulary (vocab) closest to 「露營」 (camping), excluding 「露營」 itself.
+    Return word and cosine distance (rounded to 3 decimals), nearest first.
+  hints:
+    - "vocab's embedding is a vector too: ORDER BY embedding <=> (SELECT embedding FROM vocab WHERE word = '露營')"
+  explanation: |
+    「戶外」 (outdoors) and 「帳篷」 (tent) are almost identical to 「露營」, and 「登山」 (hiking) and 「野餐」 (picnic) are close too. The recipe column shows why: they all contain the "outdoors" topic.
+    Real embedding models work the same way, except the "topics" are hundreds or thousands of dimensions the model learned by itself from huge amounts of text, and no human can read what each dimension means.
+
+- id: filtered-search
+  chapter: Semantic search
+  title: Semantic search with regular conditions
+  prompt: |
+    Among menswear and womenswear within a budget of 1000 (price <= 1000), the 5 best for 「冬天 保暖」 ("winter, warm").
+    Return id, name and price, best match first.
+  hints:
+    - Write regular WHERE conditions as usual, then ORDER BY vector distance.
+  explanation: |
+    The biggest benefit of keeping vectors in PostgreSQL: vector search can sit in the same SQL statement as regular conditions like price, category, stock and permissions, and can JOIN.
+    Dedicated vector databases (Pinecone, Milvus) need a separate copy of these fields (metadata) to filter.
+    The results are all wool clothing: the vector for 「羊毛」 (wool) contains the "warmth" topic.
+    ★ With large data and a vector index, filter conditions can leave fewer than 5 results (shown in the "filtering" lab).
+
+- id: threshold
+  chapter: Semantic search
+  title: Filter by a distance threshold
+  prompt: |
+    How many products have a cosine distance below 0.35 from 「露營 輕量」 ("camping, lightweight")? Return a single number.
+  hints:
+    - WHERE embedding <=> embed('露營 輕量') < 0.35
+  explanation: |
+    A common RAG practice: give the LLM only data that is "relevant enough", and drop anything too far (so the model isn't misled by irrelevant content).
+    ★ A query with only a distance threshold and no ORDER BY … LIMIT can't use HNSW / IVFFlat indexes (they only "find the k nearest") and computes over the whole table.
+    On a large table write "ORDER BY distance LIMIT k", then filter out results that are too far.
+
+- id: keyword-and-semantic
+  chapter: Semantic search
+  title: Semantic search within a brand
+  prompt: |
+    Among products whose name starts with "Sony ", the 3 best matches for 「通勤 安靜」 ("commute, quiet"). Return id and name, best match first.
+  hints:
+    - WHERE name LIKE 'Sony %'
+  explanation: |
+    Semantic models usually handle "proper nouns" like brands and model numbers poorly (this vocabulary doesn't even know Sony), so keyword conditions are more reliable there;
+    for descriptions of needs like "commute, quiet", semantic search is stronger. Combining both is hybrid search; the lab shows merging rankings with RRF.
+
+- id: best-per-category
+  chapter: Semantic search
+  title: The best match in each category
+  prompt: |
+    In each category (category), the single product that best matches 「送禮」 ("gift").
+    Return category, id and name, sorted by category.
+  hints:
+    - DISTINCT ON (category) … ORDER BY category, distance
+  explanation: |
+    DISTINCT ON is PostgreSQL's "first row per group": after sorting by ORDER BY, only the first row of each category is kept.
+    A results page with "one recommendation per category", so results aren't all crowded into one category, can be built this way (diversification).
+
+- id: neighbors-lateral
+  chapter: Recommendations and classification
+  title: 2 neighbors for each product
+  prompt: |
+    The 2 products most like each of products 806, 469 and 1132 (excluding themselves).
+    Return source_id (the original product), id and name, sorted by source_id, and within each product from most to least similar.
+  hints:
+    - FROM products s CROSS JOIN LATERAL (SELECT … ORDER BY p.embedding <=> s.embedding LIMIT 2) n
+    - A LATERAL subquery can reference columns of the table on its left (s.embedding) and runs once per row.
+  explanation: |
+    "The k nearest for each row" needs LATERAL: a regular subquery can't reference the outer row, and a JOIN can't do "top k per group".
+    ORDER BY … LIMIT inside LATERAL can use the vector index too (one index search per row).
+
+- id: knn-classify
+  chapter: Recommendations and classification
+  title: "k-NN classification: vote on a category"
+  prompt: |
+    A new product's description is 「上班 通勤」 ("work, commute"). Find the 15 products nearest to embed('上班 通勤') and see which category each belongs to:
+    return category and vote count, most votes first (ties by category).
+  hints:
+    - Take the nearest 15 in a subquery first, then GROUP BY category outside.
+  explanation: |
+    k-NN (k nearest neighbors) classification: whichever category most of the k nearest neighbors belong to is the answer.
+    No model training needed; a new category just needs data. Automatic product categorization, support ticket routing and spam detection can all work this way.
+
+- id: customer-taste
+  chapter: Recommendations and classification
+  title: Recommend from purchase history
+  prompt: |
+    Average the vectors of every product customer 224 bought (purchases) as their "taste";
+    recommend 5 products they haven't bought that are closest to this taste. Return id and name, closest first.
+  hints:
+    - avg(embedding) averages vectors (pgvector provides avg and sum aggregates for vector).
+    - WITH taste AS (SELECT avg(p.embedding) AS v FROM purchases u JOIN products p ON p.id = u.product_id WHERE u.customer_id = 224)
+    - "Exclude what they bought: WHERE id NOT IN (SELECT product_id FROM purchases WHERE customer_id = 224)"
+  explanation: |
+    The simplest content-based recommendation: user vector = average of the vectors of items they interacted with.
+    ★ Downside: for someone with scattered interests (this customer bought bedding, fresh food, clothing and electronics), the average lands in a "bit of everything" middle, and recommendations are fuzzy.
+    In practice you cluster (one vector per interest), weight by time (recent purchases count more), or switch to collaborative filtering or two-tower models.
+
+- id: category-centroid
+  chapter: Recommendations and classification
+  title: A representative product per category
+  prompt: |
+    In each category, the product nearest to "the average vector of all products in that category" (the most typical product).
+    Return category, id and name, sorted by category.
+  hints:
+    - GROUP BY category to compute avg(embedding) first, JOIN back to products, and use DISTINCT ON to take the nearest per category.
+  explanation: |
+    Category centers (centroids) are used in clustering, classification and anomaly detection: products unusually far from the center may be misclassified or have bad data.
+    IVFFlat indexes use the same idea: k-means splits vectors into lists clusters, and a query only looks at the nearest few clusters (probes).
+
+- id: near-duplicates
+  chapter: Recommendations and classification
+  title: Find near-identical products
+  prompt: |
+    How many product "pairs" have a cosine distance below 0.015? (Each pair counted once.) Return a single number.
+  hints:
+    - "Join the table to itself: products a JOIN products b ON a.id < b.id"
+    - a.id < b.id counts (1, 2) and (2, 1) once and also excludes pairing with yourself.
+  explanation: |
+    Duplicate products, duplicate articles and plagiarism detection all work this way. Here 1500 × 1499 / 2 ≈ 1.12 million pairs are compared in under a second;
+    with large data, switch to "use the index to find each row's nearest few" (LATERAL + LIMIT) instead of comparing every pair (N² explodes).
+
+- id: ann-search
+  chapter: Indexes and quantization
+  title: The nearest 5 among 100,000 rows
+  prompt: |
+    The 5 passages nearest to the vector of question 1 in questions. Return id and tenant_id, nearest first.
+  hints:
+    - passages.embedding has an HNSW index (vector_cosine_ops); use <=> to make use of it.
+    - Prefix with EXPLAIN to see Index Scan using passages_hnsw.
+  explanation: |
+    With the HNSW index it takes under 1 ms; without it, 100,000 distances must be computed and sorted (about 15 ms, slower as data grows).
+    Vector indexes are "approximate" nearest neighbor (ANN): they don't guarantee the truly nearest rows, and accuracy is measured by recall (measured in the lab).
+    ★ Using the index needs all three: ORDER BY distance ascending, a LIMIT, and an operator matching the index's ops (a cosine index with <=>).
+
+- id: tenant-exact
+  chapter: Indexes and quantization
+  title: "Multi-tenancy: search only your own data"
+  prompt: |
+    In tenant 7's data (tenant_id = 7), the 5 rows nearest to question 1 in questions. Return id, nearest first.
+    Note: simply adding WHERE tenant_id = 7 may return fewer than 5; find a way to always return the correct 5.
+  hints:
+    - With a plain WHERE, HNSW first finds ef_search (default 40) candidates and then applies the filter; tenant 7 is only 2%, so 0–2 candidates may remain.
+    - "You can only send one query here (no SET). Pull out tenant 7's data first, then sort exactly within that small set:"
+    - WITH mine AS MATERIALIZED (SELECT id, embedding FROM passages WHERE tenant_id = 7) SELECT id FROM mine ORDER BY …
+  explanation: |
+    MATERIALIZED makes the CTE run first (pulling out tenant 7's ~2,000 rows), and the outer query sorts exactly without HNSW, so it's always the correct 5.
+    Multi-tenant vector search is a common interview question. Other approaches:
+    1. pgvector 0.8's iterative scan: SET hnsw.iterative_scan = relaxed_order keeps searching when there aren't enough candidates (measured in the lab).
+    2. A partial index per large tenant (CREATE INDEX … WHERE tenant_id = 7), or partitioning by tenant_id.
+    3. When the filter is very selective (only a few thousand rows left), exact search is fast anyway and no vector index is needed.
+
+- id: quantization-size
+  chapter: Indexes and quantization
+  title: How much space a vector takes
+  prompt: |
+    How many bytes does product 806's vector take when stored as each of three types? Return one row with three columns:
+    vector (the original float4), halfvec (float2), and bit after binary_quantize.
+  hints:
+    - pg_column_size(value) returns the bytes a value actually takes.
+    - embedding::halfvec converts to half precision; binary_quantize(embedding) keeps only the sign of each dimension (1 bit).
+  explanation: |
+    64 dimensions: vector uses 4 bytes per dimension (256 + 8-byte header = 264), halfvec 2 bytes (136), bit 1 bit per dimension (8 bytes + header = 16).
+    At 1536 dimensions (OpenAI embeddings) one row is 6 KB; 10 million rows take 60 GB for the vectors alone, plus another copy for the HNSW index.
+    Quantization trades precision for space: halfvec halves the space with almost no recall loss; bit is 32 times smaller but imprecise, usually paired with "reranking".
+    The "quantization" lab measures index sizes and recall.
+
+- id: insert-with-embedding
+  chapter: Writes
+  title: Insert a product and generate its vector
+  prompt: |
+    Add a product: id 9001, name 「Bose 無線耳機 Z001」 (Bose wireless headphones Z001), category 「無線耳機」 (wireless headphones), price 8990,
+    description 「Bose 無線耳機 Z001 黑色 主動降噪 續航24小時」 (black, active noise cancelling, 24-hour battery), with the vector generated by embed(description).
+    After inserting it, query the ids of the 3 products most like it (excluding itself), most similar first.
+  hints:
+    - INSERT INTO products (id, name, category, price, description, embedding) VALUES (…, embed('…'))
+    - The result of the second SELECT is what gets graded.
+  explanation: |
+    Real systems usually have the application call the embedding model's API for the vector first and INSERT them together (or let a background job fill it in).
+    It's searchable right after insertion: the HNSW index is updated synchronously on INSERT and needs no rebuild (IVFFlat is too, but its cluster centers don't change, so rebuild when the data distribution shifts a lot).
+
+- id: update-reembed
+  chapter: Writes
+  title: Changed the description? Recompute the vector
+  prompt: |
+    Append 「 打電動」 (" gaming") to the description of product 469 (a laptop) and recompute its vector.
+    Return id, the new description, and the cosine distance between the new vector and embed('打電動') (rounded to 3 decimals).
+  hints:
+    - UPDATE … SET description = description || ' 打電動', embedding = embed(description || ' 打電動')
+    - description referenced in SET is the value "before the update", so append the new text on both sides yourself.
+    - RETURNING can return the updated values.
+  explanation: |
+    A vector is "derived data" computed from text; when the text changes, the vector doesn't update itself, and forgetting to recompute makes search results disagree with the content.
+    Common approaches: the application updates the vector together with the text; or a trigger writes the ids "needing re-embedding" to a queue, and a background job calls the model.
+    ★ When switching embedding models, every vector has to be recomputed (vectors from different models can't be compared), so record which model produced each vector.

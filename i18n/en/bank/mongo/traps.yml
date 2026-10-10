@@ -1,0 +1,115 @@
+- id: array-equality
+  title: Equality on arrays
+  question: Do A and B count the same number of products?
+  options:
+    - The same
+    - A has more
+    - B has more
+  scripts:
+    - label: 'A: { tags: "特價" }'
+    - label: 'B: { tags: ["特價"] }'
+  explanation: |
+    A: the condition is a single value, so MongoDB compares it with "every element" of the array and matches if any is equal.
+    B: the condition itself is an array, so it becomes "the whole array is exactly equal": only products whose tags are exactly ["特價"], with no other tags, match.
+    Use $all for "contains all of these" and $in for "contains any of these".
+
+- id: elem-match
+  title: Several conditions on an array
+  question: Does A require the "same item" to have both qty ≥ 3 and unitPrice ≥ 10000?
+  options:
+    - Yes, the same as B
+    - No, A finds more
+    - No, A finds fewer
+  scripts:
+    - label: "A: two dot-notation conditions"
+    - label: "B: $elemMatch"
+  explanation: |
+    A's two conditions are each matched against the whole items array independently: it matches if "some item" has qty ≥ 3 and "some item" has unitPrice ≥ 10000, and they can be different items.
+    B's $elemMatch requires the "same item" to satisfy both. So A also counts orders where "one item has many cheap units and another has one expensive unit".
+
+- id: null-matches-missing
+  title: null also finds documents without the field
+  question: |-
+    Some customers have no city field (not null; the field doesn't exist at all). Does A's { city: null } find them?
+  options:
+    - Yes, the same as B
+    - No, it only finds null values, so the result is 0
+    - An error
+  scripts:
+    - label: 'A: { city: null }'
+    - label: 'B: { city: { $exists: false } }'
+  explanation: |
+    { field: null } finds both documents whose value is null and documents without the field.
+    For just one of them: a missing field is { $exists: false }; a value that is exactly null is { $type: "null" }.
+    Compare SQL: in PostgreSQL city = NULL is never true and you must write IS NULL; MongoDB behaves the opposite way, which is easy to mix up.
+
+- id: type-mismatch
+  title: A different type finds nothing
+  question: The product's _id is the number 540. Does A find it with the string "540"?
+  options:
+    - Yes, MongoDB converts the type automatically
+    - No, the result is 0
+    - An error
+  scripts:
+    - label: 'A: the string "540"'
+    - label: "B: the number 540"
+  explanation: |
+    MongoDB comparisons require the same type: the string "540" and the number 540 are different values, with no automatic conversion and no error.
+    The classic Java pitfall: an id arrives from the front end as a String and is used to query a numeric field, so it never matches.
+    Likewise, ObjectId("…") and the string "…" aren't equal.
+
+- id: replace-drops-fields
+  title: replaceOne replaces the whole document
+  question: A uses replaceOne to set product 540's stock to 20. Which fields are left in the document afterwards?
+  options:
+    - All fields remain; only stock becomes 20
+    - Only _id and stock
+    - An error
+  scripts:
+    - label: "A: replaceOne"
+    - label: "B: updateOne + $set"
+  explanation: |
+    replaceOne "replaces the whole" old document with the new one (keeping _id), so name, price and category all disappear.
+    To change only some fields, always use updateOne / updateMany with $set.
+    Spring Data MongoDB's repository.save(entity) replaces the whole document too: if the entity was loaded with only some fields, saving it wipes the others.
+
+- id: sort-limit-order
+  title: limit before sort?
+  question: A writes .limit(3) before .sort(). Does A take any 3 documents first and then sort them?
+  options:
+    - Yes, the result differs from B
+    - No, the result is the same as B
+    - An error
+  scripts:
+    - label: "A: .limit(3).sort(…)"
+    - label: "B: .sort(…).limit(3)"
+  explanation: |
+    However you chain find's sort, skip and limit, MongoDB always runs them in the order "sort → skip → limit", so A and B are the same.
+    The aggregation pipeline is different: [ { $limit: 3 }, { $sort: … } ] really takes 3 documents first and then sorts, because a pipeline runs its stages in order.
+
+- id: timezone
+  title: Dates and time zones
+  question: We want the orders of "September 2026 Taiwan time". Do A and B return the same count?
+  options:
+    - The same
+    - Different
+  scripts:
+    - label: "A: no time zone (UTC)"
+    - label: "B: with +08:00"
+  explanation: |
+    MongoDB always stores dates in UTC. ISODate("2026-09-01") is midnight UTC, which is 8 a.m. on 9/1 Taiwan time.
+    A misses orders from midnight to 8 a.m. on 9/1 and includes orders from midnight to 8 a.m. on 10/1.
+    Java's LocalDate and LocalDateTime have no time zone; always specify ZoneId.of("Asia/Taipei") explicitly when converting to Date.
+
+- id: update-one-only
+  title: updateOne updates only one
+  question: There are 300-odd pending orders. How many documents does A's updateOne update?
+  options:
+    - One
+    - Every pending order
+  scripts:
+    - label: "A: updateOne"
+    - label: "B: updateMany"
+  explanation: |
+    updateOne, deleteOne and replaceOne only handle the "first" matching document, and which one is first isn't guaranteed.
+    Use updateMany or deleteMany to handle them all. matchedCount and modifiedCount in the return value tell you how many were affected.

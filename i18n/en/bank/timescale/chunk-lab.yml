@@ -1,0 +1,52 @@
+- id: time-range
+  title: With vs without a time condition
+  question: How many chunks did A and B each read?
+  goal: page_views has 27 chunks (7 days each). Both count views; one only for 9/1, the other for everything.
+  takeaway: |
+    A read only 1 chunk (0.6 ms); B read all 27 (about 30 ms).
+    A hypertable is cut into chunks by time, and each chunk records its own time range; when a query has a time condition, the planner skips chunks outside it (chunk exclusion),
+    without even looking at indexes. That's why a time series database "stays just as fast for recent data as the data keeps growing".
+  queries:
+    - label: "A: one day, 9/1"
+    - label: "B: everything"
+
+- id: cast-defeats
+  title: Casting the time column
+  question: All three return the same result. Do they read the same number of chunks?
+  goal: "Two ways to get the same result: a time range, or casting view_time to a date and comparing."
+  takeaway: |
+    A reads 1 chunk (0.6 ms); B and C return the same result but read all 27 chunks (about 60 ms, 100 times slower).
+    After a cast or function on the time column (::date, date_trunc, AT TIME ZONE), the planner can't compare against chunk time ranges and has to read every chunk.
+    ★ Always write a half-open range time >= start AND time < end, and put the computation on the "value" side.
+  queries:
+    - label: "A: view_time >= … AND view_time < …"
+    - label: "B: view_time::date = '2026-09-01'"
+    - label: "C: date_trunc('day', view_time) = …"
+
+- id: now-relative
+  title: "Relative time: now() - interval"
+  question: B uses now(). Does it read fewer chunks? Expand the plan and see what extra condition appears in Index Cond.
+  goal: "\"The last N days\" is the most common dashboard query. now() isn't a constant; let's see whether TimescaleDB can still exclude chunks."
+  takeaway: |
+    A's time is a constant, so chunks are excluded at planning time.
+    B also reads only the relevant chunks: at planning time TimescaleDB evaluates now() - interval '30 days' into a constant,
+    and the plan's Index Cond shows both the original condition and the computed time (e.g. view_time > '2026-09-08 …'), so chunks are excluded as usual.
+    (Plain PostgreSQL partitioned tables can only exclude partitions with now() when execution starts; the plan shows "Subplans Removed".)
+    The data ends on 9/30, so B's result depends on today's date: if today is more than 30 days after 9/30, every chunk is excluded and it returns 0.
+    Conclusion: the common dashboard pattern "the last N days" is perfectly fine; no need to switch to constants.
+  queries:
+    - label: "A: a fixed time (30 days back from 9/30)"
+    - label: "B: now() - interval '30 days' (the result depends on today's date)"
+
+- id: other-column
+  title: Only a condition on a non-time column
+  question: How many chunks did A read? How does each chunk find product 540?
+  goal: Only product 540's views. page_views has an index on (product_id, view_time DESC), but there's no time condition.
+  takeaway: |
+    A has no time condition, so all 27 chunks are examined, but each chunk has its own (product_id, view_time) index and needs only one index lookup, so it's still fast (under 1 ms).
+    B adds a time range and examines only 5 chunks.
+    An index created on a hypertable is automatically created on every chunk; a query does "one index lookup per chunk".
+    The more chunks, the more index lookups a query without a time condition needs, so don't make chunks too small (ideally the latest chunk and its indexes fit in 25% of memory).
+  queries:
+    - label: "A: product_id only"
+    - label: "B: product_id + a time range"

@@ -61,6 +61,16 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
   border: 1px solid var(--line); background: var(--bg); color: var(--ink);
 }
 .search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.top-tools { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.lang-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex: none; }
+.lang-switch a { padding: 5px 10px; font-size: .8rem; font-weight: 600; color: var(--muted); text-decoration: none; line-height: 1.4; }
+.lang-switch a + a { border-left: 1px solid var(--line); }
+.lang-switch a:hover { color: var(--ink); background: var(--bg); }
+.lang-switch a[aria-current="true"] { background: var(--accent); color: var(--accent-ink); }
+.lang-switch a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (max-width: 600px) { .top-tools { width: 100%; } .top-tools .search { flex: 1; } .top-tools .search input { width: 100%; } }
+:root:lang(ja) { --font-body: "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif; }
+:root:lang(en) { --font-body: "Noto Sans TC", system-ui, "Segoe UI", sans-serif; }
 
 /* 程式碼區塊 */
 pre.code { position: relative; margin: 10px 0; padding: 12px 14px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font-size: .82rem; line-height: 1.6; }

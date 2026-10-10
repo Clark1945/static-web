@@ -1,0 +1,180 @@
+- id: merge-whole-pattern
+  title: MERGE on a whole pattern
+  question: |-
+    Nodes A and B both exist, but there's no relationship between them. After MERGE (a:Person {name: 'A'})-[:KNOWS]->(b:Person {name: 'B'}), how many Person nodes are there?
+  options:
+    - "2: MERGE uses the existing A and B"
+    - "4: the whole pattern isn't found, so the whole pattern (including both nodes) is created"
+    - "An error: A and B already exist"
+  scripts:
+    - label: "A: MERGE the whole pattern"
+    - label: "B: MATCH both ends, then MERGE the relationship"
+  explanation: |
+    MERGE treats "the whole pattern" as all-or-nothing: either all of it is found or all of it is created. A and B exist, but the complete pattern A-[:KNOWS]->B doesn't,
+    so MERGE creates both nodes and the relationship anew, giving an extra A and an extra B.
+    The right way: MATCH (or MERGE separately) both end nodes first, then MERGE the relationship. With a uniqueness constraint, A would fail outright, which is actually easier to notice.
+
+- id: direction
+  title: Leaving out the direction
+  question: |-
+    Customer 4242 follows 6 people and has 4 followers (none mutual). How many rows does MATCH (:Customer {id: 4242})-[:FOLLOWS]-(x), without an arrow, return?
+  options:
+    - "10: both directions count"
+    - "6: outgoing is the default"
+    - "An error: relationships must have a direction"
+  scripts:
+    - label: "A: no direction"
+    - label: "B: only people followed"
+  explanation: |
+    A stored relationship always has a direction, but a query can leave it out, and then relationships in both directions match.
+    "Follows" is directional, so leaving out the direction mixes "people I follow" with "people who follow me". Undirected queries are typical for symmetric relationships like "knows" or "friends".
+
+- id: null-equals
+  title: Finding customers without a birthday with = null
+  question: 1,141 customers have no birthday (no birthDate property). How many does WHERE c.birthDate = null find?
+  options:
+    - 1,141
+    - 20,000 (everyone)
+    - '0'
+  scripts:
+    - label: "A: = null"
+    - label: "B: IS NULL"
+  explanation: |
+    As in SQL, comparing anything with null gives null (not true), so = null never finds anything. Use IS NULL / IS NOT NULL.
+    In Neo4j, "a property that is null" is "a property that doesn't exist": SET c.birthDate = null deletes the property.
+
+- id: optional-match-where
+  title: WHERE in OPTIONAL MATCH
+  question: How many orders of 50,000 or more do customers 1, 2 and 4242 each have? (4242 has none.) A puts the condition in OPTIONAL MATCH's WHERE, B uses MATCH. How many rows does A return?
+  options:
+    - "3 rows: customers without large orders also appear, with 0"
+    - "Fewer than 3 rows: customers without large orders are filtered out"
+    - "An error: OPTIONAL MATCH can't have WHERE"
+  scripts:
+    - label: "A: OPTIONAL MATCH … WHERE"
+    - label: "B: MATCH … WHERE"
+  explanation: |
+    OPTIONAL MATCH's WHERE is part of the "matching condition": when nothing matches, the variable is null but the customer's row remains (count(null) = 0),
+    just like SQL's LEFT JOIN … ON o.total >= 50000.
+    Putting the condition in a later WITH … WHERE o.total >= 50000 would filter out the null rows, turning it back into a plain MATCH (INNER JOIN).
+
+- id: cartesian
+  title: Joining two unrelated patterns with a comma
+  question: |-
+    There are 891 gold customers and 83 inactive products. What is MATCH (c:Customer {vipLevel: 'gold'}), (p:Product {isActive: false}) RETURN count(*)?
+  options:
+    - 73,953 (891 × 83), with a cartesian product warning
+    - 974 (891 + 83)
+    - "0: there's no relationship between them"
+  scripts:
+    - label: Two unconnected patterns
+  explanation: |
+    Comma-separated patterns not connected by any relationship produce every combination of both sides (a cartesian product), like SQL's CROSS JOIN.
+    The server returns the notification "This query builds a cartesian product between disconnected patterns".
+    It happens when you accidentally leave out a relationship (e.g. forgetting -[:PLACED]-> between (c), (o)), and with large data it never finishes.
+
+- id: duplicate-paths
+  title: DISTINCT for friends of friends?
+  question: For customer 224's "friends of friends", are count(fof) and count(DISTINCT fof) the same?
+  options:
+    - "The same: MATCH never returns duplicate nodes"
+    - B is larger
+    - "A is larger: the same person can be reached via different friends, and each path is a row"
+  scripts:
+    - label: "A: count(fof)"
+    - label: "B: count(DISTINCT fof)"
+  explanation: |
+    MATCH returns "every way of matching", i.e. every path. If two friends both follow the same person, that person appears twice (44 vs 42).
+    Use DISTINCT to count "people"; count without DISTINCT only to count "how many paths reach them" (e.g. the strength of a recommendation).
+
+- id: fof-includes-me
+  title: Can a friend of a friend be yourself?
+  question: |-
+    Customers 6 and 10127 follow each other. Does 6 themselves appear in the results of (me {id: 6})-[:FOLLOWS]->()-[:FOLLOWS]->(fof)?
+  options:
+    - "Yes: 6 → 10127 → 6 uses two different relationships, so it's a valid path"
+    - "No: Cypher never returns to the starting node"
+  scripts:
+    - label: "A: yourself not excluded"
+    - label: "B: WHERE fof <> me"
+  explanation: |
+    Within one pattern, Cypher never traverses "the same relationship" twice (relationship isomorphism), but "the same node" can appear several times.
+    6 → 10127 and 10127 → 6 are two different relationships, so 6 is their own "friend of a friend".
+    In recommendation queries remember WHERE fof <> me, and exclude people already followed.
+
+- id: delete-with-relationships
+  title: DELETE a node that still has relationships
+  question: |-
+    4242 has orders and follow relationships. Running MATCH (c:Customer {id: 4242}) DELETE c in a transaction, when does it fail?
+  options:
+    - The DELETE statement fails immediately
+    - The DELETE looks successful and the relationships remain; it only fails at commit
+    - It never fails, leaving relationships without a start node
+  scripts:
+    - label: "A: DELETE (in a transaction)"
+    - label: "B: DETACH DELETE"
+  explanation: |
+    Neo4j doesn't allow "dangling relationships", but the check only happens at commit: DELETE c inside the transaction looks successful (nodesDeleted: 1),
+    and the PLACED relationships to the orders are still there. Only at commit does it fail with Neo.ClientError.Schema.ConstraintValidationFailed
+    (Cannot delete node … because it still has relationships), and the whole transaction fails. The showcase always rolls back, so you don't see that error here.
+    DETACH DELETE deletes all of the node's relationships first, then the node. Note it doesn't delete the nodes at the other end: 4242's orders remain, as orphans nobody PLACED.
+
+- id: match-nothing-create
+  title: When MATCH finds nothing, what about the CREATE after it?
+  question: |-
+    Customer 999999 doesn't exist. What does MATCH (c:Customer {id: 999999}) CREATE (c)-[:PLACED]->(:Order {id: 900001}) do?
+  options:
+    - "An error: the customer doesn't exist"
+    - It creates an order with no customer
+    - Nothing happens, and there's no error
+  scripts:
+    - label: CREATE after a MATCH that finds nothing
+  explanation: |
+    Cypher processes row by row: MATCH finds 0 rows, so the CREATE runs 0 times, with no error and no notification.
+    A common application bug: calling "create order" with the wrong id (e.g. the string '999') writes nothing yet reports success.
+    To confirm something was written, check the returned rows or the write statistics (nodesCreated), or use MERGE, or OPTIONAL MATCH with a check.
+
+- id: integer-division
+  title: Integer division
+  question: Customer 4242's 6 orders total 58,033. What does sum(o.total) / count(o) return?
+  options:
+    - 9672 (integer division, fraction dropped)
+    - '9672.17'
+    - "An error: the types differ"
+  scripts:
+    - label: "A: sum / count"
+    - label: "B: avg()"
+  explanation: |
+    Dividing two integers gives an integer (just like Java), with the fraction dropped. avg() always returns a float.
+    For decimals write toFloat(sum(o.total)) / count(o).
+
+- id: type-mismatch
+  title: Querying an id with a string
+  question: |-
+    Customer ids are stored as integers. How many customers does MATCH (c:Customer {id: '4242'}) (a string) find?
+  options:
+    - "0: a string and an integer aren't equal, and there's no error"
+    - "1: Cypher converts the type automatically"
+    - "An error: type mismatch"
+  scripts:
+    - label: "A: the string '4242'"
+    - label: "B: the integer 4242"
+  explanation: |
+    Neo4j has no schema enforcing property types (and the community edition has no type constraints), and comparisons don't convert types: '4242' and 4242 aren't equal, so nothing is found, with no error.
+    A common source: a value from a URL parameter or JSON is a string and goes straight into the query parameters. Convert with toInteger($id), or keep types consistent when writing.
+
+- id: same-order-missing
+  title: One long path misses the same order
+  question: How many "people who bought product 540 also bought 雅漾 保養 C693 (an Avène skincare item)"? A is one long path, B is split into two MATCHes. Is A's number smaller?
+  options:
+    - "The same: both mean the same thing"
+    - "A is smaller: the two PLACED in one path can't be the same relationship, so people who bought both in the same order are excluded"
+    - "A is larger: one path double-counts"
+  scripts:
+    - label: "A: one path"
+    - label: "B: two MATCHes"
+  explanation: |
+    Within one MATCH pattern Cypher uses each relationship only once (relationship isomorphism), to avoid infinitely many paths from going round in circles.
+    The side effect: A's two -[:PLACED]-> must be two different relationships, i.e. two different orders;
+    people who bought 540 and the Avène item in the same order (there are 3 such orders) can't be matched in A, so it's 14 people instead of 16.
+    Split into two MATCHes, uniqueness is checked only within each pattern, and both sides can use the same PLACED.

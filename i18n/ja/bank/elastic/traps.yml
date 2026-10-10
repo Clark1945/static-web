@@ -1,0 +1,160 @@
+- id: term-on-text
+  title: text フィールドに term を使う
+  question: name は text フィールド（cjk アナライザ）で、内容は「Sony 無線耳機 F178」のようなものです。A は term で「Sony」を探しています。何件見つかりますか？
+  options:
+    - B と同じ 59 件
+    - 0 件
+    - エラー：text フィールドには term を使えない
+  scripts:
+    - label: A：text フィールド name に term
+    - label: B：keyword フィールド brand に term
+  explanation: |
+    text フィールドに保存されているのは分析後の語です：アナライザが小文字にするので、転置インデックスにあるのは「Sony」ではなく「sony」です。term はクエリのテキストを分析しないので、「Sony」で探しても当然見つからず、エラーにもなりません。
+    ★ ルール：text フィールドには match を使い（クエリのテキストが書き込み時と同じアナライザを通る）、keyword、数値、日付には term / range を使います。
+    同様に、keyword フィールドの brand で「sony」（小文字）を検索しても 0 件です：keyword は分析されないので、大文字小文字まで完全に一致する必要があります。
+
+- id: match-is-or
+  title: 文全体を match する
+  question: レビューに「通勤戴很舒服」（通勤中に着けてもとても快適）という文が実際に出てくるのは 200 件余りだけです。A は match でこの文を検索します。何件見つかりますか？
+  options:
+    - B とほぼ同じ
+    - B の何倍も多い
+    - B より少ない：match はすべての語を要求する
+  scripts:
+    - label: A：match
+    - label: B：match_phrase
+  explanation: |
+    cjk アナライザはこの文を「通勤、勤戴、戴很、很舒、舒服」の 5 つの語に分け、match は既定で OR なので、いずれか 1 つの語があれば一致します。
+    「舒服」「很舒」（快適）は多くのレビューに出てくるので（着心地がいい、寝心地がいい）、A は 2 千件以上見つけます。
+    最も関連するものはやはり上位に来ますが、「一致した総数」は大きく違います。正確さが必要なら match_phrase、または operator and、minimum_should_match を使います。
+
+- id: standard-on-chinese
+  title: standard アナライザで中国語を検索する
+  question: content.std は既定の standard アナライザ（中国語は 1 文字 1 語）を使います。「音質」で検索すると何件見つかりますか？
+  options:
+    - B と同じ
+    - B よりずっと多く、音質と関係のないレビューも大量に混ざる
+    - 0 件：standard は中国語に対応していない
+  scripts:
+    - label: A：content.std（standard）
+    - label: B：content（cjk）
+  explanation: |
+    standard は「音質」を「音」「質」の 2 つの語に分け、match は既定で OR なので、「質」を含むレビュー（品質がいい、肉質がいい）も一致し、件数は cjk の何倍にもなります。
+    1 位はやはり音質に関するもの（2 文字とも含むものはスコアが高い）ですが、大量のノイズを拾ってしまい、集約や件数も間違ってしまいます。
+    ★ 中国語のフィールドには必ず正しいアナライザを選びましょう：cjk（bigram、プラグイン不要）、smartcn、IK（本当の分かち書き、プラグインが必要）。アナライザはインデックス作成時に決まり、後から変えるには reindex が必要です。
+
+- id: object-vs-nested
+  title: object 配列の交差一致
+  question: 同じ注文、同じ条件（同じ明細がスマートフォンで、数量 ≥ 2）ですが、orders_object の items は普通の object です。A は何件見つけますか？
+  options:
+    - B と同じ
+    - B より多い
+    - B より少ない
+  scripts:
+    - label: A：orders_object（object）
+    - label: B：orders（nested）
+  explanation: |
+    object の配列は平らにされます：ある注文の items.category = [手機, 男裝]、items.quantity = [1, 3] となり、2 つの条件はそれぞれ「配列にあるかどうか」を独立に調べます。
+    スマートフォン（数量 1）とメンズ（数量 3）が別々の明細でも一致してしまうので、A の方が多く、しかも増えた分はすべて間違いです。
+    ★ 配列内のオブジェクトで「同じオブジェクトのフィールドをまとめて比較」する必要があるなら、mapping には nested を使い（クエリも nested query を使う）ます。
+
+- id: nested-doc-count
+  title: orders にはドキュメントが何件あるか
+  question: orders には 8 万件の注文と 20 万件の明細（nested）があります。_cat/indices の docs.count は何を表示しますか？
+  options:
+    - 80000、_count と同じ
+    - '280115'
+    - '200115'
+  scripts:
+    - label: A：_cat/indices
+    - label: B：_count
+  explanation: |
+    nested オブジェクトはそれぞれ Lucene の中で独立した（隠れた）ドキュメントで、親ドキュメントと一緒に保存されています：8 万 + 20 万 = 28 万。
+    _count や _search は最上位のドキュメント（8 万）だけを数え、_cat/indices は Lucene レベルの件数を表示します。
+    nested は便利ですが、明細 1 件ごとに 1 つのドキュメントです：明細が多いとインデックスが大きくなり、どれか 1 つの明細を更新すると注文全体を書き直すことになります。
+
+- id: total-10000
+  title: hits.total はいくつか
+  question: reviews には 2 万件以上のレビューがあります。条件なしで検索すると、hits.total.value はいくつですか？
+  options:
+    - '21556'
+    - 10000 で、relation は gte
+    - 10。size の既定が 10 だから
+  scripts:
+    - label: A：既定
+    - label: 'B：track_total_hits: true'
+  explanation: |
+    性能のため、Elasticsearch は既定で 10,000 件までしか正確に数えません：それを超えると total は { "value": 10000, "relation": "gte" }（少なくとも 1 万）になります。
+    こうすれば「上位いくつか」を見つけた時点で早めに終われ、一致するドキュメントをすべて数え切る必要がありません。
+    正確な数が必要なら：track_total_hits: true、または _count を直接使います。ページングで「全 N ページ」は、通常「10,000+」と表示すれば十分です。
+
+- id: no-time-zone
+  title: タイムゾーンを指定しない date_histogram
+  question: 9/1〜9/7（台湾時間）の日ごとの注文数。A には time_zone がありません。バケットはいくつ返りますか？
+  options:
+    - 7 個、B と同じ
+    - 8 個：UTC で区切られ、台湾の 1 日が午前 8 時から始まるので、先頭と末尾に 1 区間ずつ増える
+    - エラー
+  scripts:
+    - label: A：time_zone なし
+    - label: B：time_zone +08:00
+  explanation: |
+    date フィールドは UTC で保存され、date_histogram も既定で UTC で区切ります：台湾時間 9/1 00:00〜08:00 は UTC の 8/31 に属するので、バケットが 1 つ増え、しかも毎日の数値が正しくありません。
+    TimescaleDB の time_bucket と同じ落とし穴です。Kibana はブラウザのタイムゾーンを自動で付けますが、自分でクエリを書くときは忘れずに付けましょう。
+
+- id: terms-on-text
+  title: text フィールドに terms 集約を使う
+  question: レビューで最もよく出てくるタイトルを集計しようと、title（text フィールド）に terms 集約を使いました。結果は？
+  options:
+    - タイトルごとにグループ化された上位 10 件
+    - 分析後の語（很、滿意、不…）ごとにグループ化される
+    - エラー：text フィールドは既定では集約できない
+  scripts:
+    - label: text フィールドに terms 集約
+  explanation: |
+    集約や並べ替えには doc values（フィールドごとに保存されたデータ）が必要ですが、text フィールドには doc values がありません。fielddata でメモリ上に作れますが、既定では無効です（ヒープを大量に使う）。
+    ★ 集約したい文字列フィールドには keyword を使うか、text フィールドの下に keyword のサブフィールドを追加し（fields: { keyword: { type: keyword } }）、title.keyword を集約します。
+    fielddata を有効にしても、集約されるのは分析後の「語」であって、完全なタイトルではありません。
+
+- id: deep-paging
+  title: 1001 ページ目へ飛ぶ
+  question: 1 ページ 10 件で、1001 ページ目を見たいので from 10000、size 10 にしました。結果は？
+  options:
+    - 10001〜10010 件目
+    - エラー：Result window is too large
+    - 空の結果
+  scripts:
+    - label: from 10000
+  explanation: |
+    from + size は index.max_result_window（既定 10,000）を超えられません。理由：各シャードが上位 from + size 件を並べてからマージする必要があり、後ろのページほど高くつくからです（ディープページングの問題）。
+    ★ 解決策：search_after（前のページの最後の 1 件の並べ替え値をカーソルにし、PIT でスナップショットを固定する）、または scroll（大量エクスポート用、現在は非推奨）。
+    ユーザーインターフェースでも普通は「1000 ページ目へ飛ぶ」機能は提供せず、「次のページ」か検索条件を絞り込むだけです。
+
+- id: dynamic-mapping
+  title: 動的 mapping が型を決める
+  question: 新しいインデックスには mapping が定義されていません。1 つ目のドキュメントの zip は数値の 100、2 つ目の zip は文字列の "10A" です。2 つ目は書き込めますか？
+  options:
+    - 書き込める。Elasticsearch はスキーマレスだから
+    - 書き込めない：zip は既に long と推定されている
+    - 書き込める。zip は自動で text に変わる
+  scripts:
+    - label: 2 つのドキュメントを順に書き込む
+  explanation: |
+    mapping のないフィールドは、最初に現れたときに動的 mapping で型が推定され（数値 → long、文字列 → text + keyword サブフィールド、日付形式の文字列 → date）、以後は固定されます。
+    2 つ目の「10A」は long に変換できないので、ドキュメント全体が拒否されます（mapper_parsing_exception）。フィールドの型は一度決まると変えられず、新しいインデックスを作って _reindex するしかありません。
+    ★ 本番環境では必ず事前に mapping を定義し（または index template を使い）、必要なら "dynamic": "strict" で未定義のフィールドを拒否して、フィールド数の爆発（mapping explosion）を防ぎましょう。
+
+- id: near-real-time
+  title: 書き込んですぐに検索する
+  question: インデックスの refresh_interval は 30 秒です。ドキュメントを書き込んですぐに _search すると見つかりますか？_id で GET するとどうですか？
+  options:
+    - どちらも取得できる
+    - 検索では見つからず、GET では取得できる
+    - どちらも取得できず、30 秒待つ必要がある
+  scripts:
+    - label: 書き込んですぐに検索と GET
+  explanation: |
+    Elasticsearch は「ニアリアルタイム」（near real-time）です：書き込みはまずメモリ上のバッファに入り（失われないよう translog にも書く）、refresh のときに初めて検索可能なセグメントになります。
+    既定では 1 秒ごとに refresh します（しばらく検索されていないインデックスでは一時停止する）。ここでは 30 秒に設定しているので、すぐに検索しても見つかりません。
+    GET /_doc/1 はリアルタイムです：まだ refresh されていなければ translog / バッファから読み出します。
+    「書いたらすぐに検索できる」必要があるなら、書き込みに ?refresh=wait_for（次の refresh を待つ）を付けます。毎回 ?refresh=true を使うのはやめましょう（小さなセグメントが大量にできる）。

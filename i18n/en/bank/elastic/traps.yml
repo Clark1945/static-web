@@ -1,0 +1,160 @@
+- id: term-on-text
+  title: term on a text field
+  question: name is a text field (cjk analyzer) with content like 「Sony 無線耳機 F178」. How many products does A find with term "Sony"?
+  options:
+    - The same as B, 59
+    - '0'
+    - "An error: term can't be used on text fields"
+  scripts:
+    - label: "A: term on the text field name"
+    - label: "B: term on the keyword field brand"
+  explanation: |
+    A text field stores analyzed terms: the analyzer lowercases, so the inverted index holds "sony", not "Sony". term doesn't analyze the query text, so looking up "Sony" naturally finds nothing, with no error.
+    ★ Rule: use match on text fields (the query text goes through the same analyzer as at write time); use term / range on keyword, numbers and dates.
+    Likewise, querying "sony" (lowercase) on the keyword field brand finds 0: keyword isn't analyzed, so case must match exactly.
+
+- id: match-is-or
+  title: match on a whole sentence
+  question: Only two hundred-odd reviews really contain the sentence 「通勤戴很舒服」 ("very comfortable to wear while commuting"). How many does A find with match?
+  options:
+    - About the same as B
+    - Many times more than B
+    - "Fewer than B: match requires every term"
+  scripts:
+    - label: "A: match"
+    - label: "B: match_phrase"
+  explanation: |
+    The cjk analyzer cuts this sentence into five terms, 通勤, 勤戴, 戴很, 很舒, 舒服, and match is OR by default: any one of them matches.
+    「舒服」 and 「很舒」 ("comfortable") appear in many reviews (comfortable to wear, comfortable to sleep on), so A finds over two thousand.
+    The most relevant ones still rank first, but "the total number of matches" is far off; for precision use match_phrase, or operator and, or minimum_should_match.
+
+- id: standard-on-chinese
+  title: Searching Chinese with the standard analyzer
+  question: content.std uses the default standard analyzer (one Chinese character per term). How many reviews does searching 「音質」 (sound quality) find?
+  options:
+    - The same as B
+    - Many more than B, mixed with lots of reviews that have nothing to do with sound quality
+    - "0: standard doesn't support Chinese"
+  scripts:
+    - label: "A: content.std (standard)"
+    - label: "B: content (cjk)"
+  explanation: |
+    standard splits 「音質」 into the two terms 「音」 and 「質」, and match defaults to OR: reviews with 「質」 (good quality, good meat texture) also match, several times as many as with cjk.
+    The top hit is still about sound quality (documents with both characters score higher), but lots of noise is recalled, and aggregations and counts will be wrong.
+    ★ Chinese fields need the right analyzer: cjk (bigrams, no plugin), smartcn, IK (real segmentation, plugin required). The analyzer is fixed when the index is created; changing it later needs a reindex.
+
+- id: object-vs-nested
+  title: Cross-matching in object arrays
+  question: Same orders, same condition (one item is a phone with quantity ≥ 2), but orders_object's items is a plain object. How many does A find?
+  options:
+    - The same as B
+    - More than B
+    - Fewer than B
+  scripts:
+    - label: "A: orders_object (object)"
+    - label: "B: orders (nested)"
+  explanation: |
+    Object arrays are flattened: an order's items.category = [手機, 男裝], items.quantity = [1, 3], and each condition checks "whether the array has it" independently,
+    so a phone (quantity 1) and menswear (quantity 3) from different items also match. A finds more, and the extra ones are all wrong.
+    ★ When objects in an array need "the fields of the same object matched together", the mapping must use nested (and queries must use nested queries).
+
+- id: nested-doc-count
+  title: How many documents does orders have?
+  question: orders has 80,000 orders and 200,000 items (nested). What does docs.count in _cat/indices show?
+  options:
+    - 80000, the same as _count
+    - '280115'
+    - '200115'
+  scripts:
+    - label: "A: _cat/indices"
+    - label: "B: _count"
+  explanation: |
+    Each nested object is a separate (hidden) document in Lucene, stored with its parent: 80,000 + 200,000 = 280,000.
+    _count and _search count only top-level documents (80,000); _cat/indices shows the Lucene-level count.
+    nested is handy, but every item is a document: with many items the index grows, and updating any item rewrites the whole order.
+
+- id: total-10000
+  title: What is hits.total?
+  question: reviews has over 20,000 reviews. Searching without any condition, what is hits.total.value?
+  options:
+    - '21556'
+    - 10000, with relation gte
+    - 10, since size defaults to 10
+  scripts:
+    - label: "A: the default"
+    - label: "B: track_total_hits: true"
+  explanation: |
+    For performance, Elasticsearch counts exactly only up to 10,000 by default: beyond that total is { "value": 10000, "relation": "gte" } (at least ten thousand).
+    That way it can stop early once it has found "the top few", without counting every matching document.
+    For an exact number: track_total_hits: true, or just use _count. For pagination, "N pages in total" is usually shown as "10,000+".
+
+- id: no-time-zone
+  title: date_histogram without a time zone
+  question: Orders per day for 9/1–9/7 (Taiwan time). A has no time_zone. How many buckets does it return?
+  options:
+    - 7, the same as B
+    - "8: cut in UTC, a Taiwan day starts at 8 a.m., leaving an extra piece at each end"
+    - An error
+  scripts:
+    - label: "A: no time_zone"
+    - label: "B: time_zone +08:00"
+  explanation: |
+    Date fields are stored in UTC, and date_histogram also cuts in UTC by default: 00:00–08:00 on 9/1 Taiwan time belongs to 8/31 in UTC, so there's an extra bucket and every day's number is wrong.
+    It's the same trap as TimescaleDB's time_bucket. Kibana automatically passes the browser's time zone; remember to add it in your own queries.
+
+- id: terms-on-text
+  title: A terms aggregation on a text field
+  question: To find the most common review titles, you run a terms aggregation on title (a text field). What's the result?
+  options:
+    - Grouped by title, top 10
+    - Grouped by analyzed terms (很, 滿意, 不…)
+    - "An error: text fields can't be aggregated by default"
+  scripts:
+    - label: terms aggregation on a text field
+  explanation: |
+    Aggregations and sorting need doc values (data stored per field), and text fields have no doc values; fielddata can build them in memory, but it's off by default (very heap-hungry).
+    ★ Use keyword for string fields you aggregate, or add a keyword subfield under the text field (fields: { keyword: { type: keyword } }) and aggregate title.keyword.
+    Even with fielddata on, you'd be aggregating analyzed "terms", not whole titles.
+
+- id: deep-paging
+  title: Jump to page 1001
+  question: With 10 per page, you want page 1001 — from 10000, size 10. What's the result?
+  options:
+    - Hits 10,001–10,010
+    - "An error: Result window is too large"
+    - An empty result
+  scripts:
+    - label: from 10000
+  explanation: |
+    from + size can't exceed index.max_result_window (10,000 by default). The reason: every shard has to rank its top from + size and then merge them, which gets more expensive the deeper you go (the deep paging problem).
+    ★ Solutions: search_after (use the sort values of the previous page's last hit as a cursor, with a PIT for a fixed snapshot), or scroll (bulk export, no longer recommended).
+    User interfaces usually don't offer "jump to page 1000" either, only "next page" or narrowing the search.
+
+- id: dynamic-mapping
+  title: Dynamic mapping decides the type
+  question: A new index has no mapping. The first document's zip is the number 100 and the second's is the string "10A". Can the second be written?
+  options:
+    - Yes, Elasticsearch is schemaless
+    - "No: zip has already been inferred as long"
+    - Yes, and zip automatically becomes text
+  scripts:
+    - label: Write two documents in turn
+  explanation: |
+    A field without a mapping gets its type inferred by dynamic mapping the first time it appears (number → long, string → text + keyword subfield, date-formatted string → date), and then it's fixed.
+    The second document's "10A" can't be converted to long, so the whole document is rejected (mapper_parsing_exception). Once decided, a field's type can't change; you can only create a new index and _reindex.
+    ★ In production always define mappings up front (or use index templates), and if needed set "dynamic": "strict" to reject undefined fields and avoid a field explosion (mapping explosion).
+
+- id: near-real-time
+  title: Searching right after writing
+  question: The index's refresh_interval is 30 seconds. Right after writing a document, can _search find it? What about GET by _id?
+  options:
+    - Both get it
+    - Search can't find it; GET gets it
+    - Neither gets it until 30 seconds pass
+  scripts:
+    - label: Search and GET right after writing
+  explanation: |
+    Elasticsearch is "near real-time": writes go into an in-memory buffer first (plus the translog so nothing is lost) and become searchable segments only on refresh.
+    By default it refreshes every second (paused when an index hasn't been searched for a while); here it's set to 30 seconds, so an immediate search finds nothing.
+    GET /_doc/1 is real-time: before a refresh it reads from the translog / buffer.
+    When you need "searchable right after writing", add ?refresh=wait_for to the write (wait for the next refresh); don't use ?refresh=true every time (it creates lots of small segments).

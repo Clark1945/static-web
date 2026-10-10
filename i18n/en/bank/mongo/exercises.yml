@@ -1,0 +1,308 @@
+- id: find-pending
+  chapter: Query basics
+  title: Pending orders
+  prompt: |
+    Find orders whose status is pending, showing only _id, customerId and total.
+    Sort by _id ascending and take the first 5.
+  hints:
+    - "db.orders.find(filter, projection): the projection is { customerId: 1, total: 1 }; _id is shown by default."
+    - "Then chain .sort({ _id: 1 }).limit(5)"
+  explanation: |
+    find's second argument is the "projection", which decides which fields are returned, like the column list in SQL's SELECT.
+    1 means include, 0 means exclude; _id is returned by default, write _id: 0 to drop it. Apart from _id, you can't mix 1 and 0 in one projection.
+
+- id: count-gold
+  chapter: Query basics
+  title: How many gold customers
+  prompt: |
+    How many customers have vipLevel gold?
+  hints:
+    - db.customers.countDocuments(filter)
+  explanation: |
+    countDocuments really counts by the filter; estimatedDocumentCount() can't take a filter but reads the collection's metadata directly, so it's very fast.
+    The old count() is no longer recommended.
+
+- id: distinct-city
+  chapter: Query basics
+  title: Which shipping cities exist
+  prompt: |
+    List every shipping city (shipping.city) that appears in any order, without duplicates.
+  hints:
+    - db.orders.distinct("field"); use dot notation for embedded fields, "shipping.city"
+  explanation: |
+    Fields of embedded documents are accessed with "dot notation": shipping.city. It's the same in find filters, projections and sorts; remember the quotes.
+
+- id: find-nested-projection
+  chapter: Query basics
+  title: A product's category path
+  prompt: |
+    Look up product 540's name (name) and category path (category.path), without _id.
+  hints:
+    - 'findOne({ _id: 540 }, { _id: 0, name: 1, "category.path": 1 })'
+  explanation: |
+    The product document stores the category name and full path directly (denormalized), so there's no need to query categories.
+    The cost: when a category is renamed, every product has to be updated too (updateMany). This suits read-heavy, rarely-written data.
+
+- id: price-range
+  chapter: Query operators
+  title: Products priced 1000–2000
+  prompt: |
+    How many products have a price (price) between 1000 and 2000 (including 1000 and 2000)?
+  hints:
+    - '{ price: { $gte: 1000, $lte: 2000 } }'
+  explanation: |
+    Comparison operators: $eq, $ne, $gt, $gte, $lt, $lte, $in, $nin. Several conditions on one field in the same object are ANDed.
+
+- id: status-in
+  chapter: Query operators
+  title: Cancelled or returned orders
+  prompt: |
+    How many orders have status cancelled or returned?
+  hints:
+    - '{ status: { $in: ["cancelled", "returned"] } }'
+  explanation: |
+    To match one field against several values, $in is more concise than $or and more likely to use an index.
+
+- id: or-condition
+  chapter: Query operators
+  title: Gold customers in eastern Taiwan
+  prompt: |
+    Customers who live in 花蓮縣 (Hualien) or 台東縣 (Taitung) and are at the gold level.
+    Show only name and city (with _id), sorted by _id.
+  hints:
+    - "Use city: { $in: [...] }, or $or: [ {…}, {…} ]."
+  explanation: |
+    $or is for an "or" across different fields: { $or: [ { city: "花蓮縣" }, { vipLevel: "gold" } ] }.
+    For an "or" on one field, just use $in.
+
+- id: exists
+  chapter: Query operators
+  title: Customers without a birthday
+  prompt: |
+    How many customers have no birthDate field?
+  hints:
+    - '{ birthDate: { $exists: false } }'
+  explanation: |
+    In a document database a field can "not exist", which is different from "its value is null".
+    ★ But { birthDate: null } finds both documents whose value is null and documents without the field (shown in the traps).
+
+- id: regex
+  chapter: Query operators
+  title: Apple products
+  prompt: |
+    How many products have a name (name) starting with "Apple"?
+  hints:
+    - "Write a regular expression directly: { name: /^Apple/ }"
+  explanation: |
+    A case-sensitive regular expression anchored with ^ can use an index (like SQL's LIKE 'Apple%');
+    patterns without a fixed prefix, like /apple/i or /Pro/, must scan everything. For full-text search use a text index or Atlas Search.
+
+- id: array-contains
+  chapter: Arrays and embedded documents
+  title: How many limited-edition products
+  prompt: |
+    How many products have 「限量」 (limited edition) in their tags array?
+  hints:
+    - 'Just write { tags: "限量" }; it compares against every element of the array.'
+  explanation: |
+    ★ An equality condition on an array field matches if "any element" is equal; no need for $in.
+    But { tags: ["限量"] } means "the whole array equals ["限量"] exactly", which is entirely different (shown in the traps).
+
+- id: array-all
+  chapter: Arrays and embedded documents
+  title: Best-selling and limited ($all)
+  prompt: |
+    Products that have both the 「熱銷」 (best seller) and 「限量」 (limited edition) tags. Show only _id, sorted by _id.
+  hints:
+    - '{ tags: { $all: ["熱銷", "限量"] } }'
+  explanation: |
+    $all: the array must contain every listed element, in any order. { tags: ["熱銷", "限量"] } instead requires the array to be "exactly" these two, in the same order.
+
+- id: array-size
+  chapter: Arrays and embedded documents
+  title: Products with exactly 3 tags
+  prompt: |
+    How many products have exactly 3 elements in tags?
+  hints:
+    - '{ tags: { $size: 3 } }'
+  explanation: |
+    $size can only match "exactly equal"; you can't write { $size: { $gt: 2 } }.
+    To compare sizes use { "tags.2": { $exists: true } } (a 3rd element exists = at least 3), or $expr with { $size: "$tags" }.
+
+- id: array-dot
+  chapter: Arrays and embedded documents
+  title: Orders that bought product 540
+  prompt: |
+    How many orders have product 540 among their items (items)?
+  hints:
+    - '{ "items.productId": 540 }'
+  explanation: |
+    Dot notation also reaches into arrays: items.productId matches the productId of every element in items.
+    An index on this field becomes a "multikey index", with one index entry per item.
+
+- id: elem-match
+  chapter: Arrays and embedded documents
+  title: One item meeting two conditions ($elemMatch)
+  prompt: |
+    How many orders have any "one" item with both "qty at least 3" and "unitPrice at least 10000"?
+    Both conditions must hold on the "same" item.
+  hints:
+    - '{ items: { $elemMatch: { qty: { $gte: 3 }, unitPrice: { $gte: 10000 } } } }'
+  explanation: |
+    ★ Interview favorite: with { "items.qty": { $gte: 3 }, "items.unitPrice": { $gte: 10000 } },
+    the two conditions can be satisfied by "different items" (one item with 3 cheap units, another with 1 expensive unit), so you get more results.
+    To require one element to satisfy several conditions at once, you must use $elemMatch.
+
+- id: nested-specs
+  chapter: Arrays and embedded documents
+  title: 512GB phones
+  prompt: |
+    Products whose spec specs.storage_gb is 512. Show only name (with _id), sorted by _id.
+  hints:
+    - '{ "specs.storage_gb": 512 }'
+  explanation: |
+    Every category has different specs fields; that's the benefit of a document database's "flexible schema": no column per kind of spec.
+    Compare PostgreSQL's JSONB: specs->>'storage_gb'; in MongoDB you just use dot notation.
+
+- id: agg-status
+  chapter: Aggregation pipeline
+  title: Orders per status
+  prompt: |
+    Use aggregate to count orders per status, highest count first.
+    Output: _id is the status, count is the number.
+  hints:
+    - '[ { $group: { _id: "$status", count: { $sum: 1 } } }, { $sort: { count: -1 } } ]'
+  explanation: |
+    $group is SQL's GROUP BY: _id is the grouping key, "$field" means the field's value, and $sum: 1 is count(*).
+    Data in an aggregation pipeline flows down through each stage; each stage's output is the next stage's input.
+
+- id: agg-city-revenue
+  chapter: Aggregation pipeline
+  title: Top 5 cities by revenue
+  prompt: |
+    Considering only delivered orders, compute the revenue (sum of total) per shipping city and take the top 5.
+    Output: _id is the city, revenue is the revenue, highest first.
+  hints:
+    - $match to filter → $group to sum → $sort → $limit
+    - 'The city is an embedded field: "$shipping.city"'
+  explanation: |
+    ★ Put $match as early as possible: shrinking the data first makes later stages fast, and a leading $match can use an index.
+    (The optimizer actually moves $match stages forward when it can, but writing it yourself is safer.)
+
+- id: agg-unwind
+  chapter: Aggregation pipeline
+  title: Top 5 products by units sold ($unwind)
+  prompt: |
+    Compute the total units sold per product (sum of qty in items, all statuses) and take the top 5.
+    Output: _id is the product id, name is the product name, qty is the units, highest first; ties by _id ascending.
+  hints:
+    - "$unwind splits the items array: an order with 3 items becomes 3 documents."
+    - '$group by "$items.productId", with the name from { $first: "$items.name" }.'
+  explanation: |
+    $unwind is the key to embedded arrays: flatten the array into several documents so each item can be aggregated.
+    It's like PostgreSQL's unnest(), or joining orders with order_items.
+
+- id: agg-monthly
+  chapter: Aggregation pipeline
+  title: Orders per month in 2026 (time zones)
+  prompt: |
+    Count the orders in each month of 2026 (in Taiwan time).
+    Output: _id is a month string like "2026-01", count is the number, sorted by month.
+  hints:
+    - 'Filter: orderDate between ISODate("2026-01-01T00:00:00+08:00") and ISODate("2027-01-01T00:00:00+08:00").'
+    - 'Group: { $dateToString: { format: "%Y-%m", date: "$orderDate", timezone: "Asia/Taipei" } }'
+  explanation: |
+    ★ MongoDB always stores dates in UTC. An order at 2 a.m. on 9/1 Taiwan time is 6 p.m. on 8/31 in UTC.
+    Write the time zone (+08:00) when filtering, and pass timezone when grouping too, or each month's boundary is off by 8 hours (shown in the traps).
+
+- id: agg-lookup
+  chapter: Aggregation pipeline
+  title: Orders with the customer name ($lookup)
+  prompt: |
+    Customer 1's 3 newest orders, with the customer's name.
+    Output: _id, total, customerName, newest order first.
+  hints:
+    - $match → $sort → $limit → $lookup into customers → $project
+    - '$lookup returns an array; get the name with { $first: "$customer.name" }.'
+  explanation: |
+    $lookup is a LEFT OUTER JOIN, with the result placed in an array field.
+    ★ $limit before $lookup: join only 3 documents, rather than joining every order and then taking 3.
+    $lookup's foreignField needs an index, otherwise every document scans the whole collection (the lab shows how big the difference is).
+
+- id: update-set
+  chapter: Writes
+  title: Update stock ($set)
+  prompt: |
+    Set product 540's stock (stock) to 20, leaving the other fields unchanged.
+  hints:
+    - 'db.products.updateOne({ _id: 540 }, { $set: { stock: 20 } })'
+  explanation: |
+    ★ Updates must use update operators ($set, $inc, $push…). With replaceOne the whole document is replaced and every other field disappears (shown in the traps).
+
+- id: update-inc
+  chapter: Writes
+  title: Raise all drink prices by 5 ($inc)
+  prompt: |
+    Add 5 to the price of every product whose category name (category.name) is 「飲料」 (drinks).
+  hints:
+    - 'updateMany with { $inc: { price: 5 } }'
+  explanation: |
+    $inc is atomic, which suits counters, stock and likes. updateOne updates only the first matching document; updateMany updates them all.
+
+- id: update-push
+  chapter: Writes
+  title: Add an item to an order ($push)
+  prompt: |
+    Append an item to the end of order 77621's items array:
+    { productId: 1, name: "測試商品", qty: 1, unitPrice: 100, discount: 0 }
+  hints:
+    - '{ $push: { items: { … } } }'
+  explanation: |
+    Array update operators: $push appends, $addToSet adds only if absent, $pull removes by condition, $pop removes the first or last.
+    To add several at once use $push: { items: { $each: [ … ] } }, optionally with $slice to keep only the newest N.
+    Note: adding an item doesn't update total automatically; change it yourself with $inc in the same update (a document database has no trigger to compute it for you).
+
+- id: update-addtoset
+  chapter: Writes
+  title: Add a tag without duplicates ($addToSet)
+  prompt: |
+    Add the 「熱銷」 (best seller) tag to product 540; if it's already there, don't add it again.
+  hints:
+    - '{ $addToSet: { tags: "熱銷" } }'
+  explanation: |
+    $addToSet treats the array as a set. Running it twice gives the same result; this "safe to repeat" property is called idempotence.
+
+- id: upsert
+  chapter: Writes
+  title: Update if it exists, insert if not (upsert)
+  prompt: |
+    Update the customer with email "new@example.com": set name to 「新會員」 (new member) and vipLevel to "normal".
+    If this email doesn't exist, insert a new document.
+  hints:
+    - 'updateOne(filter, { $set: { … } }, { upsert: true })'
+  explanation: |
+    When upsert inserts, it merges "the equality fields in the filter" (email) with the $set fields into the new document.
+    Fields you only want set "on insert" go in $setOnInsert (e.g. a creation time).
+    ★ Under high concurrency, two simultaneous upserts of the same email can insert two documents, so the filter field needs a unique index (customers.email has one).
+
+- id: delete-many
+  chapter: Writes
+  title: Delete old cancelled orders
+  prompt: |
+    Delete every order whose "status is cancelled and order time is before 2023-01-01 Taiwan time".
+  hints:
+    - 'deleteMany({ status: "cancelled", orderDate: { $lt: ISODate("2023-01-01T00:00:00+08:00") } })'
+  explanation: |
+    deleteMany({}) deletes every document but keeps the collection and its indexes; drop() deletes the collection and indexes too.
+    To delete expired data automatically, create a TTL index: createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 }).
+
+- id: find-one-and-update
+  chapter: Writes
+  title: Update and get the new value back (findOneAndUpdate)
+  prompt: |
+    Decrease product 540's stock by 1 and, in the same operation, get back the document "after" the update (only name and stock).
+  hints:
+    - 'findOneAndUpdate(filter, { $inc: { stock: -1 } }, { returnDocument: "after", projection: { name: 1, stock: 1 } })'
+  explanation: |
+    findOneAndUpdate is an atomic "update and read". By default it returns the document "before" the update; add returnDocument: "after".
+    With the filter { _id: 540, stock: { $gt: 0 } } it becomes a stock deduction that never oversells (compare the Lua script in the Redis lab).

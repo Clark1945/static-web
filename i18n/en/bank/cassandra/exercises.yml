@@ -1,0 +1,328 @@
+- id: by-order-id
+  chapter: Primary key queries
+  title: Look up an order by its id
+  prompt: |
+    Look up order 77621's status (status) and total (total).
+  hints:
+    - The primary key of orders is order_id; WHERE order_id = … is a "single-partition" read.
+  explanation: |
+    Cassandra places data on nodes by the hash (token) of the partition key. When WHERE gives the full partition key, the coordinator can go straight to the responsible node,
+    reading from one place no matter how many machines the cluster has. This is Cassandra's fastest, and most "correct", kind of query.
+
+- id: customer-orders
+  chapter: Primary key queries
+  title: A customer's orders (newest first)
+  prompt: |
+    List all orders of customer 4242, newest first.
+    Return the four columns order_time, order_id, status and total.
+  hints:
+    - orders can't be queried by customer_id (it isn't the primary key); find the table "stored per customer".
+    - orders_by_customer's clustering key is order_time DESC, so the data is already sorted inside the partition; no ORDER BY needed.
+  explanation: |
+    Rows in one partition are stored together, sorted by the clustering key. The table was created with CLUSTERING ORDER BY (order_time DESC),
+    so it reads back newest first with no sorting. This is Cassandra's "query-first" design: decide how you'll query first, then design the table's primary key.
+
+- id: latest-three
+  chapter: Primary key queries
+  title: The 3 most recent orders
+  prompt: |
+    Customer 1's 3 most recent orders, returning order_id and total, newest first.
+  hints:
+    - LIMIT works within a partition too, and since the data is already in time order it stops after the 3rd row.
+  explanation: |
+    Because the partition is already sorted by order_time DESC, LIMIT 3 reads just the first 3 rows of the partition, instead of sorting everything first as in SQL.
+
+- id: oldest-first
+  chapter: Primary key queries
+  title: Oldest first
+  prompt: |
+    Customer 4242's orders, oldest first instead, returning order_time and order_id.
+  hints:
+    - ORDER BY can only use clustering keys, and only in the table's defined order or exactly the reverse.
+  explanation: |
+    ORDER BY can only name clustering keys: either the same order as the table definition, or fully reversed (reading the partition backwards).
+    ORDER BY order_time ASC reverses the whole clustering order, so order_id is reversed too. Sorting by total isn't possible; sort in the application, or create another table with total as the clustering key.
+
+- id: year-count
+  chapter: Primary key queries
+  title: Orders in one year
+  prompt: |
+    How many orders did customer 1 place in 2025 (Taiwan time)? Return a single number.
+  hints:
+    - Use equality on the partition key; the clustering key order_time can take a range.
+    - Add the time zone to the time strings, e.g. '2025-01-01 00:00:00+0800', so the server's time zone doesn't matter.
+  explanation: |
+    Equality on the partition key + a range on the clustering key is the most typical Cassandra query: find the partition, then slice a section out of the sorted data.
+    COUNT(*) within a single partition is cheap; COUNT(*) without the partition key scans the whole table (shown in the traps).
+    Without a time zone, Cassandra interprets time strings in the server's time zone. This container happens to be Asia/Taipei, but another machine could give a different result, so spell it out.
+
+- id: login-by-email
+  chapter: Primary key queries
+  title: Log in by email
+  prompt: |
+    Look up the customer id (customer_id) and name (name) for the email 'user04242@example.com'.
+  hints:
+    - The primary key of customers is customer_id; querying by email needs another table.
+  explanation: |
+    The same customer data is stored twice with different partition keys (customers, customers_by_email), so every kind of lookup is a single-partition read.
+    The cost is two writes, and an email change must update both tables (usually with a logged BATCH to make sure both writes eventually succeed).
+
+- id: multi-get
+  chapter: Primary key queries
+  title: Look up several products at once
+  prompt: |
+    Look up product_id, name and price for products 540, 541 and 542 in one query. Any order.
+  hints:
+    - The partition key can use IN.
+  explanation: |
+    With IN on the partition key, the coordinator must fetch each partition separately (possibly on different nodes); with many values, the coordinator is under a lot of pressure.
+    A few to a few dozen are fine in practice; beyond that, sending several single-partition queries in parallel from the application is usually faster and more stable.
+
+- id: category-top
+  chapter: Clustering keys and time buckets
+  title: The 5 most expensive in a category
+  prompt: |
+    The 5 most expensive products in the 「手機」 (phones) category, returning name and price, highest price first.
+  hints:
+    - products_by_category's partition key is category and its clustering key is price DESC.
+  explanation: |
+    The clustering key (price DESC, product_id) keeps the products in a partition sorted by price, highest first;
+    product_id is in the clustering key too so that "two products with the same price" have different primary keys and don't overwrite each other.
+
+- id: price-range
+  chapter: Clustering keys and time buckets
+  title: A price range
+  prompt: |
+    In the 「筆電」 (laptops) category, products priced between 20,000 and 30,000 (inclusive),
+    returning product_id, name and price, lowest price first.
+  hints:
+    - Clustering keys can be sliced with >= and <=.
+    - Lowest first is the reverse of the table's order, so write ORDER BY.
+  explanation: |
+    Range conditions can only go on clustering keys, and in clustering key order: price must be restricted before product_id can be.
+    ORDER BY price ASC reads the partition backwards, with no extra sort.
+
+- id: day-count
+  chapter: Clustering keys and time buckets
+  title: Orders on one day
+  prompt: |
+    How many orders were there on 2026-09-01 (Taiwan time)? Return a single number.
+  hints:
+    - orders_by_day has one partition per day; order_day is the date in Taiwan time.
+  explanation: |
+    This is called "time bucketing": if the partition key were just "all orders" or "the year", partitions would grow without limit;
+    with the date as partition key, each partition has a bounded size (tens to hundreds of orders a day), and a time range query reads just those days' partitions.
+    The bucket size depends on the write volume: very write-heavy systems may use hours, or even split further with (date, a hash from 0–9).
+
+- id: week-by-day
+  chapter: Clustering keys and time buckets
+  title: Orders per day for a week
+  prompt: |
+    How many orders were there on each day from 2026-09-01 to 2026-09-07 (Taiwan time)?
+    Return order_day and the count, earliest date first.
+  hints:
+    - The partition key can list the 7 days with IN.
+    - GROUP BY can only use primary key columns; here, the partition key order_day.
+  explanation: |
+    GROUP BY can only use primary key columns, in primary key order (partition key → a prefix of the clustering keys).
+    You'll see the warning "Aggregation query used on multiple partition keys": IN spans several partitions, and the coordinator has to read them all back and aggregate.
+    Seven days is fine; large reports usually use a tool like Spark, or accumulate separately at write time (e.g. a counter table).
+
+- id: evening-orders
+  chapter: Clustering keys and time buckets
+  title: Orders on one evening
+  prompt: |
+    Orders on 2026-09-01 from 8 p.m. to 10 p.m. (Taiwan time, including 8 p.m., excluding 10 p.m.),
+    returning order_time, order_id and total, earliest first.
+  hints:
+    - First select the day with the partition key, then slice a range with the clustering key order_time.
+  explanation: |
+    orders_by_day's clustering key order_time uses the default ASC, so it reads back earliest first.
+    The times returned are UTC (2026-09-01T12:00:00Z is 8 p.m. Taiwan time); Cassandra always stores timestamps in UTC.
+
+- id: first-of-each-day
+  chapter: Clustering keys and time buckets
+  title: The first order of each day
+  prompt: |
+    For 2026-09-01, 09-02 and 09-03, the earliest order of each day,
+    returning order_day, order_time and order_id.
+  hints:
+    - LIMIT caps the whole result; there's a syntax that caps rows "per partition".
+  explanation: |
+    PER PARTITION LIMIT n returns only the first n rows of each partition (in clustering order); it's Cassandra's "top n per group".
+    In SQL you'd need ROW_NUMBER() OVER (PARTITION BY …).
+
+- id: latest-buyers
+  chapter: Clustering keys and time buckets
+  title: Who recently bought this product
+  prompt: |
+    The 5 most recent purchases of product 540, returning customer_id and order_time, newest first.
+  hints:
+    - Order items are stored a second time, per product.
+  explanation: |
+    The same item is stored in two places: orders (per order) and items_by_product (per product).
+    Writes are cheap in Cassandra and cross-partition reads are expensive, so "write several copies so every query reads one partition" is the norm.
+
+- id: filter-in-partition
+  chapter: Clustering keys and time buckets
+  title: Filtering within a partition
+  prompt: |
+    Among customer 4242's orders, which have status returned? Return order_id and total.
+  hints:
+    - status isn't part of the primary key, so filtering on it directly is rejected.
+    - The query is already restricted to a single partition, so the cost of filtering depends only on that partition's size.
+  explanation: |
+    ALLOW FILTERING isn't bad in itself; what's bad is ALLOW FILTERING "without restricting the partition", which scans the whole table.
+    With the partition key restricted, it only filters row by row within one partition (this customer's few orders), which is cheap.
+
+- id: distinct-partitions
+  chapter: Clustering keys and time buckets
+  title: List every category
+  prompt: |
+    Which categories are in products_by_category? One row per category, returning only category. Any order.
+  hints:
+    - DISTINCT can only be used on partition keys.
+  explanation: |
+    DISTINCT works only on partition keys (and static columns); it reads only the head of each partition, not its rows.
+    But it still walks every partition, so with many partitions it's still a full table scan. The order follows the partition key's token (hash), so it looks random.
+
+- id: collections
+  chapter: Collections and functions
+  title: set and map
+  prompt: |
+    Look up product 540's tags (a set) and the value of the key color in specs. Return two columns.
+  hints:
+    - "A single map value can be read with column['key']."
+  explanation: |
+    set, list and map suit "small amounts of data read together with the row" (a few dozen elements at most).
+    A non-frozen collection can update individual elements; a frozen one (e.g. each element of orders.items, a list<frozen<order_item>>) can only be replaced as a whole.
+
+- id: avg-decimal
+  chapter: Collections and functions
+  title: Average order value
+  prompt: |
+    For customer 4242: the number of orders, the total amount, the average amount (with decimals) and the largest amount. Return 4 numbers.
+  hints:
+    - "Aggregate functions: COUNT, SUM, AVG, MIN, MAX."
+    - total is an int, and AVG(int) is also an int (the fraction is dropped).
+  explanation: |
+    CQL's AVG returns the same type as the column: the average of an int column drops the fraction (9672.17 becomes 9672).
+    For decimals, CAST to double or decimal first. Aggregates are also recommended only within a single partition.
+
+- id: writetime
+  chapter: Collections and functions
+  title: Write time
+  prompt: |
+    Look up customer 4242's name, and that column's write time WRITETIME (in microseconds). Return two columns.
+  hints:
+    - WRITETIME(column) returns the timestamp of the column's last write.
+  explanation: |
+    Every column value (cell) in Cassandra carries its own write timestamp and TTL. When a column is written several times, the largest timestamp wins (last write wins),
+    which is why Cassandra needs no locks and can merge data across replicas. Primary key columns have no WRITETIME.
+
+- id: batch-two-tables
+  chapter: Writes
+  title: Write a new customer into two tables
+  prompt: |
+    Add a customer: customer_id 99999, name '測試會員', email 'test99999@example.com',
+    signup_date '2026-10-06', vip_level 'normal'.
+    The customer must be written to both customers and customers_by_email (email, customer_id, name).
+  hints:
+    - Both tables must be written, and both writes must be guaranteed to succeed eventually.
+    - BEGIN BATCH … APPLY BATCH wraps several statements together.
+  explanation: |
+    A logged BATCH (the default) first writes the whole batch to the batchlog, guaranteeing "everything is eventually applied"; it keeps denormalized tables consistent.
+    It isn't a transaction: there's no isolation, others may read a half-written state, and there's no ROLLBACK.
+    BATCH isn't for speed either: a batch spanning many partitions actually slows the coordinator down.
+
+- id: update-set
+  chapter: Writes
+  title: Change stock and add a tag
+  prompt: |
+    Product 540 sold out: set its stock (stock) to 0 and add '缺貨' (out of stock) to tags (keeping the existing tags).
+  hints:
+    - "Add elements to a set with tags = tags + {'…'}."
+  explanation: |
+    tags = tags + {…} writes only the new element, with no need to read the whole set first. Writing tags = {'缺貨'} would replace the whole set,
+    so the existing 「特價」 tag would be gone, and replacing it whole also creates a tombstone.
+
+- id: map-update
+  chapter: Writes
+  title: Change one key of a map
+  prompt: |
+    For product 540's specs: change color to '黑' (black) and remove the key '5g', leaving the other specs unchanged.
+  hints:
+    - "A map key can be set with SET specs['key'] = value."
+    - "Remove a key with DELETE specs['key'] FROM …, or SET specs = specs - {'key'}."
+  explanation: |
+    In a non-frozen map every key is a separate cell that can be updated or deleted on its own, without reading the whole map and writing it back.
+
+- id: counter
+  chapter: Writes
+  title: Counters
+  prompt: |
+    Another order bought 2 units of product 540: add 2 to units and 1 to orders in product_sales.
+  hints:
+    - Counters can only be changed with UPDATE … SET column = column + n.
+  explanation: |
+    A counter is a distributed increment/decrement with no read-before-write. But it isn't idempotent: retrying after a write timeout may add twice.
+    So counters suit statistics (views, units sold), not amounts or stock that must be exact.
+
+- id: lwt-insert
+  chapter: Writes
+  title: An email can't be registered twice
+  prompt: |
+    Someone tries to register a new customer with the email 'user04242@example.com' (customer_id 99999, name '冒用者', "impostor").
+    Write it to customers_by_email, but if the email already exists the original data must not be overwritten.
+  hints:
+    - Cassandra's INSERT overwrites by default (upsert) and never reports a duplicate primary key.
+    - INSERT … IF NOT EXISTS is a lightweight transaction (LWT).
+  explanation: |
+    IF NOT EXISTS uses Paxos to confirm the primary key doesn't exist yet before writing; the returned [applied] tells you whether it was written,
+    and when it wasn't, the current values come back too. The cost is several extra round trips between nodes (about 4 times the latency of a normal write), so use it only where you really need "check, then write".
+
+- id: lwt-update
+  chapter: Writes
+  title: Optimistic locking
+  prompt: |
+    You want to change product 540's price to 27999, but only if the price is "still 30000"
+    (you read 30000 earlier, and someone may have changed it since).
+  hints:
+    - UPDATE … IF column = value doesn't write when the condition fails.
+  explanation: |
+    The current price is 29949, so the condition fails: [applied] = false, the price is unchanged, and the returned price column shows the current value.
+    This is compare-and-set (optimistic locking): instead of locking the data, a conditional write detects whether someone changed it first.
+
+- id: ttl-update
+  chapter: Writes
+  title: A column that disappears by itself
+  prompt: |
+    Customer 4242 joined a promotion: vip_level is temporarily upgraded to 'gold' and expires automatically after 24 hours (86400 seconds).
+  hints:
+    - USING TTL seconds, written after UPDATE table.
+  explanation: |
+    The TTL is set on "the columns written by this write", not the whole row: when it expires only vip_level disappears (becoming a tombstone), and name and city remain.
+    To expire the whole row, rewrite the whole row with INSERT … USING TTL, or set default_time_to_live when creating the table.
+
+- id: range-delete
+  chapter: Writes
+  title: Delete a time range of data
+  prompt: |
+    Customer 1 asks to delete order records from before 2023 (before 2023-01-01 Taiwan time).
+    Delete these rows from orders_by_customer with a single CQL statement.
+  hints:
+    - DELETE's WHERE can use a range on the clustering key.
+  explanation: |
+    A range delete writes only "one" range tombstone, however many rows are in the range.
+    Querying the 39 rows first and deleting them one by one would create 39 tombstones, which every later read of this partition has to skip (the lab shows the impact of tombstones).
+
+- id: delete-column
+  chapter: Writes
+  title: Delete one column
+  prompt: |
+    Customer 4242 asks to delete their birthday: delete only birth_date and keep the other columns.
+  hints:
+    - DELETE column FROM table WHERE …
+  explanation: |
+    In Cassandra, DELETE on a column has the same effect as UPDATE … SET birth_date = null: both write a tombstone.
+    The data doesn't leave the disk right away; it's only purged by compaction after gc_grace_seconds (10 days by default).

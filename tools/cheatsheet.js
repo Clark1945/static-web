@@ -103,11 +103,11 @@
       if (pre.querySelector(".copy")) return;
       const raw = pre.querySelector("code").textContent;
       const btn = document.createElement("button");
-      btn.type = "button"; btn.className = "copy"; btn.textContent = "複製";
+      btn.type = "button"; btn.className = "copy"; btn.textContent = t("copy");
       btn.addEventListener("click", async () => {
-        try { await navigator.clipboard.writeText(raw); btn.textContent = "已複製"; }
-        catch { btn.textContent = "請手動選取複製"; }
-        setTimeout(() => (btn.textContent = "複製"), 1600);
+        try { await navigator.clipboard.writeText(raw); btn.textContent = t("copied"); }
+        catch { btn.textContent = t("copy.manual"); }
+        setTimeout(() => (btn.textContent = t("copy")), 1600);
       });
       pre.appendChild(btn);
     });
@@ -134,8 +134,8 @@
     const total = matched.size;
     hits.hidden = !query;
     hits.textContent = total
-      ? `「${input.value.trim()}」在所有資料庫共找到 ${total} 節，分頁上的數字是各資料庫的節數。`
-      : `沒有任何章節包含「${input.value.trim()}」。`;
+      ? t("cs.hits", { q: input.value.trim(), n: total })
+      : t("cs.none", { q: input.value.trim() });
     observeAll();
   }
 

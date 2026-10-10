@@ -1,0 +1,52 @@
+- id: time-range
+  title: 時間条件あり vs なし
+  question: A と B はそれぞれいくつの chunk を読みましたか？
+  goal: page_views には 27 個の chunk（各 7 日）があります。どちらも閲覧数を数えますが、一方は 9/1 の 1 日だけ、もう一方はすべてです。
+  takeaway: |
+    A は 1 つの chunk しか読まず（0.6 ms）、B は 27 個すべてを読みました（約 30 ms）。
+    hypertable は時間で chunk に区切られ、各 chunk は自分の時間範囲を記録しています。クエリに時間条件があると、プランナーは範囲外の chunk を直接飛ばします（chunk exclusion）。
+    インデックスを見る必要すらありません。これが時系列データベースで「データが増え続けても、最近のデータの検索は同じように速い」理由です。
+  queries:
+    - label: A：9/1 の 1 日
+    - label: B：すべて
+
+- id: cast-defeats
+  title: 時刻の列を型変換する
+  question: 3 つの文の結果は同じですが、読んだ chunk の数も同じですか？
+  goal: 結果が同じになる 2 つの書き方：時間範囲、または view_time を日付に変換してから比較。
+  takeaway: |
+    A は 1 つの chunk を読み（0.6 ms）、B、C は結果は同じなのに 27 個すべての chunk を読みました（約 60 ms、100 倍遅い）。
+    時刻の列に型変換や関数（::date、date_trunc、AT TIME ZONE）を使うと、プランナーは chunk の時間範囲と比較できず、すべてを読むしかありません。
+    ★ 常に time >= 開始 AND time < 終了 という半開区間で書き、演算は「値」の側に置きましょう。
+  queries:
+    - label: A：view_time >= … AND view_time < …
+    - label: B：view_time::date = '2026-09-01'
+    - label: C：date_trunc('day', view_time) = …
+
+- id: now-relative
+  title: 相対時間：now() - interval
+  question: B は now() を使っています。読む chunk は減りましたか？実行計画を展開して、Index Cond にどんな条件が追加されているか見てください。
+  goal: ダッシュボードで最もよくある「直近 N 日」。now() は定数ではありませんが、TimescaleDB はそれでも chunk を除外できるのか確かめます。
+  takeaway: |
+    A の時刻は定数なので、計画時に chunk が除外されます。
+    B も関係する chunk しか読みません：TimescaleDB は計画の段階で now() - interval '30 days' を先に定数として計算し、
+    実行計画の Index Cond には元の条件と計算済みの時刻（例：view_time > '2026-09-08 …'）の両方が現れるので、chunk は同じように除外されます。
+    （純粋な PostgreSQL のパーティションテーブルでは、now() があると実行開始まで待ってからパーティションを除外し、実行計画に「Subplans Removed」が表示されます。）
+    データは 9/30 までなので、B の結果は今日の日付によって変わります：今日が 9/30 から 30 日以上離れていれば、すべての chunk が除外されて 0 が返ります。
+    結論：ダッシュボードでよくある「直近 N 日」の書き方はまったく問題なく、定数に書き換える必要はありません。
+  queries:
+    - label: A：固定の時刻（9/30 から 30 日前まで）
+    - label: B：now() - interval '30 days'（今日の日付によって結果が変わる）
+
+- id: other-column
+  title: 時刻以外の列の条件だけ
+  question: A はいくつの chunk を読みましたか？各 chunk はどうやって商品 540 を見つけましたか？
+  goal: 商品 540 の閲覧数だけを見ます。page_views には (product_id, view_time DESC) のインデックスがありますが、時間条件はありません。
+  takeaway: |
+    A には時間条件がないので 27 個すべての chunk を見る必要がありますが、各 chunk には自分の (product_id, view_time) インデックスがあり、1 回ずつインデックスを引くだけなので、やはり高速です（1 ms 未満）。
+    B は時間範囲を加えたので、5 つの chunk しか見ません。
+    hypertable に作成したインデックスは自動で各 chunk に作成され、クエリでは「chunk ごとに 1 回ずつインデックスを引く」ことになります。
+    chunk が多いほど、時間条件のないクエリはインデックスを引く回数が増えるので、chunk を細かくしすぎないようにしましょう（最新の chunk とそのインデックスがメモリの 25% に収まるのが目安）。
+  queries:
+    - label: A：product_id だけ
+    - label: B：product_id ＋ 時間範囲

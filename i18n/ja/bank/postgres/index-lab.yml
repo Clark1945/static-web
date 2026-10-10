@@ -1,0 +1,150 @@
+- id: seq-scan
+  title: インデックスのないクエリ
+  question: 結果はたった 5 件なのに、なぜ数十ミリ秒もかかるのでしょう？実行計画の Seq Scan と Rows Removed by Filter に注目してください。
+  goal: |
+    perf.orders_big には 200 万件の注文があり、主キー以外のインデックスはありません。
+    まず「会員 4242 の最新 5 件の注文」を探して、PostgreSQL がどう実行するかを見てみましょう。
+  takeaway: |
+    Seq Scan = 先頭の行から最後の行まで読むこと。インデックスがないと、データベースは 4242 の注文がどこにあるか分からないので、200 万件すべてを読んでから絞り込むしかありません。
+    Rows Removed by Filter は無駄に読んだ件数です。Parallel は PostgreSQL が複数の worker で並行してスキャンしたことを示しますが、全表スキャンであることに変わりはありません。
+  sqls:
+    - label: 会員 4242 の最新 5 件の注文
+
+- id: single-index
+  title: 単一列インデックスを作成
+  question: スキャン方法は何に変わりましたか？実行計画にまだ Sort はありますか？
+  goal: |
+    customer_id に B-tree インデックスを作成し、同じクエリをもう一度実行して実行時間を比較します。
+  takeaway: |
+    Bitmap Index Scan + Bitmap Heap Scan になります：まずインデックスで該当データの位置を探し、テーブルに戻ってその行を読みます。通常は数百倍速くなります。
+    ただしまだ Sort があります：インデックスは customer_id でしか並んでおらず、同じ会員の注文はインデックス内で order_date 順になっていません。
+    そのため、この会員の注文をすべて読み出して並べ替えてからでないと、最新の 5 件がどれか分かりません。
+    インデックスの作成自体にも時間がかかります。「作成時間」とインデックスのサイズも見てみましょう。
+  sqls:
+    - label: 会員 4242 の最新 5 件の注文
+
+- id: composite-index
+  title: 複合インデックスで並べ替えも不要に
+  question: Sort ノードはまだありますか？
+  goal: |
+    (customer_id, order_date) の複合インデックスを作成して、もう一度実行します。
+    先に idx_customer を削除しておくと、どのインデックスが効いているかが分かりやすくなります。
+  takeaway: |
+    複合インデックスはまず customer_id で並び、customer_id が同じなら order_date で並びます。
+    4242 を見つけた時点でデータはすでに時刻順に並んでいるので、末尾から 5 件読んで（Index Scan Backward）止まるだけ。Sort も、他の注文を読むことも不要です。
+    ★ インデックスを設計するときは、WHERE の等値条件を前に、ORDER BY の列を後ろに置きます。
+    補足：LIMIT を外し、しかも該当データが非常に少ない（この会員は 6 件だけ）場合、オプティマイザはそれでも Bitmap Scan と並べ替えを選ぶことがあります。
+    6 件の並べ替えにはほとんど時間がかからないからです。データが多いほど、または LIMIT があるほど、複合インデックスの利点ははっきりします。
+  sqls:
+    - label: 会員 4242 の最新 5 件の注文
+
+- id: leftmost-prefix
+  title: 列の順序が重要（最左プレフィックス）
+  question: まだ idx_date を作らずにそのまま実行してください。複合インデックスには order_date があるのに、なぜ使えないのでしょう？
+  goal: |
+    (customer_id, order_date) のインデックスだけがある状態で、「日付だけ」で特定の日の注文を検索します。
+  takeaway: |
+    ★ 最左プレフィックスの原則：(customer_id, order_date) のインデックスは「姓、次に名」で並んだ電話帳のようなもので、名前だけでは引けません。
+    検索条件に customer_id がないので、このインデックスの並びを利用できず、全表スキャンするしかありません。
+    idx_date を作成してからもう一度実行すると、Index Scan か Bitmap Scan になります。
+  sqls:
+    - label: 2026-09-01 の 1 日分の注文
+
+- id: function-on-column
+  title: 列に関数をかけるとインデックスが効かなくなる
+  question: どちらも同じ日を検索しています。実行計画は同じですか？
+  goal: |
+    idx_date（前のステップで作成）があることを確認してください。「特定の日を検索する」2 つの書き方を比較します。
+  takeaway: |
+    インデックスには order_date の元の値が保存されています。A は列を変換してから比較するので、データベースはすべての行を計算し直す必要があり、インデックスは役に立ちません（Seq Scan）。
+    B は列を範囲と直接比較するので、インデックス内ですばやく位置を特定できます。しかも count(*) は件数だけ分かればよいので、テーブルすら読みません（Index Only Scan）。
+    ★ 原則：関数や演算は「定数の側」に置き、列を包まないこと。同様に、WHERE amount * 2 > 1000 は amount > 500 と書き換えます。
+  sqls:
+    - label: A：列を日付に変換してから比較
+    - label: B：範囲で比較
+
+- id: low-selectivity
+  title: 選択性が低すぎるとインデックスは使われない
+  question: どちらのクエリにも使えるインデックスがあります。PostgreSQL は両方で使いましたか？
+  goal: |
+    status にインデックスを作成します。status の値は 4 種類だけ：delivered が 82%、pending はわずか 3% です。
+  takeaway: |
+    delivered を検索すると 8 割のデータが該当し、インデックス経由で 1 件ずつテーブルを読む方がかえって遅いので、オプティマイザは全表スキャンを選びます。
+    pending は 3% だけなので、インデックスを使う価値があります（Bitmap Scan）。ただし 3% でも 6 万件あり、テーブルからの読み出しに時間がかかるので、前のステップほど劇的には速くなりません。
+    ★「インデックスがあっても使われるとは限らない」。オプティマイザは統計情報からコストを見積もり、最も速いと考える方法を選びます。選択性の低い列（性別、ステータス）だけにインデックスを作っても、たいてい効果はありません。
+  sqls:
+    - label: A：delivered を検索（82%）
+    - label: B：pending を検索（3%）
+
+- id: index-only-scan
+  title: Index Only Scan：テーブルを読む必要すらない
+  question: A と B のスキャン方法はどう違いますか？Heap Fetches はいくつですか？
+  goal: |
+    (customer_id, order_date) の複合インデックスがあることを確認してください。「インデックスにある列だけを取得」と「もう 1 列多く取得」を比較します。
+  takeaway: |
+    A が必要とする列はすべてインデックスにあるので、インデックスから直接読めば済みます。これが Index Only Scan で、テーブルに戻る必要がありません。
+    B は amount も必要ですが、インデックスにないのでテーブルに戻って読むしかありません。
+    これが SELECT * がよくない理由の 1 つでもあります：Index Only Scan がほぼ不可能になるのです。
+    PostgreSQL 11 からは INCLUDE で列をインデックスに「添付」できます：CREATE INDEX … (customer_id, order_date) INCLUDE (amount)。
+    ★ 最後にインデックス一覧のサイズを見てみましょう：インデックスは容量を使い、INSERT / UPDATE / DELETE のたびに同期して更新されるので、書き込みが遅くなります。すべての列にインデックスを作れないのはこのためです。
+  sqls:
+    - label: A：customer_id、order_date だけを取得
+    - label: B：amount も取得
+
+- id: partial-index
+  title: Partial Index：必要なデータだけにインデックスを作る
+  question: まずインデックスなしで 1 回実行し、次に 2 つのインデックスをそれぞれ作成します。どちらが速いですか？2 つのインデックスのサイズはどれくらい違いますか？
+  goal: |
+    カスタマーサポートはよく「最新の処理待ち（pending）の注文」を検索します。pending は 3% だけで、残り 97% の注文はこの条件で検索されることがありません。
+    2 種類のインデックスを比較します：通常の status インデックスと、「pending の注文だけを含む」部分インデックスです。
+  takeaway: |
+    部分インデックス（Partial Index）は WHERE 条件に合う行だけを含みます。idx_pending は 6 万件だけで、サイズは完全なインデックスの約 10 分の 1 です。
+    order_date で並んでいるので、「最新 20 件」は末尾から 20 件読むだけ（Index Scan Backward）で、並べ替えは不要です。
+    ★ オプティマイザがこれを使うには、クエリの WHERE がインデックスの条件（ここでは status = 'pending'）を「含意」していなければなりません。
+    よくある用途：削除されていないデータだけをインデックス化（WHERE deleted_at IS NULL）、未処理のジョブだけをインデックス化（WHERE done = false）。
+  sqls:
+    - label: 最新 20 件の pending 注文
+
+- id: expression-index
+  title: Expression Index：演算結果にインデックスを作る
+  question: 式インデックスの作成前後で、実行計画はどう変わりますか？
+  goal: |
+    ステップ 5 で「列を関数で包むとインデックスが効かなくなる」と説明しました。しかしクエリを書き換えられない場合（例えばアプリでこの形に固定されている）、別の手があります：
+    「関数の結果」に直接インデックスを作るのです。
+  takeaway: |
+    式インデックス（Expression Index）は演算後の値を保存し、クエリが「まったく同じ」式を書けば使われます。
+    最も典型的な例は大文字小文字を区別しない email 検索です：CREATE INDEX ON users (lower(email)) と WHERE lower(email) = lower(?) の組み合わせ。
+    ★ 式には IMMUTABLE（入力が同じなら結果は常に同じ）な関数しか使えません。now() やタイムゾーン設定に依存する変換は使えないので、
+    ここでは AT TIME ZONE 'Asia/Taipei' を明示しています。
+  sqls:
+    - label: 「台湾の日付」で特定の日を検索
+
+- id: brin-index
+  title: BRIN：非常に小さいインデックス、ただし前提あり
+  question: 両方のテーブルに BRIN インデックスがあります。A と B は両方ともそれを使いましたか？さらに B-tree を作ってサイズを比べてみましょう。
+  goal: |
+    perf.order_events は時刻順に書き込まれたイベント記録（ログのようなもの）で、ディスク上の順序が event_time と一致しています。
+    一方 perf.orders_big の order_date はランダムな順序で書き込まれています。両方のテーブルに BRIN インデックスを作り、効果を比較します。
+  takeaway: |
+    BRIN（Block Range Index）は 1 行ずつ記録せず、「ディスクブロックの範囲ごとの最小値と最大値」だけを記録するので、驚くほど小さくなります（数十 KB。B-tree なら数十 MB）。
+    order_events は時刻順に書き込まれているので、各ブロック範囲の時刻の幅が狭く、特定の日を検索しても数個の範囲を読むだけで済みます（Heap Blocks: lossy の行）。
+    orders_big はランダムな順序なので、どのブロック範囲も数年分にまたがり、BRIN ではどのブロックも除外できません。オプティマイザはそれを使わず、全表スキャンします。
+    ★ BRIN は「追記のみで、時刻と相関がある」大きなテーブルに向いています：ログ、IoT センサーデータ、取引記録。TimescaleDB もこの性質を大いに活用しています。
+  sqls:
+    - label: A：order_events の特定の日
+    - label: B：orders_big の特定の日
+
+- id: gin-jsonb
+  title: GIN：JSONB にインデックスを作る
+  question: GIN インデックスを作成した後、A と B は両方とも速くなりましたか？
+  goal: |
+    order_events.meta は JSONB で、例えば {"channel": "app", "device": "ios", "coupon": "VIP2026"} です。
+    VIP2026 クーポンを使ったイベントは約 1000 分の 1 だけです。GIN インデックス作成前後で、2 つのクエリの書き方の違いを比較します。
+  takeaway: |
+    GIN（Generalized Inverted Index）は「転置インデックス」です：JSON 内の各キーと値、配列の各要素を分解し、それらがどの行に現れるかを記録します。
+    @>、?、?|、?& の演算子に対応しているので、A は Bitmap Index Scan になります。B の ->> と = は対象外なので、全表スキャンのままです。
+    ★ GIN を使うには @> と書きます。特定のキーがよく検索されるなら、そのキーだけに B-tree の式インデックスを作ることもできます：CREATE INDEX ON … ((meta->>'coupon'))。
+    text[] 配列の @>、&& も GIN を使います。全文検索や pg_trgm のあいまい検索も GIN の応用です（Elasticsearch の核心も転置インデックスです）。
+  sqls:
+    - label: A：@> で包含
+    - label: B：->> で値を取り出して比較

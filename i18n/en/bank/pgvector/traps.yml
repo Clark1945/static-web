@@ -1,0 +1,116 @@
+- id: self-match
+  title: Which product is the most similar?
+  question: Looking for the 3 products most like product 806, which one ranks first?
+  options:
+    - Another pair of Sony wireless headphones
+    - 806 itself, at distance 0
+    - A random one, since the distances are all about the same
+  sqls:
+    - label: Without excluding itself
+  explanation: |
+    An item's distance to itself is 0, so it always ranks first. "Similar products" and "related articles" must remember WHERE id <> 806,
+    and excluding just itself isn't enough: duplicate data for the same product (relisted under another id) is also at nearly 0 distance and often needs a distance threshold to exclude.
+
+- id: negative-inner-product
+  title: Sorting <#> descending
+  question: Wanting the 3 with "the largest inner product" (most similar), you write ORDER BY embedding <#> x DESC. Are the results the most similar?
+  options:
+    - Yes, <#> is the inner product, and larger means more similar
+    - No, <#> returns the "negative" inner product, so DESC finds the least similar
+    - "An error: <#> can't be sorted"
+  sqls:
+    - label: "A: <#> … DESC"
+    - label: "B: <#> ascending"
+  explanation: |
+    pgvector's <#> returns the negative inner product: the more similar, the smaller (-1 is the most similar). A finds drinks and fitness equipment, completely unrelated to headphones.
+    The reason: PostgreSQL indexes only support "ascending" distance ordering, so the inner product is negated to make every operator "smaller is closer".
+    ★ All three operators work the same: ORDER BY operator ascending LIMIT k gives the k most similar. Multiply by -1 yourself when displaying the inner product.
+
+- id: opclass-mismatch
+  title: Can L2 distance use a cosine index?
+  question: Every passages vector has length 1, so L2 distance and cosine distance give exactly the same ranking. The index is vector_cosine_ops; will B, using <-> (L2), use the index?
+  options:
+    - Yes, the ranking is the same and the planner knows it can
+    - No, B scans the whole table and sorts
+    - Yes, but the conversion takes a little extra time
+  sqls:
+    - label: "A: <=> (cosine)"
+    - label: "B: <-> (L2)"
+  explanation: |
+    A vector index is tied to the operator class it was created with: vector_cosine_ops serves only <=>, vector_l2_ops only <->, vector_ip_ops only <#>.
+    The planner doesn't know "the vectors all have length 1 so the rankings are the same", so B falls back to a Parallel Seq Scan computing 100,000 distances.
+    ★ Decide which distance to use before creating the index (usually as the embedding model's documentation recommends), and always use the same operator in application queries.
+
+- id: similarity-expression
+  title: ORDER BY similarity DESC
+  question: A and B return exactly the same result. Which can use the HNSW index?
+  options:
+    - Both
+    - Only A
+    - Only B, because similarity is what the index stores
+  sqls:
+    - label: "A: ORDER BY distance"
+    - label: "B: ORDER BY 1 - distance DESC (similarity, highest first)"
+  explanation: |
+    The index only recognizes the form "column operator value" in ascending order. Wrap it in another operation (1 - …, multiplying by -1, a cast) and it's no longer recognized, so B is a full table scan.
+    ★ Always ORDER BY the raw distance; compute similarity only in SELECT for display.
+
+- id: missing-limit
+  title: No LIMIT
+  question: You want everything sorted by distance, so there's no LIMIT. Will the HNSW index be used?
+  options:
+    - Yes, the index is already sorted
+    - No, it scans the whole table and sorts
+  sqls:
+    - label: No LIMIT
+  explanation: |
+    HNSW and IVFFlat are designed to "find the k nearest", and their results are approximate; they return at most what ef_search (default 40) or the probed lists cover.
+    Without a LIMIT the planner won't use them (doing so would miss data) and instead computes distances over the whole table and sorts. Vector searches must always have a LIMIT.
+
+- id: filter-fewer-rows
+  title: How many rows with a filter?
+  question: Tenant 7 is only 2% of all data (about 2,000 rows). With WHERE tenant_id = 7, taking the nearest 10, how many rows come back?
+  options:
+    - 10; tenant 7 has 2,000 rows, so there are plenty
+    - Fewer than 10
+    - 0; WHERE can't be combined with a vector index
+  sqls:
+    - label: HNSW + WHERE
+  explanation: |
+    HNSW first finds ef_search (default 40) nearest candidates and then applies WHERE; on average fewer than 1 of those 40 belong to tenant 7, so too few rows come back (this query returns only 2).
+    This is the classic "filter after taking k" (post-filtering) problem, the most common pitfall in multi-tenant RAG. Solutions:
+    1. pgvector 0.8: SET hnsw.iterative_scan = relaxed_order keeps searching automatically when there aren't enough candidates.
+    2. Raise hnsw.ef_search (e.g. 1000), at the cost of speed.
+    3. A partial index (WHERE tenant_id = 7) or partitioning by tenant; when little data remains after filtering, just search exactly (the "multi-tenancy" exercise).
+    The "filtering" lab measures different filter ratios and approaches.
+
+- id: unknown-words
+  title: Text the model doesn't recognize
+  question: The vocabulary has neither "iPhone" nor "15". What does searching with embed('iPhone 15') give?
+  options:
+    - Apple phones
+    - "An error: the vector is NULL"
+    - "Any 3 products: every distance is NULL, so the sort is meaningless"
+  sqls:
+    - label: "A: embed('iPhone 15')"
+    - label: "B: search with it"
+  explanation: |
+    When embed() recognizes no words it returns NULL, every distance is NULL, ORDER BY has no effect, and you get whichever products "happen to come first" in the table, with no error.
+    Real embedding models never return NULL, but for unseen proper nouns (model numbers, new product names, internal codes) they also produce inaccurate vectors, and results that look like "an answer" are wrong.
+    ★ For exact matching on model numbers, brands or part numbers, use keyword search (or hybrid search); vector search is for "similar meaning".
+
+- id: avg-not-normalized
+  title: The length of an average vector
+  question: Every products vector has length 1. What is the length of the average vector of the headphone categories?
+  options:
+    - 1; averaging doesn't change the length
+    - Less than 1, and shorter the more spread out they are
+    - More than 1, since many vectors were added
+  sqls:
+    - label: Length of the average vector
+  explanation: |
+    Averaging vectors pointing in different directions partly cancels them out, so the length is below 1; the more spread out (both categories combined), the shorter.
+    For finding the nearest k this doesn't change the ranking (cosine only looks at direction; for length-1 data, scaling the query vector doesn't change inner product or L2 rankings either).
+    But "the distance values" change: inner product and L2 distance depend on the query vector's length, so a fixed threshold (e.g. relevant only if inner product > 0.8) filters out too much.
+    To compare an average vector against a threshold, l2_normalize(avg(…)) first.
+    "User taste vector = average of purchased products" is the same situation: the more scattered the interests, the shorter and more featureless the average vector.

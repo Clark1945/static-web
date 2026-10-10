@@ -1,0 +1,152 @@
+- id: double-quotes
+  title: Double quotes around strings
+  question: A writes the tag value in double quotes, "db-01". What does it return?
+  options:
+    - The same as B, 3 rows
+    - No data, and no error
+    - A syntax error
+  scripts:
+    - label: 'A: host = "db-01"'
+    - label: "B: host = 'db-01'"
+  explanation: |
+    In InfluxQL double quotes mean an "identifier" (a measurement, tag or field name); only single quotes are string values.
+    host = "db-01" means "the host tag equals the value of the tag / field named db-01"; there's no column called db-01, so nothing matches, and there's no error.
+    ★ Rule: single quotes for values, double quotes for names (required only when a name has special characters or is a reserved word).
+
+- id: tag-is-string
+  title: Are tag values numbers?
+  question: sensor_id was written as 2, 3, 4…. Does A, comparing with the number sensor_id = 2, find sensor 2's data?
+  options:
+    - Yes, InfluxDB converts the type automatically
+    - "No: tag values are always strings"
+    - "An error: type mismatch"
+  scripts:
+    - label: "A: sensor_id = 2"
+    - label: "B: sensor_id = '2'"
+  explanation: |
+    Tag values are always strings; "2" and the number 2 aren't equal, so A returns nothing (and no error).
+    Likewise, tags can't be compared numerically (sensor_id > 3 is a string comparison) and can't be summed or averaged. Numbers you need to compute with should be stored as fields.
+
+- id: no-tz
+  title: GROUP BY time(1d) without tz()
+  question: db-01's daily maximum for 9/18 and 9/19 (Taiwan time). A has no tz(). How many rows does it return?
+  options:
+    - 2 rows, the same as B
+    - "3 rows: cut in UTC, a Taiwan day starts at 8 a.m., leaving an extra piece at each end"
+    - "An error: the time range has a time zone, so GROUP BY must too"
+  scripts:
+    - label: "A: no tz()"
+    - label: "B: tz('Asia/Taipei')"
+  explanation: |
+    InfluxDB stores all times in UTC, and GROUP BY time(1d) cuts at UTC midnight by default. 00:00–08:00 on 9/18 Taiwan time belongs to 9/17 in UTC, so there's an extra row and every day's value is wrong.
+    It's the same trap as TimescaleDB's time_bucket and Elasticsearch's date_histogram; in Flux, set option location.
+
+- id: counter-reset
+  title: derivative after a counter reset
+  question: requests is a cumulative counter, and api started over from 0 after restarting at 03:00 on 9/15. A computes requests per minute with derivative. What is the 03:00 row?
+  options:
+    - About 20–30, like the rows around it
+    - '0'
+    - A very large negative number
+  scripts:
+    - label: "A: derivative"
+    - label: "B: non_negative_derivative"
+  explanation: |
+    derivative is "this point minus the previous": the cumulative value before the restart was 3.6 million, and after the restart counting starts over, so the difference is -3.6 million; dashboards show a strange deep valley, and totals are dragged down.
+    ★ For cumulative counters always use non_negative_derivative / non_negative_difference (Flux: nonNegative: true, or increase()).
+
+- id: group-by-field
+  title: GROUP BY a field
+  question: customer_id is a field, not a tag. A wants the number of orders per customer. What does it get?
+  options:
+    - One group per customer
+    - Everything squeezed into one group (customer_id is empty)
+    - "An error: can't GROUP BY a field"
+  scripts:
+    - label: "A: GROUP BY customer_id"
+  explanation: |
+    GROUP BY only knows tags: when there's no tag called customer_id, it treats that tag as empty for every point, so all orders end up in one group, with no error.
+    ★ Columns you need to group by should be designed as tags; but a column with many values like a customer number makes series explode as a tag.
+    This kind of "group by a high-cardinality column" analysis isn't InfluxDB's strength; leave it to PostgreSQL, ClickHouse or Flux's group() (which can group by fields, but slowly).
+
+- id: select-only-tags
+  title: SELECTing only tags
+  question: A queries only the host tag, to list which host each point belongs to. What's the result?
+  options:
+    - 3 rows, one host each
+    - No data
+    - Every host name (distinct)
+  scripts:
+    - label: "A: SELECT host"
+    - label: "B: plus a field"
+  explanation: |
+    InfluxQL's SELECT needs at least one field; with only tags it returns no data (points are made of fields; tags just describe them).
+    To list tag values use SHOW TAG VALUES; to see each point's tags, SELECT them together with a field.
+
+- id: limit-per-series
+  title: GROUP BY host with LIMIT 1
+  question: How many rows does SELECT * FROM cpu GROUP BY host LIMIT 1 return?
+  options:
+    - 1 row
+    - "5 rows: 1 for each host (each series)"
+    - An error
+  scripts:
+    - label: LIMIT 1 + GROUP BY host
+  explanation: |
+    With GROUP BY tag, LIMIT / OFFSET limit rows "per series"; to limit the number of series use SLIMIT / SOFFSET.
+    This "split into series first, handle each series separately" way of thinking runs through all of InfluxDB (Flux's "each table separately" is the same).
+
+- id: unbounded-flux
+  title: Flux without range
+  question: A's Flux has no range() and wants to read all cpu data. What's the result?
+  options:
+    - It reads all the data (slowly)
+    - "An error: range is required to bound the time"
+    - It reads the last hour by default
+  scripts:
+    - label: "A: from |> filter"
+  explanation: |
+    Flux doesn't allow reads "without a time range": from must be followed by range (cannot submit unbounded read).
+    The storage engine splits data into shards by time and needs the time range to decide which shards to read. InfluxQL without a time condition reads everything (from 1677 to now), which is just as slow.
+
+- id: flux-window-time
+  title: aggregateWindow's _time
+  question: Both cut by the hour; InfluxQL's (A) time is the start of the interval. What is _time for Flux's aggregateWindow (B)?
+  options:
+    - Also the start of the interval
+    - The end of the interval
+    - The time of the last point in the interval
+  scripts:
+    - label: "A: InfluxQL GROUP BY time(1h)"
+    - label: "B: Flux aggregateWindow(every: 1h)"
+  explanation: |
+    aggregateWindow defaults to timeSrc: "_stop": _time is the end of the interval (the 13:00–14:00 average is labeled 14:00). InfluxQL labels the start (13:00).
+    When mixing the two, or rewriting InfluxQL as Flux, charts shift by one interval. To align them set timeSrc: "_start".
+
+- id: same-timestamp
+  title: Two writes in the same second
+  question: The same customer (the same tag set) placed two orders in the same second, each written as a point. How many come back from a query?
+  options:
+    - "2"
+    - "1: the later one overwrote the earlier one"
+    - "The write fails: duplicate timestamp"
+  scripts:
+    - label: Write two points, then query
+  explanation: |
+    The same measurement + tag set + timestamp is "the same point": the field values written later overwrite the earlier ones, the first order is gone, and there's no error at all.
+    ★ Solutions: a finer timestamp precision (ms, µs, ns), or put a distinguishing value in a tag (but not a high-cardinality one).
+    This is also how InfluxDB corrects data: write the same point in time again.
+
+- id: field-type-conflict
+  title: Writing a different type to the same field
+  question: The first write is total=100i (integer), and a minute later total=1.5 (float). What happens to the second write?
+  options:
+    - It succeeds, and total becomes a float automatically
+    - "It fails: field type conflict; only the first point is in the database"
+    - It succeeds, and 1.5 is truncated to 1
+  scripts:
+    - label: Two writes, then query
+  explanation: |
+    Within one shard a field can have only one type: the first write was an integer, so later floats are rejected (field type conflict).
+    In one batch (one request), a single conflicting line can get the whole batch rejected, so programs must check the response and log the failed data.
+    ★ When sending numbers, always decide the type explicitly (integers with i); don't infer it from whether a value "looks like an integer" (e.g. 100.0 serialized as 100).

@@ -1,0 +1,123 @@
+- id: multi-no-rollback
+  title: Does a failed transaction ROLLBACK?
+  question: In A's transaction the HSET fails (a is a String, not a Hash). What is a after EXEC?
+  options:
+    - "1: the whole transaction is rolled back"
+    - "2: the other commands still take effect"
+    - The whole EXEC is rejected and nothing happens
+  scripts:
+    - label: "A: fails at run time (wrong type)"
+    - label: "B: fails while queuing (syntax error)"
+  explanation: |
+    ★ Redis transactions have no ROLLBACK. There are two cases:
+    A: the command is well-formed but fails at run time (e.g. wrong type): only that command fails, the others take effect, so a = 2, b = 3.
+    B: a syntax error is detected while queuing: EXEC returns EXECABORT, the whole transaction is skipped, and a is still 1.
+    The official reasoning is that "run-time errors are programming mistakes and should be caught during development". Use a Lua script when you need all-or-nothing.
+
+- id: set-drops-ttl
+  title: SET clears the expiry
+  question: A first SETs a key that expires in 100 seconds, then SETs a new value. What is the final TTL?
+  options:
+    - About 100
+    - -1 (no expiry)
+    - -2 (the key doesn't exist)
+  scripts:
+    - label: "A: SET again"
+    - label: "B: with KEEPTTL"
+  explanation: |
+    ★ SET overwrites the whole key, including its expiry. This bites cache updates easily:
+    a cache entry that should expire in 30 minutes becomes permanent after one "SET new value", and eventually memory runs out.
+    When updating, pass EX again, or use KEEPTTL (Redis 6.0+) to keep the existing expiry.
+    "Modifying" commands like INCR, HSET and LPUSH don't touch the TTL; only SET and GETSET, which replace the whole value, do.
+
+- id: ttl-codes
+  title: TTL's -1 and -2
+  question: What does TTL return for a key that "doesn't exist"?
+  options:
+    - '-1'
+    - '-2'
+    - '0'
+    - nil
+  scripts:
+    - label: "A: a key that doesn't exist"
+    - label: "B: exists, but has no expiry"
+  explanation: |
+    -2: the key doesn't exist (or already expired and was deleted).
+    -1: the key exists but has no expiry.
+    A positive number: seconds remaining. PTTL is the millisecond version with the same rules.
+
+- id: list-range-inclusive
+  title: LRANGE's end is inclusive
+  question: A List has 12 elements. How many does LRANGE list 0 10 return?
+  options:
+    - '10'
+    - '11'
+    - '12'
+  scripts:
+    - label: "A: LRANGE list 0 10"
+    - label: "B: LRANGE list 0 -1"
+  explanation: |
+    The end of LRANGE, ZRANGE and GETRANGE is "inclusive": 0 10 is 11 elements.
+    That's the opposite of Java's subList(0, 10) and Python's list[0:10] (end exclusive), so pagination is where off-by-one errors happen.
+    -1 means the last element, so 0 -1 is everything.
+
+- id: zset-tie-order
+  title: Order on equal scores
+  question: alice, bob and carol all have 100 points. In A, sorted highest first (REV), what order are the three tied members in?
+  options:
+    - "Insertion order: alice, bob, carol"
+    - "Reverse name order: carol, bob, alice"
+    - It differs on every run
+  scripts:
+    - label: "A: highest first (REV)"
+    - label: "B: lowest first"
+  explanation: |
+    On equal scores a Sorted Set orders members lexicographically; REV reverses everything, giving carol, bob, alice.
+    For a leaderboard where "whoever got there first ranks higher on a tie", the usual trick is to encode time into the score: score = points × 10^10 + (a large number − timestamp).
+
+- id: get-wrong-type
+  title: Reading a type with the wrong command
+  question: product:540 is a Hash. What does GET on it return?
+  options:
+    - nil
+    - A WRONGTYPE error
+    - The contents of the whole Hash
+  scripts:
+    - label: "A: GET"
+    - label: "B: HGETALL"
+  explanation: |
+    Every key has a fixed type, and a command for the wrong type gets a WRONGTYPE error. When unsure, check with TYPE key first.
+    The most common case in Java: using opsForValue() on a key one moment and opsForHash() the next.
+
+- id: hll-is-estimate
+  title: HyperLogLog is an estimate
+  question: Merging 30 days of September with HyperLogLog to estimate "unique customers who ordered in September". Is it the same as the exact value from a Bitmap?
+  options:
+    - Exactly the same
+    - Very close, with a small error
+    - Far off
+  scripts:
+    - label: "A: HyperLogLog estimate"
+    - label: "B: exact Bitmap count"
+  explanation: |
+    HyperLogLog is a probabilistic algorithm with a standard error of about 0.81%; with little data it's often exactly right, and the error shows as the volume grows.
+    In exchange its memory is fixed: whether counting a thousand people or a hundred million, one HyperLogLog takes at most 12 KB.
+    A Bitmap is exact, but its size is proportional to "the largest id": ids up to 100 million need 12 MB.
+    A common interview question is "how do you count daily UV": a Set for small volumes, a Bitmap for sequential ids, HyperLogLog for huge volumes where some error is acceptable.
+
+- id: keys-vs-scan
+  title: KEYS vs SCAN
+  question: A and B both look for keys starting with product:99. Does B's SCAN return every matching key in one call?
+  options:
+    - Yes, the same as KEYS
+    - Not necessarily; keep scanning with the returned cursor until it's back to 0
+    - It raises an error
+  scripts:
+    - label: "A: KEYS (scans the whole database)"
+    - label: "B: SCAN (from cursor 0, about 100 at a time)"
+  explanation: |
+    ★ KEYS scans every key at once (about 40,000 here). Redis runs commands on a single thread, so every other request waits while KEYS runs;
+    in production with millions of keys, one KEYS can freeze the service for seconds, which is why the showcase's learner account can't use KEYS at all.
+    SCAN looks at a small batch each time (COUNT is "roughly how many to look at", not how many to return) and returns [next cursor, matching keys in this batch].
+    A batch may contain no matches at all; keep calling with the new cursor until it returns 0 before you're done.
+    SCAN may return duplicate keys, so the program has to de-duplicate.

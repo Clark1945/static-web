@@ -1,0 +1,593 @@
+# PostgreSQL 練習問題：日本語訳（翻訳する欄位だけ。それ以外は中国語の原本を使う）
+- id: status-count
+  chapter: 基本の集計
+  title: ステータス別の注文数
+  prompt: |
+    注文ステータスごとの注文数を集計してください。
+    表示：status、注文数。
+    並び順：注文数の多い順。
+  hints:
+    - GROUP BY status で同じステータスの注文を 1 つのグループにまとめます。
+    - count(*) で各グループの件数を数えます。ORDER BY では SELECT で付けた別名をそのまま使えます。
+  explanation: |
+    最も基本的なグループ集計です。ORDER BY では SELECT の別名 orders を使えますが、WHERE では使えません：
+    WHERE が実行される時点では SELECT はまだ実行されておらず、別名が存在しないからです。
+
+- id: having
+  chapter: 基本の集計
+  title: 注文が 50 回を超える会員
+  prompt: |
+    注文回数が 50 回を超える会員を探してください。
+    表示：会員 id、注文回数。
+    並び順：注文回数の多い順。同数なら会員 id の昇順。
+  hints:
+    - まず GROUP BY customer_id で会員ごとの注文回数を数えます。
+    - 「グループ化した後」の条件は HAVING に書きます。WHERE には書けません。
+  explanation: |
+    ★ 面接頻出：WHERE はグループ化の「前」に行を絞り込み、HAVING はグループ化の「後」にグループを絞り込みます。
+    集約関数（count、sum…）は HAVING にしか書けず、WHERE に書くとエラーになります。
+
+- id: distinct-city
+  chapter: 基本の集計
+  title: 重複のない配送先都市
+  prompt: |
+    全注文に登場する配送先都市（shipping_city）を重複なしで一覧にしてください。
+    表示：都市。
+    並び順：都市名。
+  hints:
+    - SELECT DISTINCT は完全に同じ行を 1 行にまとめます。
+  explanation: |
+    DISTINCT と GROUP BY shipping_city の結果は同じです。重複を除くだけなら DISTINCT の方が直感的で、
+    件数も同時に数えたいときに GROUP BY を使います。
+
+- id: vip-count
+  chapter: 基本の集計
+  title: VIP レベル別の会員数
+  prompt: |
+    VIP レベル（vip_level）ごとの会員数を集計してください。
+    表示：vip_level、会員数。
+    並び順：問わない。
+  hints:
+    - 1 問目と同じ書き方で、テーブルを customers に変えるだけです。
+  explanation: |
+    この問題は順序を問わないので、ORDER BY がなくても正解です。
+    ただし覚えておきましょう：ORDER BY がないとき、データベースは返す順序を「保証しません」。実行のたびに変わる可能性があります。
+
+- id: never-ordered
+  chapter: JOIN
+  title: 一度も注文していない会員
+  prompt: |
+    一度も注文したことのない会員を一覧にしてください。
+    表示：会員 id、氏名、登録日。
+    並び順：登録日の古い順。同じ日なら id の昇順。先頭 10 件のみ。
+  hints:
+    - INNER JOIN では注文のない会員が除外されます。LEFT JOIN で全会員を残しましょう。
+    - LEFT JOIN で注文が見つからないとき、注文側の列はすべて NULL になります。WHERE o.id IS NULL でそれらを取り出します。
+  explanation: |
+    「対応するデータがない行を探す」には 2 つの定番の書き方があります：
+    LEFT JOIN … WHERE 右表.id IS NULL、または WHERE NOT EXISTS (サブクエリ)。
+    結果は同じで、PostgreSQL は通常どちらも同じ実行計画（Anti Join）に最適化します。
+
+- id: products-per-category
+  chapter: JOIN
+  title: カテゴリ別の商品数（0 を含む）
+  prompt: |
+    カテゴリごとの商品数を集計してください。商品のないカテゴリも 0 として表示します。
+    表示：カテゴリ id、カテゴリ名、商品数。
+    並び順：カテゴリ id。
+  hints:
+    - categories を主表にして products を LEFT JOIN します。
+    - count(*) は「NULL で埋められた行」も 1 と数えてしまうので、count(p.id) を使います。
+  explanation: |
+    ★ 落とし穴：LEFT JOIN の後に count(*) を使うと、商品のないカテゴリが 0 ではなく 1 になります。
+    LEFT JOIN でも 1 行（右側がすべて NULL）は生成されるからです。count(列) は NULL を数えないので 0 になります。
+
+- id: category-parent
+  chapter: JOIN
+  title: カテゴリと親カテゴリ（SELF JOIN）
+  prompt: |
+    各カテゴリとその親カテゴリ名を一覧にしてください。最上位のカテゴリには親がないので「無」（なし）と表示します。
+    表示：カテゴリ id、カテゴリ名、親カテゴリ名。
+    並び順：カテゴリ id。
+  hints:
+    - categories を自分自身と JOIN するので、同じテーブルに c と p のような別々の別名を付けます。
+    - 最上位カテゴリの parent_id は NULL です。LEFT JOIN で除外されないようにし、COALESCE で NULL を「無」に置き換えます。
+  explanation: |
+    SELF JOIN は同じテーブルを 2 つのテーブルとして使うことです。よくある例：社員と上司、カテゴリと親カテゴリ、紹介者と被紹介者。
+
+- id: top-categories-2026
+  chapter: JOIN
+  title: 2026 年に最も売れたカテゴリ
+  prompt: |
+    2026 年に注文され、ステータスが delivered の注文について、カテゴリごとの販売数量（quantity の合計）を集計してください。
+    表示：カテゴリ名、数量。
+    並び順：数量の多い順、上位 5 件。
+  hints:
+    - 4 つのテーブルをつなぎます：orders → order_items → products → categories。
+    - 日付範囲は order_date >= '2026-01-01' AND order_date < '2027-01-01' と書くのがおすすめです。
+  explanation: |
+    日付範囲は「>= 開始 AND < 次の開始」が最も安全です。最終日の午後を取りこぼさず、インデックスも使えます。
+    extract(year FROM order_date) = 2026 でも結果は同じですが、列を関数で包むと通常のインデックスは使えなくなります。
+
+- id: profile-completeness
+  chapter: 'NULL'
+  title: 会員情報の充足度
+  prompt: |
+    会員情報の充足度を集計してください。結果は 1 行だけです。
+    表示：会員総数、誕生日を入力済みの人数、都市を入力済みの人数。
+  hints:
+    - count(*) は行数を数え、count(列) はその列が「NULL でない」行だけを数えます。
+  explanation: |
+    ★ count(*) と count(列) の違いは面接の定番です。sum、avg、max、min も NULL を無視するので、
+    avg(列) は「値がある行」の平均であって、全員の平均ではありません。
+
+- id: city-with-unknown
+  chapter: 'NULL'
+  title: 都市別の会員数（未入力を含む）
+  prompt: |
+    都市ごとの会員数を集計してください。都市が未入力の会員は「未填寫」（未入力）にまとめます。
+    表示：都市、人数。
+    並び順：人数の多い順。同数なら都市名順。
+  hints:
+    - COALESCE(city, '未填寫') で NULL を「未填寫」に置き換えます。
+    - GROUP BY にも同じ COALESCE の式を使います（または GROUP BY 1）。
+  explanation: |
+    実は COALESCE がなくても、GROUP BY city はすべての NULL を 1 つのグループにまとめます。
+    COALESCE はレポートを見やすくするためのものです。
+
+- id: phones-above-avg
+  chapter: サブクエリ
+  title: 全体平均より高いスマートフォン
+  prompt: |
+    「手機」（スマートフォン）カテゴリのうち、価格が「全商品の平均価格」より高い商品を一覧にしてください。
+    表示：商品 id、名称、価格。
+    並び順：価格の高い順。同じ価格なら id の昇順。
+  hints:
+    - 全商品の平均価格はサブクエリで求められます：(SELECT avg(price) FROM products)。
+    - カテゴリ名「手機」で絞り込むには categories を JOIN します。
+  explanation: |
+    単一の値を返すサブクエリを「スカラーサブクエリ」と呼び、値が必要な場所ならどこにでも書けます。
+    外側のクエリに依存しないので、実行は 1 回だけです。
+
+- id: never-sold
+  chapter: サブクエリ
+  title: 一度も売れていない商品（NOT EXISTS）
+  prompt: |
+    どの注文明細にも一度も登場していない商品を探してください。
+    表示：商品 id、名称、登録日（created_at）。
+    並び順：商品 id。
+  hints:
+    - WHERE NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.product_id = p.id)
+  explanation: |
+    EXISTS は「あるかどうか」だけを見て、1 件見つかれば止まります。そのためサブクエリは慣習的に SELECT 1 と書きます。
+    ★「存在しない」ものを探すときは NOT IN ではなく NOT EXISTS を優先しましょう。サブクエリに NULL が 1 つでもあると NOT IN は 1 件も返しません（落とし穴問題で実演しています）。
+
+- id: gold-returned
+  chapter: サブクエリ
+  title: 返品履歴のあるゴールド会員
+  prompt: |
+    VIP レベルが gold で、返品（status = 'returned'）された注文がある会員は何人ですか？
+    結果は 1 つの数値です。
+  hints:
+    - EXISTS で「この会員に返品注文があるか」を確認します。
+    - JOIN で書く場合、1 人の会員に複数の返品があり得るので count(DISTINCT c.id) にします。
+  explanation: |
+    ★ JOIN で書くと数え間違えやすいです：返品が 3 件ある会員は JOIN 後に 3 行になり、count(*) が重複して数えます。
+    EXISTS はもともと重複しないので、「あるかどうか」の判定には JOIN より向いています。
+
+- id: price-level
+  chapter: CASE WHEN
+  title: 商品の価格帯
+  prompt: |
+    商品を価格で 3 段階に分けます：10000 以上は「高價」（高価格）、1000 以上は「中價」（中価格）、それ以外は「平價」（低価格）。
+    各段階の商品数を集計してください。
+    表示：価格帯、商品数。
+    並び順：問わない。
+  hints:
+    - CASE WHEN price >= 10000 THEN '高價' WHEN price >= 1000 THEN '中價' ELSE '平價' END
+    - GROUP BY 1 と書くと、SELECT の 1 番目の列でグループ化するという意味になります。
+  explanation: |
+    CASE WHEN は上から順に判定し、最初に成立した時点で止まるので、条件の順序が重要です。
+    先に price >= 1000 と書くと、高価格の商品も「中價」に分類されてしまいます。
+
+- id: cancel-rate-by-year
+  chapter: CASE WHEN
+  title: 年ごとのキャンセル率
+  prompt: |
+    年ごと（注文日時ベース）の注文数、キャンセル数（status = 'cancelled'）、キャンセル率を集計してください。
+    キャンセル率はパーセントで、小数第 1 位に四捨五入します（例：9.8）。
+    表示：年、注文数、キャンセル数、キャンセル率。
+    並び順：年。
+  hints:
+    - extract(year FROM order_date) で年を取り出します。
+    - キャンセル数は count(*) FILTER (WHERE status = 'cancelled') か、sum(CASE WHEN … THEN 1 ELSE 0 END) で数えられます。
+    - ★ 整数 ÷ 整数は整数になります（9 / 100 = 0）。小数を得るには 100.0 * … と書きます。
+  explanation: |
+    「条件付き集計」はレポートで最もよく使うテクニックで、1 回のスキャンで複数の条件の件数を求められます。
+    FILTER は PostgreSQL の書き方、sum(CASE WHEN …) はどのデータベースでも使える書き方です。両方覚えましょう。
+
+- id: union-members
+  chapter: 集合演算
+  title: キャンセルまたは返品した会員（UNION）
+  prompt: |
+    「キャンセル」または「返品」の注文履歴がある会員は全部で何人ですか？
+    結果は 1 つの数値です。UNION で書いてみましょう。
+  hints:
+    - まず 2 つのクエリを書きます：キャンセルしたことのある customer_id と、返品したことのある customer_id。それを UNION で結合します（UNION は重複を除きます）。
+    - 結合した結果を FROM ( … ) t に入れ、外側で count(*) します。
+  explanation: |
+    ★ UNION は重複を除き、UNION ALL は除きません。この問題は「会員の人数」なので、両方ある人も 1 回だけ数える必要があり、UNION を使います。
+    もっと簡単な書き方：count(DISTINCT customer_id) … WHERE status IN ('cancelled', 'returned')。
+
+- id: except-churned
+  chapter: 集合演算
+  title: 2025 年に購入、2026 年は購入なし（EXCEPT）
+  prompt: |
+    2025 年に注文があり、2026 年には一度も注文していない会員は何人ですか？
+    結果は 1 つの数値です。
+  hints:
+    - A EXCEPT B：A にあって B にないデータ。
+    - A = 2025 年に注文した customer_id、B = 2026 年に注文した customer_id。
+  explanation: |
+    これが「離脱会員」の求め方です。EXCEPT も重複を除きます。
+    同じことは NOT EXISTS でも書け、大量データでは通常そちらの方が最適化しやすいです。
+
+- id: first-order
+  chapter: ウィンドウ関数
+  title: 会員ごとの最初の注文（DISTINCT ON）
+  prompt: |
+    会員 id 1〜10 の、それぞれの最初の注文（注文日時が最も早いもの）。
+    表示：会員 id、注文 id、注文日時。
+    並び順：会員 id。
+  hints:
+    - PostgreSQL 専用の書き方：SELECT DISTINCT ON (customer_id) … ORDER BY customer_id, order_date
+    - 汎用的な書き方：row_number() OVER (PARTITION BY customer_id ORDER BY order_date) で番号を振り、外側で 1 番を取ります。
+  explanation: |
+    DISTINCT ON (列) は各グループで ORDER BY の並びの先頭行を残します。PostgreSQL で「グループごとに最初の 1 件」を取る最も簡潔な書き方です。
+    ORDER BY の先頭は DISTINCT ON の列と同じでなければなりません。面接で相手が PostgreSQL を使っていなければ row_number() で書きましょう。
+
+- id: top-product-per-category
+  chapter: ウィンドウ関数
+  title: カテゴリごとの最も高い商品
+  prompt: |
+    各カテゴリで価格が最も高い商品を探してください（同じ価格なら商品 id の小さい方）。商品のあるカテゴリだけを表示します。
+    表示：カテゴリ id、商品 id、商品名、価格。
+    並び順：カテゴリ id。
+  hints:
+    - row_number() OVER (PARTITION BY category_id ORDER BY price DESC, id) でカテゴリ内の商品に番号を振ります。
+    - ウィンドウ関数は WHERE に直接書けないので、サブクエリか CTE で包み、外側で rn = 1 に絞ります。
+  explanation: |
+    ★「グループごとの上位 N 件」は面接で最もよく出るウィンドウ関数の問題です。
+    上位 3 件なら rn <= 3 に。同点を同順位にしたいなら rank() か dense_rank() を使います。
+
+- id: monthly-revenue-diff
+  chapter: ウィンドウ関数
+  title: 月次売上と前月差（LAG）
+  prompt: |
+    2026 年 1〜9 月の、配送済み（delivered）注文の月次売上と、前月からの増加額。
+    売上 = quantity × unit_price × (1 − discount) の合計を整数に四捨五入します。差額は四捨五入後の売上同士の差です。
+    最初の月には前月がないので、差額は NULL と表示します。
+    表示：月（日付、例：2026-01-01）、売上、差額。
+    並び順：月。
+  hints:
+    - date_trunc('month', order_date)::date で日時をその月の 1 日に切り捨てます。
+    - まず CTE で月次売上を求め、外側で lag(revenue) OVER (ORDER BY month) を使って前月の値を取ります。
+  explanation: |
+    lag() は前の行、lead() は次の行を取り、前月比・前年比・間隔日数の計算によく使われます。
+    月次売上を先に CTE に入れておくと、外側のウィンドウ関数がずっと読みやすくなります。
+
+- id: cumulative-signups
+  chapter: ウィンドウ関数
+  title: 累計登録者数
+  prompt: |
+    2026 年 1〜6 月の、月ごとの新規会員数と、2026 年 1 月からその月までの累計人数。
+    表示：月（日付、例：2026-01-01）、新規会員数、累計人数。
+    並び順：月。
+  hints:
+    - 累計：sum(…) OVER (ORDER BY month)。
+    - 先に CTE で月ごとの人数を求めてから外側で累計すると、間違えにくくなります。
+  explanation: |
+    sum() に OVER (ORDER BY …) を付けると累計になります。ウィンドウの既定値は「最初の行から現在の行まで」です。
+    ORDER BY を外すと、すべての行が全体の合計になります。
+
+- id: order-gap-days
+  chapter: ウィンドウ関数
+  title: 注文の間隔日数
+  prompt: |
+    会員 id 1 の注文を注文日時順に並べた先頭 10 件と、それぞれ「直前の注文」から何日空いたか。
+    間隔日数 = この注文の日付 − 直前の注文の日付（日付のみで比較）。最初の行は NULL を表示します。
+    表示：注文 id、注文日（date）、間隔日数。
+    並び順：注文日時。
+  hints:
+    - order_date::date で日時を日付に変換します。date − date は整数の日数になります。
+    - lag(order_date::date) OVER (ORDER BY order_date) で直前の注文の日付を取ります。
+  explanation: |
+    実行順序に注意：WHERE → ウィンドウ関数 → ORDER BY → LIMIT。
+    つまり lag() は WHERE を通過したすべての行を参照でき、LIMIT 10 は最後に表示を切り詰めるだけです。
+
+- id: category-descendants
+  chapter: 再帰 CTE
+  title: 3C電子 配下のすべてのカテゴリ
+  prompt: |
+    「3C電子」（家電・デジタル製品）配下のすべての子孫カテゴリを一覧にしてください（3C電子 自身は含みません）。
+    階層：直接の子カテゴリが 1、その下が 2。
+    表示：カテゴリ id、名称、階層。
+    並び順：カテゴリ id。
+  hints:
+    - WITH RECURSIVE t AS ( 起点 UNION ALL 再帰部分 ) SELECT … FROM t
+    - 起点：parent_id が 3C電子 の id に等しいカテゴリ、階層 1。
+    - 再帰部分：categories JOIN t ON categories.parent_id = t.id、階層 + 1。
+  explanation: |
+    再帰 CTE は 2 つの部分からなります：起点（anchor）は 1 回だけ実行され、再帰部分は前回の結果を使って新しい行が見つからなくなるまで下へたどります。
+    よくある用途：組織図、カテゴリツリー、コメントスレッド、部品表（BOM）。
+
+- id: jsonb-storage
+  chapter: JSONB
+  title: 256GB のスマートフォン
+  prompt: |
+    products.specs は JSONB です。スマートフォンカテゴリ（category_id = 2）のうち、仕様の storage_gb が 256 の商品を一覧にしてください。
+    表示：商品 id、名称、色（specs 内の color）。
+    並び順：商品 id。
+  hints:
+    - ->> はテキストを取り出します：specs->>'color'。-> は JSONB を取り出します：specs->'warranty'。
+    - |-
+      絞り込みは (specs->>'storage_gb')::int = 256、または包含演算子 specs @> '{"storage_gb": 256}' で書けます。
+  explanation: |
+    -> は JSONB、->> は text を返します。数値として比較するときは ->> の結果を先に型変換します：(specs->>'storage_gb')::int。
+    @> は「包含」で、左の JSON が右の断片を含むかどうかを判定します。GIN インデックスを使えるのが利点です（インデックス実験で実演しています）。
+
+- id: jsonb-color-count
+  chapter: JSONB
+  title: 衣料品の色別商品数
+  prompt: |
+    メンズ・レディース（category_id 13、14）の色ごとの商品数を集計してください。仕様のない商品（specs が NULL）は数えません。
+    表示：色、商品数。
+    並び順：商品数の多い順。同数なら色の順。
+  hints:
+    - GROUP BY specs->>'color' で JSON 内の値ごとにグループ化できます。
+  explanation: |
+    JSONB 内の値は、通常の列と同じように SELECT、WHERE、GROUP BY、ORDER BY で使えます。
+    柔軟な属性（カテゴリごとに仕様が異なる）は JSONB に向いており、仕様の種類ごとに列を作る必要がありません。
+
+- id: jsonb-noise-cancelling
+  chapter: JSONB
+  title: ノイズキャンセリング商品の平均価格
+  prompt: |
+    仕様の noise_cancelling が true の商品の平均価格はいくらですか？整数に四捨五入してください。
+    結果は 1 つの数値です。
+  hints:
+    - |-
+      (specs->>'noise_cancelling')::boolean、または specs @> '{"noise_cancelling": true}' と書けます。
+  explanation: |
+    JSON の true はブール値で、文字列の "true" とは別物です：'{"noise_cancelling": "true"}' では何も見つかりません。
+
+- id: jsonb-nested
+  chapter: JSONB
+  title: 保証 2 年の商品（ネストした JSON）
+  prompt: |
+    仕様の warranty.years が 2 の商品を、カテゴリごとに数えてください。（warranty はネストしたオブジェクトで、例えば {"years": 2, "type": "原廠"}）
+    表示：カテゴリ名、商品数。
+    並び順：商品数の多い順。同数ならカテゴリ名順。
+  hints:
+    - |-
+      1 段ずつ取り出す：specs->'warranty'->>'years'、またはパスで：specs #>> '{warranty,years}'。
+  explanation: |
+    途中の階層では ->（JSONB のままなのでさらに下へたどれる）を使い、最後の階層だけ ->> でテキストを取り出します。
+    #> と #>> はパス全体を一度に指定できます。
+
+- id: jsonb-key-exists
+  chapter: JSONB
+  title: バッテリー持続時間の仕様がある商品
+  prompt: |
+    仕様に battery_hours というキーがある商品は何件ですか？
+    結果は 1 つの数値です。
+  hints:
+    - |-
+      ? 演算子で JSONB にキーがあるかを判定します：specs ? 'battery_hours'。
+  explanation: |
+    ? は単一のキー、?| は「いずれかのキーが存在」、?& は「すべてのキーが存在」を判定します。
+    ★ JDBC の PreparedStatement では ? がパラメータのプレースホルダとして扱われるので、Java では ?? と書くか jsonb_exists() 関数を使う必要があります。実務でよくはまるポイントです。
+
+- id: jsonb-array-elements
+  chapter: JSONB
+  title: サイズ別の衣料品数（JSON 配列の展開）
+  prompt: |
+    メンズ・レディース（category_id 13、14）の specs.sizes は JSON 配列です。例：["M", "L", "XL"]。
+    各サイズを提供している商品数を集計してください。
+    表示：サイズ、商品数。
+    並び順：問わない。
+  hints:
+    - jsonb_array_elements_text(specs->'sizes') は配列を複数の行に展開します。
+    - FROM に書きます：FROM products p, jsonb_array_elements_text(p.specs->'sizes') AS s(size)。
+  explanation: |
+    FROM 内の関数は前に書いたテーブルの列を参照できます（暗黙の LATERAL）。各商品は「サイズの数だけの行」に展開されます。
+    specs が NULL の商品は展開しても行がないので、自然と数えられません。
+
+- id: array-any
+  chapter: Array
+  title: セール商品の数（ANY）
+  prompt: |
+    products.tags は text[] です。「特價」（セール）タグが付いた商品は何件ですか？
+    結果は 1 つの数値です。
+  hints:
+    - |-
+      '特價' = ANY(tags)：配列のいずれかの要素が「特價」に等しければ成立します。
+  explanation: |
+    ANY(配列) は「いずれか 1 つ」の意味です。tags @> ARRAY['特價'] とも書け、こちらは GIN インデックスを使えます。
+    Java では = ANY(?) と setArray を組み合わせて id の一覧を渡すのが定番で、IN (…) の文字列を自分で組み立てる必要がなくなります。
+
+- id: array-contains
+  chapter: Array
+  title: 人気かつ限定（@>）
+  prompt: |
+    「熱銷」（人気）と「限量」（限定）の両方のタグが付いた商品。
+    表示：商品 id、名称。
+    並び順：商品 id。
+  hints:
+    - tags @> ARRAY['熱銷', '限量']：左の配列が右の要素をすべて「含む」。
+  explanation: |
+    @> は包含（すべて必要）、<@ は被包含、&& は重なり（いずれか 1 つが共通）です。
+
+- id: array-overlap
+  chapter: Array
+  title: エコまたは独占（&&）
+  prompt: |
+    「環保」（エコ）か「獨家」（独占販売）のどちらかのタグが付いた商品は何件ですか？
+    結果は 1 つの数値です。
+  hints:
+    - "&& は「重なり」：2 つの配列に共通の要素が 1 つでもあれば成立します。"
+  explanation: |
+    '環保' = ANY(tags) OR '獨家' = ANY(tags) と同じですが、&& の方が簡潔で、GIN インデックスも使えます。
+
+- id: array-unnest
+  chapter: Array
+  title: タグ別の商品数（unnest）
+  prompt: |
+    タグごとの商品数を集計してください。
+    表示：タグ、商品数。
+    並び順：商品数の多い順。同数ならタグ順。
+  hints:
+    - unnest(tags) は配列を要素 1 つにつき 1 行に展開します。
+  explanation: |
+    unnest は配列版の「展開」で、JSONB の jsonb_array_elements に相当します。
+    逆に複数行を配列にまとめるには array_agg() を使います。
+
+- id: array-empty
+  chapter: Array
+  title: タグが 1 つもない商品
+  prompt: |
+    タグが 1 つもない（空配列の）商品は何件ですか？
+    結果は 1 つの数値です。
+  hints:
+    - cardinality(tags) は配列の要素数を返します。
+    - 直接比較もできます：tags = '{}'。
+  explanation: |
+    ★ array_length(tags, 1) に注意：空配列では 0 ではなく NULL を返すので、array_length(tags, 1) = 0 では 1 件も見つかりません。
+    cardinality() は空配列に 0 を返すので、間違いが起きにくいです。
+
+- id: gs-daily-zero
+  chapter: generate_series
+  title: 日ごとの注文数（注文のない日も 0 を表示）
+  prompt: |
+    2026 年 9 月の毎日について、「台東縣」（台東県）宛ての注文は何件ですか？注文のない日も 0 として表示します。
+    表示：日付（date）、注文数。
+    並び順：日付。
+  hints:
+    - 注文日で直接 GROUP BY すると、注文のない日はそもそも現れません。まず完全な日付の一覧を「生成」する必要があります。
+    - generate_series('2026-09-01'::date, '2026-09-30'::date, interval '1 day') は 30 行を生成します。
+    - そこに注文を LEFT JOIN すれば、count(o.id) は注文がないとき 0 になります。
+  explanation: |
+    レポートで「0 を埋める」定番の方法：generate_series で完全な時間軸を作り、実データを LEFT JOIN します。
+    都市の条件は ON に書く点に注意：WHERE に書くと注文のない日が除外されます（落とし穴問題 1 問目と同じ理屈）。
+
+- id: gs-monthly-signups
+  chapter: generate_series
+  title: 2026 年の月別新規会員（0 を含む）
+  prompt: |
+    2026 年 1〜12 月の各月に新規登録した会員は何人ですか？登録のなかった月は 0 と表示します。
+    表示：月（date、例：2026-01-01）、新規会員数。
+    並び順：月。
+  hints:
+    - generate_series('2026-01-01'::date, '2026-12-01'::date, interval '1 month')
+  explanation: |
+    データは 2026 年 6 月までしかないので、7〜12 月はすべて 0 です。customers を直接 GROUP BY すると 6 行しか得られません。
+
+- id: write-insert-returning
+  chapter: 書き込み（RETURNING / UPSERT）
+  title: 会員を追加してデータを受け取る（INSERT … RETURNING）
+  prompt: |
+    会員を 1 人追加します：氏名「王小明」、email「xiaoming@example.com」、登録日 2026-10-01。
+    RETURNING で返す項目：氏名、email、vip_level（指定していないので、既定値が何かを確認しましょう）。
+  hints:
+    - INSERT INTO customers (name, email, signup_date) VALUES (…) RETURNING …
+  explanation: |
+    RETURNING を使うと INSERT / UPDATE / DELETE が影響を受けた行をそのまま返すので、再度クエリする手間が省けます。最もよくある用途は自動採番された id を受け取ることです。
+    ★ この問題ではあえて id を比較しません：シーケンス（serial）はトランザクションの制御を受けず、ROLLBACK しても使った番号は戻らないため、実行のたびに id が変わります。
+    本番環境の id がよく「飛ぶ」理由もこれです。面接で聞かれたらこう説明できます。
+
+- id: write-update-returning
+  chapter: 書き込み（RETURNING / UPSERT）
+  title: 飲料を 10% 値上げ（UPDATE … RETURNING）
+  prompt: |
+    「飲料」カテゴリの商品をすべて 10% 値上げし、新価格は整数に四捨五入します。
+    RETURNING で返す項目：商品 id、新価格。
+    並び順：問わない。
+  hints:
+    - UPDATE products SET price = round(price * 1.1) WHERE … RETURNING id, price
+    - カテゴリはサブクエリで探せます：category_id = (SELECT id FROM categories WHERE name = '飲料')
+  explanation: |
+    RETURNING が返すのは「更新後」の値です。PostgreSQL 18 からは RETURNING old.price, new.price と書いて新旧両方を取得できます。
+    サンドボックスは複数の文を一度に実行できます。後ろに SELECT を 1 文追加すると、トランザクション内で変更済みのデータを確認できます（ただし採点は最後に返された結果で行うので、提出時は外してください）。
+
+- id: write-delete-returning
+  chapter: 書き込み（RETURNING / UPSERT）
+  title: 保留中の注文を削除（DELETE … RETURNING）
+  prompt: |
+    ステータスが pending の注文をすべて削除します。RETURNING で返す項目：注文 id、会員 id。
+    並び順：問わない。
+  hints:
+    - order_items の外部キーには ON DELETE CASCADE が設定されているので、注文を削除すると明細も自動的に削除されます。
+  explanation: |
+    DELETE … RETURNING は「データの移動」によく使われます：WITH moved AS (DELETE … RETURNING *) INSERT INTO archive SELECT * FROM moved;
+    1 文で削除とアーカイブを行い、しかも同じトランザクション内で完結します。
+
+- id: write-upsert-update
+  chapter: 書き込み（RETURNING / UPSERT）
+  title: あれば更新、なければ追加（UPSERT）
+  prompt: |
+    2 つのカテゴリを一度に書き込みます：
+    (2, '智慧型手機', 親 1)：id 2 は既に存在するので、名称を「智慧型手機」（スマートフォン）に更新
+    (28, '寵物用品', 親なし)：id 28 は存在しないので、新規追加
+    RETURNING で返す項目：id、name、parent_id。
+    並び順：問わない。
+  hints:
+    - INSERT … ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+    - EXCLUDED は「今回挿入しようとして衝突した行」を表します。
+  explanation: |
+    ★ UPSERT はアトミックな操作です：「存在するか確認してから INSERT か UPDATE かを決める」間に他の処理が割り込む競合状態（race condition）が起きません。
+    ON CONFLICT の後には UNIQUE または主キー制約のある列を指定します。JPA の save() ではこれができないので、実務ではネイティブ SQL を書くことがよくあります。
+
+- id: write-upsert-nothing
+  chapter: 書き込み（RETURNING / UPSERT）
+  title: 重複はスキップ（ON CONFLICT DO NOTHING）
+  prompt: |
+    会員を 2 人一度に追加します（登録日はどちらも 2026-10-01）：
+    「舊會員」（既存会員）email user00001@example.com（この email は既に存在）
+    「新會員」（新規会員）email new0001@example.com
+    email が重複する行はエラーにせずスキップします。RETURNING で返す項目：氏名、email。
+  hints:
+    - ON CONFLICT (email) DO NOTHING
+  explanation: |
+    DO NOTHING でスキップされた行は RETURNING に現れないので、返るのは 1 行だけです。
+    データのインポートや、重複送信されたリクエストの処理（冪等性）でよく使う書き方です。
+
+- id: write-update-from
+  chapter: 書き込み（RETURNING / UPSERT）
+  title: 返品のあるゴールド会員を降格（UPDATE … FROM）
+  prompt: |
+    「返品（returned）された注文がある」gold 会員のレベルを silver に下げます。
+    RETURNING で返す項目：会員 id。
+    並び順：問わない。
+  hints:
+    - UPDATE customers c SET … FROM orders o WHERE o.customer_id = c.id AND …
+    - WHERE EXISTS (…) でも書けます。
+  explanation: |
+    UPDATE … FROM は PostgreSQL で他のテーブルのデータを使って更新する書き方です（MySQL では UPDATE … JOIN）。
+    返品が複数ある会員でも、更新されるのも返されるのも 1 回だけです。
+    ★ ただし SET で FROM 側テーブルの列を使い、複数の行が対応する場合、「どの行の値が使われるか」は不定です。その場合は先に集計してから更新しましょう。
+
+- id: write-jsonb-merge
+  chapter: 書き込み（RETURNING / UPSERT）
+  title: JSONB にフィールドを追加
+  prompt: |
+    「特價」（セール）タグがあり、仕様がある（specs が NULL でない）商品の specs に "on_sale": true を追加します。
+    RETURNING で返す項目：商品 id、specs 内の on_sale の値（テキスト）。
+    並び順：問わない。
+  hints:
+    - |-
+      JSONB は || で結合します：specs || '{"on_sale": true}'。同じキーは右側で上書きされます。
+    - jsonb_set(specs, '{on_sale}', 'true') でも書けます。
+  explanation: |
+    ★ 落とし穴：NULL || '{"on_sale": true}' の結果は NULL です（落とし穴問題で実演しています）。
+    仕様のない商品もまとめて処理したいなら、COALESCE(specs, '{}') || '{"on_sale": true}' と書きます。
+    キーの削除はマイナスで：specs - 'on_sale'。

@@ -1,0 +1,79 @@
+- id: partition-key
+  title: With vs without the partition key
+  question: "Both return 6 rows. Look at the \"rows read\" in the trace: how many rows did B read to get these 6?"
+  goal: The same "customer 4242's orders", once from a table with customer_id as the partition key and once forced with ALLOW FILTERING.
+  takeaway: |
+    A is "Executing single-partition query": it computes the token from the partition key and reads that one partition directly, only 6 rows.
+    B is "Submitting range requests" + "seq scan": it reads all 80,000 rows of the table and throws away the ones that don't match.
+    Here there's one node and all the data is in memory, so B takes only a few hundred milliseconds; in production, with data on several machines and hundreds of GB, B would time out and slow down the whole cluster.
+    This is Cassandra's first rule: every query needs the full partition key. To achieve that, the same data is often stored in several tables.
+  queries:
+    - label: "A: orders_by_customer (customer_id is the partition key)"
+    - label: "B: orders + ALLOW FILTERING"
+
+- id: clustering-slice
+  title: "Clustering keys: read only the slice you need"
+  question: How many rows did B and C each read, compared with A's 152?
+  goal: Customer 1 has 152 orders (the largest partition). Compare reading the whole partition, LIMIT, and slicing a time range with the clustering key.
+  takeaway: |
+    Rows in a partition are stored together sorted by the clustering key, so LIMIT 3 reads only the first 3 rows and a time range reads only that slice, with no need to read the whole partition and filter.
+    When designing clustering keys, ask: "which slice do I need most often?" Newest first (DESC), time ranges and price ranges are typical uses.
+  queries:
+    - label: "A: the whole partition"
+    - label: "B: the newest 3 (LIMIT 3)"
+    - label: "C: 2025 (a clustering key range)"
+
+- id: time-bucket
+  title: Time buckets vs time range scans
+  question: A and B actually read the same number of rows (87). So what's the difference? Look at the "read path". How many partitions does C read?
+  goal: "Query \"the orders of 2026-09-01\": either via orders_by_day with one partition per day, or on orders_by_day without the partition key, using only a time range."
+  takeaway: |
+    A is a "single partition" read: the token is computed from order_day and that day's partition is found directly.
+    B is a "range scan": order_time is a clustering key, but clustering keys are only sorted within one partition; without the partition key Cassandra has to walk all 1,728 partitions (one per day),
+    slicing the matching section out of each. The rows read are the same, plus the cost of "walking every partition".
+    With one node and little data it's only a millisecond or two slower; in a multi-node cluster a range scan has to ask "every node", gets slower as data grows, and affects other queries.
+    C reads 7 partitions with IN, the right way to query a time span (or send 7 queries in parallel from the application).
+    Bucket size is a trade-off: partitions that are too big (e.g. a month) become hot spots and read slowly; too small (e.g. a minute) means reading many partitions for a time span.
+    A common guideline is under 100 MB and under 100,000 rows per partition.
+  queries:
+    - label: "A: partition key order_day"
+    - label: "B: only an order_time range (ALLOW FILTERING)"
+    - label: "C: one week (IN over 7 partitions)"
+
+- id: sai-index
+  title: "SAI indexes: query other columns without a new table"
+  question: With the index, how many rows did A read? How does its timing compare with B?
+  goal: Cassandra 5.0's SAI (Storage-Attached Index) lets orders be queried by customer_id too. Run it once (it's rejected), then create the index and run it again.
+  takeaway: |
+    SAI builds the index alongside each SSTable; a query first finds the matching primary keys in the index and then reads those rows, with no full table scan.
+    But it's still "a local index on each node": in a multi-node cluster the coordinator has to ask every node (scatter-gather), which gets more expensive with more nodes.
+    So SAI suits infrequent queries, use together with the partition key, or tables with little data; frequent main queries still deserve a dedicated table (B).
+    The older secondary indexes (2i) and SASI have many limitations; since Cassandra 5.0, SAI is recommended.
+  queries:
+    - label: "A: orders by customer_id (no ALLOW FILTERING)"
+    - label: "B: orders_by_customer (for comparison)"
+
+- id: sai-multi
+  title: "SAI: collections and multiple conditions"
+  question: What happens to these two queries without an index? How many rows does each return once the indexes exist?
+  goal: The products table has only 1,500 rows, a good fit for SAI. Create indexes on tags and price, and query products "tagged 熱銷 (best seller) and priced at most 1,000".
+  takeaway: |
+    SAI supports collections (CONTAINS / CONTAINS KEY) and ranges (< >), and several SAI conditions can be combined with AND; Cassandra takes the intersection.
+    Compare: without indexes the query needs ALLOW FILTERING and is a full table scan.
+    A common interview take: "Cassandra's query flexibility is very low" has improved since 5.0, but the core principle hasn't changed: main queries rely on table design, and indexes are a supplement.
+  queries:
+    - label: "A: tags CONTAINS (an element of a set)"
+    - label: "B: tags + a price range (two indexes together)"
+
+- id: filter-in-partition
+  title: ALLOW FILTERING isn't always expensive
+  question: How many rows did A, B and C each read?
+  goal: The same filter status = 'returned', once restricted to customer 4242's partition, and once without a partition restriction (with LIMIT 5).
+  takeaway: |
+    The cost of ALLOW FILTERING = the number of rows read to find the results.
+    A filters within one partition and reads 6 rows; B has no partition key but stops once it has 5, so the rows read depend on how "dense" the matching data is; C must scan the whole table.
+    So the point isn't "never write ALLOW FILTERING", but knowing how much data it will read.
+  queries:
+    - label: "A: filtering within a partition"
+    - label: "B: no partition key, but only 5 rows"
+    - label: "C: no partition key, all rows"

@@ -1,0 +1,157 @@
+- id: insert-is-upsert
+  title: INSERT a primary key that already exists
+  question: customers_by_email already has a row for user04242@example.com (customer_id 4242). What happens if you INSERT the same email again?
+  options:
+    - "An error: duplicate primary key"
+    - Success; the existing row is overwritten with 99999
+    - Success; the same email now has two rows
+  scripts:
+    - label: INSERT the same primary key
+  explanation: |
+    Cassandra doesn't read before writing, so it doesn't know the primary key "already exists". INSERT and UPDATE are both upserts: they write a new version, and on read the newer timestamp wins.
+    For "write only if it doesn't exist" you need IF NOT EXISTS (a lightweight transaction), at the cost of several round trips between nodes.
+    A common interview question: why are Cassandra writes so fast? One reason is exactly this "no read before write".
+
+- id: update-creates-row
+  title: UPDATE a product that doesn't exist
+  question: products has no product 99999. After UPDATE products SET stock = 5 WHERE product_id = 99999, can you find this product?
+  options:
+    - "Yes: there's a new row with only stock set"
+    - "No: UPDATE finds no row and affects 0 rows"
+    - "An error: the row doesn't exist"
+  scripts:
+    - label: UPDATE a primary key that doesn't exist
+  explanation: |
+    UPDATE is also an upsert and doesn't check whether the row exists, so it "grows" a product row with only stock.
+    To avoid this, write UPDATE … IF EXISTS (a lightweight transaction).
+    A subtle difference: INSERT writes a "row marker" and UPDATE doesn't, so for a row created by UPDATE, deleting stock makes the whole row disappear.
+
+- id: filter-needs-key
+  title: Querying by a non-key column
+  question: The primary key of orders is order_id. What happens when you query WHERE customer_id = 4242 directly (without ALLOW FILTERING)?
+  options:
+    - Both return 6 rows; the first is just slower
+    - The first returns 0 rows
+    - The first is rejected and needs ALLOW FILTERING
+  scripts:
+    - label: "orders: customer_id isn't part of the key"
+    - label: "orders_by_customer: customer_id is the partition key"
+  explanation: |
+    Without the partition key Cassandra doesn't know which node has the data, so it would have to ask every node and scan the whole table. Rather than silently doing that, it refuses.
+    With ALLOW FILTERING it runs (the lab measures it: 80,000 rows read to get 6).
+    The right fix is a table with customer_id as the partition key (orders_by_customer), or an SAI index for small data.
+
+- id: order-by-non-clustering
+  title: Sorting by amount
+  question: "To see customer 4242's orders by amount, highest first: SELECT … FROM orders_by_customer WHERE customer_id = 4242 ORDER BY total DESC. What happens?"
+  options:
+    - "An error: ORDER BY can only use clustering keys"
+    - Sorted by amount, highest first
+    - Success, but the order is unchanged (ORDER BY is ignored)
+  scripts:
+    - label: ORDER BY a non-clustering column
+  explanation: |
+    Cassandra doesn't sort at query time; it can only read "in stored order" or "exactly reversed".
+    The order within a partition is determined by the clustering keys, so ORDER BY can only name clustering keys.
+    To sort by amount: fetch the customer's orders and sort in the application (a partition is usually small), or create another table with total as the clustering key.
+
+- id: skip-clustering
+  title: Skipping an earlier clustering key
+  question: "orders_by_day's primary key is ((order_day), order_time, order_id). With WHERE order_day = '2026-09-01' AND order_id = 77082 (order_time unrestricted), what happens?"
+  options:
+    - Order 77082 is returned
+    - "An error: order_time, which comes before order_id, isn't restricted"
+    - 0 rows are returned
+  scripts:
+    - label: Restrict order_id while skipping order_time
+  explanation: |
+    Rows in a partition are sorted by (order_time, order_id), like a phone book sorted by "last name, first name": knowing only the "first name" doesn't get you to the right page.
+    Clustering keys can only be restricted from the left; and once an earlier column uses a range (>, <), later columns can't be restricted at all.
+    This is the same idea as the "leftmost prefix" of SQL composite indexes.
+
+- id: count-star
+  title: COUNT(*) over a whole table
+  question: What happens with SELECT COUNT(*) FROM orders (no WHERE)?
+  options:
+    - "An error: needs ALLOW FILTERING"
+    - It returns 80000 instantly (Cassandra keeps a row count)
+    - It returns 80000, but reads the whole table and comes with a warning
+  scripts:
+    - label: COUNT(*) without a partition key
+    - label: COUNT(*) on a single partition
+  explanation: |
+    Cassandra doesn't keep track of "how many rows a table has", so COUNT(*) has to actually read every row and count (look at the timing: hundreds of milliseconds vs a few).
+    The server also returns the warning "Aggregation query used without partition key". With large data it times out.
+    To know the row count: accumulate it in a counter table at write time, look at the estimate in nodetool tablestats, or use a tool like Spark.
+
+- id: avg-int
+  title: AVG of an int column
+  question: Customer 4242's 6 orders total 58033, an average of 9672.17. What does SELECT AVG(total) (total is an int) return?
+  options:
+    - 9672 (the fraction is dropped)
+    - '9672.17'
+    - "An error: AVG can't be used on int"
+  scripts:
+    - label: AVG(int)
+    - label: CAST to double first
+  explanation: |
+    CQL's AVG returns the same type as its input: the average of ints is an int, with the fraction dropped (PostgreSQL would return numeric).
+    For decimals, CAST to double or decimal first. SUM(int) is an int too and can overflow for large amounts; CAST to bigint / varint first.
+
+- id: older-timestamp
+  title: Writing with an older timestamp
+  question: First UPDATE products USING TIMESTAMP 1000 SET stock = 999 (timestamp 1000 microseconds, i.e. 1970), then read stock. What is it? The current stock is 11.
+  options:
+    - "999: the last statement executed wins"
+    - "11: the timestamp is older, so it's treated as a stale write"
+    - "An error: the timestamp can't be earlier than the existing data"
+  scripts:
+    - label: Write with a very old timestamp
+  explanation: |
+    Cassandra decides the winner by "each cell's timestamp" (last write wins), not by execution order.
+    The write succeeded, but the read sees two versions, and the one with the newer timestamp, 11, wins; 999 is effectively ignored.
+    The practical consequence: if your application servers' clocks aren't in sync, data written later can "lose" to data written earlier.
+
+- id: ttl-per-cell
+  title: What is the TTL attached to?
+  question: UPDATE customers USING TTL 86400 SET city = '台南市' WHERE customer_id = 4242. What does this customer's data look like a day later?
+  options:
+    - The whole row disappears
+    - Nothing changes; TTL only works for INSERT
+    - Only city disappears; the other columns remain
+  scripts:
+    - label: TTL on city only
+  explanation: |
+    A TTL belongs to each cell: only city, written this time, carries the 86400-second TTL; name's TTL is null (never expires).
+    When the time is up, city becomes a tombstone and the row remains. To expire the whole row, rewrite the whole row with INSERT … USING TTL,
+    or set default_time_to_live when creating the table.
+
+- id: null-is-tombstone
+  title: Writing null
+  question: When inserting a customer, the city column is explicitly written as null. How does Cassandra handle it? (Look at tombstone cells in the query trace.)
+  options:
+    - Writing null stores a tombstone
+    - "Both are the same: null is no value, so nothing is stored"
+    - "An error: null can't be written"
+  scripts:
+    - label: Write city as null
+    - label: Leave city out (not in the INSERT)
+  explanation: |
+    In Cassandra, "setting a column to null" means "deleting the column": it writes a tombstone, which reads have to read and then skip.
+    Look at the trace: the null version shows "Read 1 live rows and 1 tombstone cells"; the version without city shows 0.
+    This bites especially with ORMs or prepared statements (binding every column, and null for those without a value).
+    Driver 4 can leave that parameter unbound (unset), which is how this project loads its data.
+
+- id: counter-insert
+  title: INSERT into a counter table
+  question: product_sales is a counter table. What does INSERT INTO product_sales (product_id, units, orders) VALUES (99999, 1, 1) do?
+  options:
+    - Succeeds, same as UPDATE
+    - "An error: counter tables only accept UPDATE"
+    - Succeeds, but units and orders are both 0
+  scripts:
+    - label: INSERT a counter
+    - label: UPDATE a counter
+  explanation: |
+    A counter can only be incremented or decremented, never set to a value, so no INSERT and no UPDATE … SET units = 5.
+    A counter that doesn't exist starts from 0. A counter table can have only counter columns besides the primary key, and no TTL.

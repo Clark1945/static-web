@@ -1,0 +1,63 @@
+- id: label-scan
+  title: "No index: NodeByLabelScan"
+  question: What is the plan without an index? Roughly how many db hits? And after creating the index?
+  goal: Find a customer by email. Customer has only the uniqueness constraint on id (with its index); email has no index. Run it once, then create the index and run it again.
+  takeaway: |
+    Without an index: NodeByLabelScan reads all 20,000 customers (20,001 db hits), then Filter compares email one by one (another 20,000), about 40,000 db hits in total.
+    With the index: NodeIndexSeek finds that one customer directly, 4 db hits in total.
+    db hits count Neo4j's accesses to the storage layer (reading nodes, properties, relationships); they're the most stable measure of query cost, since milliseconds are affected by caching.
+    ★ In a graph database, indexes are only used to find the "starting point"; once found, it follows relationships without any index (index-free adjacency).
+  queries:
+    - label: Find a customer by email
+
+- id: index-defeated
+  title: Compute on a property and the index can't be used
+  question: All three return the same result. Are the plans the same?
+  goal: id has an index from the uniqueness constraint. Compare c.id = 4242 with c.id + 0 = 4242 (same result).
+  takeaway: |
+    A: NodeUniqueIndexSeek, 3 db hits. B, C: NodeByLabelScan + Filter, about 40,000 db hits.
+    When you compute on a property (c.id + 0, toString(c.id)), the planner can't use the index and has to compute every node's property and compare.
+    It's the same as in SQL: WHERE id + 0 = 4242 or WHERE lower(email) = … also defeat the index.
+    The right way is to put the computation on the "value" side: WHERE c.id = toInteger($id).
+  queries:
+    - label: "A: c.id = 4242"
+    - label: "B: c.id + 0 = 4242"
+    - label: "C: toString(c.id) = '4242'"
+
+- id: range-index
+  title: "Range queries: a time span"
+  question: What is the first step of the plan before and after the index? How different are the db hits?
+  goal: How many orders were there in September 2026? Run it first without an index, then create a RANGE index on Order.orderDate.
+  takeaway: |
+    Without an index: NodeByLabelScan reads 80,000 orders, then Filter compares the time, about 160,000 db hits.
+    With a RANGE index: NodeIndexSeekByRange slices September straight out of the index, 2,919 orders, about 2,900 db hits.
+    RANGE indexes (the default in Neo4j 5) support equality, ranges (< > >= <=), STARTS WITH and IS NOT NULL.
+  queries:
+    - label: Orders in September 2026
+
+- id: text-index
+  title: "String contains: TEXT indexes"
+  question: After creating the TEXT index, what are A's and B's plans?
+  goal: Products whose name contains "Sony". A RANGE index only works for equality, ranges and STARTS WITH; CONTAINS / ENDS WITH need a TEXT index.
+  takeaway: |
+    Without an index: both are NodeByLabelScan + Filter, about 3,000 db hits.
+    After creating the TEXT index: A becomes NodeIndexContainsScan and B NodeIndexSeekByRange, both only 60 db hits.
+    A RANGE index can't be used for CONTAINS / ENDS WITH; use a TEXT index. Real full-text search (tokenizing, relevance scores) uses a FULLTEXT index:
+    CREATE FULLTEXT INDEX …, then query with db.index.fulltext.queryNodes().
+  queries:
+    - label: "A: CONTAINS 'Sony'"
+    - label: "B: STARTS WITH 'Sony'"
+
+- id: supernode
+  title: Starting from a supernode
+  question: Both plans are the same. How many times more db hits does one have?
+  goal: "\"How many orders have my followers placed\": customer 4242 has 4 followers and customer 1 has 895. The same query from a different starting point."
+  takeaway: |
+    Both plans are identical: find the starting point with the unique index → Expand followers → Expand orders.
+    The difference is the data: 4242 has 4 followers, 106 db hits in total; customer 1 has 895 followers, about 18,700 db hits, over 170 times more.
+    The cost of a graph traversal depends on "how many relationships are walked", not on how big the whole database is; but with a supernode (a celebrity account, a popular tag),
+    queries that start from it or pass through it become expensive. Common remedies: restrict direction and relationship type, split relationships by time (e.g. FOLLOWED_2026),
+    or precompute statistics on the supernode.
+  queries:
+    - label: "A: starting from customer 4242"
+    - label: "B: starting from customer 1"

@@ -1,0 +1,152 @@
+- id: double-quotes
+  title: 文字列をダブルクォートで囲む
+  question: A は tag の値をダブルクォートで "db-01" と書いています。何が返りますか？
+  options:
+    - B と同じく 3 件
+    - データがなく、エラーにもならない
+    - 構文エラー
+  scripts:
+    - label: 'A：host = "db-01"'
+    - label: "B：host = 'db-01'"
+  explanation: |
+    InfluxQL のダブルクォートは「識別子」（measurement、tag、field の名前）を表し、シングルクォートだけが文字列の値です。
+    host = "db-01" は「host という tag が db-01 という tag / field の値に等しい」という意味になり、db-01 という列はないので何も一致せず、しかもエラーになりません。
+    ★ ルール：値はシングルクォート、名前はダブルクォート（名前に特殊文字や予約語があるときだけ必須）。
+
+- id: tag-is-string
+  title: tag の値は数値？
+  question: sensor_id は 2、3、4… と書き込まれています。A は数値で sensor_id = 2 と比較しています。2 号のデータは見つかりますか？
+  options:
+    - 見つかる。InfluxDB が自動で型変換する
+    - 見つからない：tag の値は常に文字列
+    - エラー：型が一致しない
+  scripts:
+    - label: A：sensor_id = 2
+    - label: B：sensor_id = '2'
+  explanation: |
+    tag の値は常に文字列で、"2" と数値の 2 は等しくないので、A は何も返しません（エラーにもなりません）。
+    同様に、tag では数値の範囲比較ができず（sensor_id > 3 は文字列の比較）、sum や mean もできません。計算が必要な数値は field として保存しましょう。
+
+- id: no-tz
+  title: tz() のない GROUP BY time(1d)
+  question: db-01 の 9/18、9/19 の 2 日間（台湾時間）の日ごとの最大値。A には tz() がありません。何行返りますか？
+  options:
+    - 2 行、B と同じ
+    - 3 行：UTC で区切られ、台湾の 1 日が午前 8 時から始まるので、先頭と末尾に 1 区間ずつ増える
+    - エラー：時間範囲にタイムゾーンがあるなら、GROUP BY にも必要
+  scripts:
+    - label: A：tz() なし
+    - label: B：tz('Asia/Taipei')
+  explanation: |
+    InfluxDB の時刻はすべて UTC で保存され、GROUP BY time(1d) は既定で UTC の午前 0 時で区切ります。台湾時間 9/18 00:00〜08:00 は UTC の 9/17 に属するので、1 行多くなり、毎日の値も正しくありません。
+    TimescaleDB の time_bucket、Elasticsearch の date_histogram と同じ落とし穴です。Flux では option location を設定します。
+
+- id: counter-reset
+  title: カウンタのリセット後の derivative
+  question: requests は累積カウンタで、api は 9/15 03:00 に再起動した後 0 から始まりました。A は derivative で 1 分ごとのリクエスト数を計算します。03:00 の行はいくつですか？
+  options:
+    - 約 20〜30、前後とほぼ同じ
+    - '0'
+    - 非常に大きな負の数
+  scripts:
+    - label: A：derivative
+    - label: B：non_negative_derivative
+  explanation: |
+    derivative は「この点 − 前の点」です：再起動前の累積値は 360 万で、再起動後は最初から数え直すので、引き算すると -360 万になり、ダッシュボードには奇妙な深い谷が現れ、合計も引き下げられます。
+    ★ 累積カウンタには常に non_negative_derivative / non_negative_difference を使いましょう（Flux：nonNegative: true、または increase()）。
+
+- id: group-by-field
+  title: field で GROUP BY する
+  question: customer_id は tag ではなく field です。A は顧客ごとの注文数を求めたいのですが、何が得られますか？
+  options:
+    - 顧客ごとに 1 グループ
+    - すべてが 1 つのグループにまとまる（customer_id は空）
+    - エラー：field では GROUP BY できない
+  scripts:
+    - label: A：GROUP BY customer_id
+  explanation: |
+    GROUP BY が認識するのは tag だけです：customer_id という tag が見つからないと、各点のこの tag を空とみなし、すべての注文が同じグループに入ります。しかもエラーになりません。
+    ★ グループ化が必要な列は tag として設計しますが、顧客番号のように値が非常に多い列を tag にすると series が爆発します。
+    このような「高カーディナリティの列でグループ化する」分析は InfluxDB の得意分野ではなく、PostgreSQL、ClickHouse、あるいは Flux の group()（field でもグループ化できるが遅い）に任せましょう。
+
+- id: select-only-tags
+  title: tag だけを SELECT する
+  question: A は host という tag だけを検索し、各データがどのホストかを一覧にしたいと考えています。結果は？
+  options:
+    - 3 件、それぞれ 1 台のホスト
+    - データなし
+    - すべてのホスト名（重複なし）
+  scripts:
+    - label: A：SELECT host
+    - label: B：field を 1 つ加える
+  explanation: |
+    InfluxQL の SELECT には少なくとも 1 つの field が必要で、tag だけでは何も返しません（点は field でできており、tag は説明にすぎない）。
+    tag の値を一覧にするには SHOW TAG VALUES を使い、各データの tag を見たいなら field と一緒に SELECT します。
+
+- id: limit-per-series
+  title: GROUP BY host に LIMIT 1 を付ける
+  question: SELECT * FROM cpu GROUP BY host LIMIT 1 は何行返しますか？
+  options:
+    - 1 行
+    - 5 行：各ホスト（各 series）に 1 行ずつ
+    - エラー
+  scripts:
+    - label: LIMIT 1 + GROUP BY host
+  explanation: |
+    GROUP BY tag があるとき、LIMIT / OFFSET は「series ごとに」件数を制限します。series の数を制限するには SLIMIT / SOFFSET を使います。
+    この「まず series に分け、series ごとに処理する」という考え方は InfluxDB 全体に通じています（Flux の「テーブルごとに処理する」も同じです）。
+
+- id: unbounded-flux
+  title: range のない Flux
+  question: A の Flux には range() がなく、すべての cpu データを読み出そうとしています。結果は？
+  options:
+    - すべてのデータを読み出す（遅い）
+    - エラー：range で時間を限定する必要がある
+    - 既定で直近 1 時間を読む
+  scripts:
+    - label: A：from |> filter
+  explanation: |
+    Flux は「時間範囲のない」読み取りを許しません：from の後には必ず range が必要です（cannot submit unbounded read）。
+    ストレージエンジンは時間でデータを shard に分けているので、どの shard を読むか決めるには時間範囲が必要です。InfluxQL は時間条件がないとすべて（1677 年から現在まで）を読むので、同じく遅くなります。
+
+- id: flux-window-time
+  title: aggregateWindow の _time
+  question: どちらも 1 時間ごとに区切ります。InfluxQL（A）の time は区間の開始です。Flux の aggregateWindow（B）の _time は？
+  options:
+    - 同じく区間の開始
+    - 区間の終了
+    - 区間内の最後のデータの時刻
+  scripts:
+    - label: A：InfluxQL GROUP BY time(1h)
+    - label: 'B：Flux aggregateWindow(every: 1h)'
+  explanation: |
+    aggregateWindow は既定で timeSrc: "_stop" です：_time は区間の終了です（13:00〜14:00 の平均は 14:00 に表示される）。InfluxQL は区間の開始（13:00）に表示します。
+    2 つのクエリを混ぜて使ったり、InfluxQL を Flux に書き換えたりすると、グラフ全体が 1 区間ずれます。揃えるには timeSrc: "_start" を設定します。
+
+- id: same-timestamp
+  title: 同じ秒に 2 件書き込む
+  question: 同じ顧客（同じ tag の組み合わせ）が同じ秒に 2 件注文し、それぞれ 1 点として書き込みました。検索すると何件ありますか？
+  options:
+    - 2 件
+    - 1 件：後の 1 件が前の 1 件を上書きした
+    - 書き込み失敗：タイムスタンプが重複
+  scripts:
+    - label: 2 件書き込んでから検索
+  explanation: |
+    measurement + tag set + タイムスタンプが同じなら「同じ点」です：後から書き込んだ field の値がそのまま上書きし、1 件目の注文は消えてしまいます。しかもエラーは一切ありません。
+    ★ 解決策：タイムスタンプをより細かい精度（ms、µs、ns）にするか、区別できる値を tag に入れます（ただし高カーディナリティの値は不可）。
+    これは InfluxDB でデータを修正する方法でもあります：同じ時点にもう一度書き込むのです。
+
+- id: field-type-conflict
+  title: 同じ field に異なる型を書き込む
+  question: 最初に total=100i（整数）を書き込み、1 分後に total=1.5（浮動小数点数）を書き込みます。2 回目の書き込みはどうなりますか？
+  options:
+    - 成功し、total は自動で浮動小数点数になる
+    - 失敗：field type conflict。データベースには 1 件目だけがある
+    - 成功し、1.5 は 1 に切り捨てられる
+  scripts:
+    - label: 2 回書き込んでから検索
+  explanation: |
+    同じ shard の中では、1 つの field は 1 つの型しか持てません：最初に書き込んだのが整数なら、以後の浮動小数点数は拒否されます（field type conflict）。
+    同じバッチ（同じリクエスト）に 1 行でも衝突があると、バッチ全体が拒否されることがあるので、プログラムはレスポンスを確認し、失敗したデータを記録する必要があります。
+    ★ プログラムから数値を送るときは常に型を明示的に決め（整数には i を付ける）、値が「整数っぽく見えるか」で自動判断しないようにしましょう（例えば 100.0 が 100 とシリアライズされる）。

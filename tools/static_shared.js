@@ -1,4 +1,6 @@
-// 兩份靜態頁共用：SQL 上色、複製按鈕、HTML 跳脫
+// 兩份靜態頁共用：SQL 上色、複製按鈕、HTML 跳脫、介面文字、語言切換
+// LANG、UI 由 build_static.py 依語言放在這段程式前面
+const t = (key, vars = {}) => String(UI[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 const SQL_KEYWORDS = new Set(`
@@ -149,20 +151,20 @@ function enhanceCode(root) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "copy";
-    btn.textContent = "複製";
+    btn.textContent = t("copy");
     btn.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(raw);
-        btn.textContent = "已複製";
+        btn.textContent = t("copied");
       } catch {
         const sel = window.getSelection();
         const range = document.createRange();
         range.selectNodeContents(code);
         sel.removeAllRanges();
         sel.addRange(range);
-        btn.textContent = "已選取，按 Ctrl+C";
+        btn.textContent = t("copy.select");
       }
-      setTimeout(() => (btn.textContent = "複製"), 1600);
+      setTimeout(() => (btn.textContent = t("copy")), 1600);
     });
     pre.appendChild(btn);
   });
@@ -172,3 +174,12 @@ const store = {
   get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 無法儲存就算了 */ } },
 };
+
+// 右上角的語言切換：記住選擇（之後不再依瀏覽器語言自動切換），換頁時保留 #位置
+document.addEventListener("click", (e) => {
+  const a = e.target.closest(".lang-switch a[data-lang]");
+  if (!a) return;
+  e.preventDefault();
+  try { localStorage.setItem("site-lang", a.dataset.lang); } catch { /* 無法儲存：這次照樣切換 */ }
+  location.href = a.getAttribute("href") + location.hash;
+});

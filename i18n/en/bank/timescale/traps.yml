@@ -1,0 +1,85 @@
+- id: utc-bucket
+  title: When does time_bucket's "day" start?
+  question: Querying daily views for 9/8–9/10 (Taiwan time, three days). A passes no time zone argument. How many rows does it return?
+  options:
+    - 3 rows, the same as B
+    - "4 rows: cut in UTC, each day starts at 8 a.m. Taiwan time, so an extra piece is cut at each end"
+    - "An error: timestamptz requires a time zone"
+  sqls:
+    - label: "A: time_bucket('1 day', view_time)"
+    - label: "B: with 'Asia/Taipei'"
+  explanation: |
+    time_bucket on timestamptz cuts in UTC by default: a Taiwan "day" is split in two (00:00–08:00 belongs to the previous UTC day).
+    The result has an extra row, and every day's number is wrong (the 3× traffic of the 9/9 shopping festival is split across two days).
+    Whenever the bucket is a "day, week or month", always pass the time zone argument; the database's timezone setting doesn't affect time_bucket.
+
+- id: thirty-days
+  title: Is '30 days' a month?
+  question: Does each bucket of time_bucket('30 days', view_time, 'Asia/Taipei') start on the 1st of a month?
+  options:
+    - "No: it cuts every 30 days from a fixed origin, so buckets start on 3/17, 4/16…, and there are 7 of them"
+    - Yes, 30 days aligns with months automatically
+  sqls:
+    - label: "A: '30 days'"
+    - label: "B: '1 month'"
+  explanation: |
+    A fixed-length bucket ('30 days') is cut every 30 days from the origin (2000-01-03 by default), which doesn't line up with calendar months,
+    and leaves partial buckets at both ends. For monthly statistics use '1 month' (time_bucket supports month and year buckets).
+
+- id: chunk-exclusion
+  title: Casting the time column
+  question: Both queries only want the data for 9/1. B casts view_time with ::date. How many chunks does B's plan read?
+  options:
+    - 1, the same as A
+    - 2 (it spans two chunks)
+    - "All 27: after the cast, chunk ranges can't be used, so every chunk is read"
+  sqls:
+    - label: "A: a time range"
+    - label: "B: view_time::date ="
+  explanation: |
+    Chunk exclusion (reading only the relevant chunks) relies on range conditions on "the time column itself". After a cast or function on the column (::date, date_trunc(…), AT TIME ZONE),
+    the planner can't exclude chunks by their time ranges and has to read every chunk. It's the same reason regular indexes stop working.
+    ★ Always write a half-open range: time >= start AND time < end.
+
+- id: gapfill-range
+  title: time_bucket_gapfill without a range
+  question: What does time_bucket_gapfill do when WHERE has no time range?
+  options:
+    - It uses the earliest and latest times in the data as the range
+    - It returns only periods with data, like time_bucket
+    - "An error: it infers start and end from WHERE, and fails if it can't"
+  sqls:
+    - label: gapfill without a time range
+  explanation: |
+    gapfill needs to know "from where to where" to fill, so WHERE must have start and end conditions on the time column (or pass start and finish as function arguments).
+    The error message: missing time_bucket_gapfill argument: could not infer start from WHERE clause.
+
+- id: cagg-stale
+  title: A continuous aggregate without the latest data
+  question: page_views has 70,000-odd views after 9/24. Querying views after 9/24 from the continuous aggregate page_views_daily, what do you get?
+  options:
+    - "The same as B: continuous aggregates include the latest data automatically"
+    - "0: ranges not yet refreshed aren't in the continuous aggregate"
+    - An error
+  sqls:
+    - label: "A: from the continuous aggregate"
+    - label: "B: from the raw data"
+  explanation: |
+    page_views_daily has only been refreshed up to 9/24. Since TimescaleDB 2.13, new continuous aggregates default to materialized_only = true: they return only materialized data.
+    In practice you add a refresh policy: add_continuous_aggregate_policy('page_views_daily', start_offset => …, end_offset => …, schedule_interval => …),
+    or turn on real-time aggregation: ALTER MATERIALIZED VIEW page_views_daily SET (timescaledb.materialized_only = false)
+    (at query time "the part not yet materialized" is computed from the raw data and merged in; shown in the lab).
+
+- id: cagg-count-rows
+  title: count(*) on a continuous aggregate
+  question: page_views_daily has one row per "day × product". For 9/1–9/22, which of count(*) and sum(views) equals the number of views in that period?
+  options:
+    - sum(views)
+    - count(*)
+    - Both are the same
+  sqls:
+    - label: From the continuous aggregate
+    - label: From the raw data (the correct answer)
+  explanation: |
+    Each row of an aggregate is already the result of "one group", so count(*) counts groups (30,000-odd: days × products that were viewed), not the original views.
+    To roll aggregated numbers up further, use sum(views). Likewise, averages can't be averaged again: store sum and count, and divide at the end.

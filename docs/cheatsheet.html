@@ -3,7 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>(function(){var L="zh",U={"zh": "cheatsheet.html", "en": "en/cheatsheet.html", "ja": "ja/cheatsheet.html"},p=null;try{p=localStorage.getItem("site-lang")}catch(e){}
+if(!U[p]){p="en";var ls=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||""];
+for(var i=0;i<ls.length;i++){var l=String(ls[i]).toLowerCase();if(l.indexOf("zh")===0){p="zh";break}
+if(l.indexOf("ja")===0){p="ja";break}if(l.indexOf("en")===0){p="en";break}}}
+if(p!==L)location.replace(U[p]+location.hash);})();</script>
 <title>CheatSheet</title>
+<link rel="alternate" hreflang="zh-Hant" href="cheatsheet.html"><link rel="alternate" hreflang="en" href="en/cheatsheet.html"><link rel="alternate" hreflang="ja" href="ja/cheatsheet.html">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <style>
 /* 兩份靜態頁共用：上方固定標題列 + 內容區；色彩沿用展示台的 PostgreSQL 藍 */
@@ -69,6 +75,16 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
   border: 1px solid var(--line); background: var(--bg); color: var(--ink);
 }
 .search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.top-tools { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.lang-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex: none; }
+.lang-switch a { padding: 5px 10px; font-size: .8rem; font-weight: 600; color: var(--muted); text-decoration: none; line-height: 1.4; }
+.lang-switch a + a { border-left: 1px solid var(--line); }
+.lang-switch a:hover { color: var(--ink); background: var(--bg); }
+.lang-switch a[aria-current="true"] { background: var(--accent); color: var(--accent-ink); }
+.lang-switch a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (max-width: 600px) { .top-tools { width: 100%; } .top-tools .search { flex: 1; } .top-tools .search input { width: 100%; } }
+:root:lang(ja) { --font-body: "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif; }
+:root:lang(en) { --font-body: "Noto Sans TC", system-ui, "Segoe UI", sans-serif; }
 
 /* 程式碼區塊 */
 pre.code { position: relative; margin: 10px 0; padding: 12px 14px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font-size: .82rem; line-height: 1.6; }
@@ -196,9 +212,9 @@ html { scroll-padding-top: 150px; }
 <header class="top">
   <div class="top-in">
     <div class="title-block"><h1 class="page-title">CheatSheet</h1>
-      <span class="sub">資料庫面試速查表 · 9 種資料庫 · 更新於 2026-10-09</span></div>
-    <label class="search"><span class="sr-only">搜尋</span>
-      <input id="q" type="search" placeholder="搜尋所有資料庫，例如 JSONB、Lua、NULL…" autocomplete="off"></label>
+      <span class="sub">資料庫面試速查表 · 9 種資料庫 · 更新於 2026-10-10</span></div>
+    <div class="top-tools"><label class="search"><span class="sr-only">搜尋</span>
+      <input id="q" type="search" placeholder="搜尋所有資料庫，例如 JSONB、Lua、NULL…" autocomplete="off"></label><nav class="lang-switch" aria-label="切換語言"><a href="cheatsheet.html" data-lang="zh" lang="zh-Hant" aria-current="true">中</a><a href="en/cheatsheet.html" data-lang="en" lang="en">EN</a><a href="ja/cheatsheet.html" data-lang="ja" lang="ja">日</a></nav></div>
   </div>
   <nav class="db-tabs" id="dbtabs" aria-label="資料庫"><a href="#postgresql" data-tab="postgresql">PostgreSQL<span class="n" data-count="postgresql"></span></a><a href="#redis" data-tab="redis">Redis<span class="n" data-count="redis"></span></a><a href="#mongodb" data-tab="mongodb">MongoDB<span class="n" data-count="mongodb"></span></a><a href="#cassandra" data-tab="cassandra">Cassandra<span class="n" data-count="cassandra"></span></a><a href="#neo4j" data-tab="neo4j">Neo4j<span class="n" data-count="neo4j"></span></a><a href="#timescaledb" data-tab="timescaledb">TimescaleDB<span class="n" data-count="timescaledb"></span></a><a href="#pgvector" data-tab="pgvector">pgvector<span class="n" data-count="pgvector"></span></a><a href="#elasticsearch" data-tab="elasticsearch">Elasticsearch<span class="n" data-count="elasticsearch"></span></a><a href="#influxdb" data-tab="influxdb">InfluxDB<span class="n" data-count="influxdb"></span></a></nav>
 </header>
@@ -1530,7 +1546,11 @@ from(bucket: &quot;metrics&quot;)
   </main>
 </div>
 <script>
-// 兩份靜態頁共用：SQL 上色、複製按鈕、HTML 跳脫
+const LANG = "zh";
+const UI = {"locale": "zh-TW", "lang.aria": "切換語言", "star": "面試高頻", "nav.dbs": "資料庫", "nav.toc": "目錄", "search": "搜尋", "site.title": "資料庫學習筆記", "site.sub": "面試準備 · shop 練習資料庫", "home.lead": "以一個台灣電商「shop」的模擬資料（會員、訂單、明細、商品、分類，約 30 萬筆）為例，練習 PostgreSQL、Redis、MongoDB、Cassandra、Neo4j、TimescaleDB、pgvector、Elasticsearch、InfluxDB 九種資料庫的查詢、資料模型與面試常考的觀念。", "home.cheatsheet": "PostgreSQL：SQL 執行順序、JOIN、NULL、視窗函數、交易、JSONB / UPSERT、各種索引（Partial、Expression、GIN、GiST、BRIN）。 Redis：資料結構、交易與 Lua、快取穿透 / 擊穿 / 雪崩、分散式鎖、持久化、叢集。 MongoDB：查詢與聚合管線、內嵌 vs 參照、索引與 ESR、交易與分片。 Cassandra：分區鍵與叢集鍵、查詢先行的表設計、墓碑、一致性等級、LWT。 Neo4j：Cypher 圖樣、路徑與最短路徑、MERGE、圖的資料模型、PROFILE。 TimescaleDB：hypertable 與 chunk、time_bucket、gapfill、連續聚合、壓縮、資料保留。 pgvector：距離運算子、語意搜尋與推薦、HNSW vs IVFFlat、過濾與多租戶、量化、混合搜尋。 Elasticsearch：倒排索引與分析器、Query DSL、BM25 相關性、聚合、nested、寫入與近即時、分片。 InfluxDB：line protocol、tag vs field 與 cardinality、InfluxQL、Flux、計數器與變化率、保留期限與降低精度。", "home.bank.item": "{name} 練習 {e} 題、陷阱 {t} 題", "home.bank.steps": "、實驗 {s} 步", "home.bank.sep": "、", "home.bank.tail": "。附提示、答案、解說與正確答案的實際執行結果。", "updated": "更新於 {d}", "cs.sub": "資料庫面試速查表 · {n} 種資料庫 · 更新於 {d}", "cs.placeholder": "搜尋所有資料庫，例如 JSONB、Lua、NULL…", "cs.hits": "「{q}」在所有資料庫共找到 {n} 節，分頁上的數字是各資料庫的節數。", "cs.none": "沒有任何章節包含「{q}」。", "copy": "複製", "copied": "已複製", "copy.select": "已選取，按 Ctrl+C", "copy.manual": "請手動選取複製", "bank.title": "題庫", "bank.search": "搜尋題目", "bank.placeholder": "搜尋題目、指令、解說…（按 / 快速搜尋）", "bank.sub": "資料庫面試題庫 · {dbs} 種資料庫 · 練習題 {ex} · 陷阱題 {traps} · 更新於 {built}", "bank.doctitle": "{db} · 題庫", "kind.aria": "題型", "kind.practice": "練習題", "kind.traps": "陷阱題", "rows.zero": "0 列", "rows.total": "共 {n} 列", "rows.more": "，以下只列前 {k} 列", "run.title": "正確答案的執行結果", "run.warn": "⚠ 伺服器警告：", "note.offline": "離線複習版：可以看題目、提示、答案與正確答案的執行結果{missing}。要自己寫、自動批改，請啟動展示台後打開 {link}。", "note.missing": "（這次產生時展示台沒有在執行，所以沒有附上結果）", "chap.all": "全部", "chap.aria": "章節", "progress": "已標記會了 <b>{n}</b> / {total}", "showAnswers": "展開所有答案", "hideKnown": "隱藏已會的", "chap.count": "{n} 題", "tag.write": "寫入題", "tag.unordered": "順序不拘", "known": "我會了", "setup.ran": "題目已經先執行了", "hints": "提示（{n}）", "seeAnswer": "看答案", "checks.title": "執行之後，用這些指令檢查資料", "empty": "沒有符合條件的題目。", "empty.steps": "沒有符合條件的步驟。", "trap.setup": "每段指令執行前，都先執行", "trap.right": "✓ 猜對了！", "trap.wrong": "✗ 答案是「{a}」", "trap.result": "{label} 的執行結果", "retry": "重新作答", "step.n": "步驟 {n}", "step.indexes": "這一步會用到的索引", "step.think": "想一想：{q}", "step.explain": "看解說", "step.request": "請求", "out.clip": "\n…（以下省略）", "out.docs": "// 共 {n} 份", "out.docs.more": "，以下只列前 {k} 份", "out.done": "完成（沒有回傳資料）", "out.empty": "（沒有內容）", "out.notime": "1970-01-01（沒有時間）", "out.list.sep": "、", "counter.nodesCreated": "建立節點", "counter.nodesDeleted": "刪除節點", "counter.relationshipsCreated": "建立關係", "counter.relationshipsDeleted": "刪除關係", "counter.propertiesSet": "設定屬性", "counter.labelsAdded": "加上標籤", "step.write": "# line protocol（寫入 scratch）"};
+// 兩份靜態頁共用：SQL 上色、複製按鈕、HTML 跳脫、介面文字、語言切換
+// LANG、UI 由 build_static.py 依語言放在這段程式前面
+const t = (key, vars = {}) => String(UI[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 const SQL_KEYWORDS = new Set(`
@@ -1681,20 +1701,20 @@ function enhanceCode(root) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "copy";
-    btn.textContent = "複製";
+    btn.textContent = t("copy");
     btn.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(raw);
-        btn.textContent = "已複製";
+        btn.textContent = t("copied");
       } catch {
         const sel = window.getSelection();
         const range = document.createRange();
         range.selectNodeContents(code);
         sel.removeAllRanges();
         sel.addRange(range);
-        btn.textContent = "已選取，按 Ctrl+C";
+        btn.textContent = t("copy.select");
       }
-      setTimeout(() => (btn.textContent = "複製"), 1600);
+      setTimeout(() => (btn.textContent = t("copy")), 1600);
     });
     pre.appendChild(btn);
   });
@@ -1704,6 +1724,15 @@ const store = {
   get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 無法儲存就算了 */ } },
 };
+
+// 右上角的語言切換：記住選擇（之後不再依瀏覽器語言自動切換），換頁時保留 #位置
+document.addEventListener("click", (e) => {
+  const a = e.target.closest(".lang-switch a[data-lang]");
+  if (!a) return;
+  e.preventDefault();
+  try { localStorage.setItem("site-lang", a.dataset.lang); } catch { /* 無法儲存：這次照樣切換 */ }
+  location.href = a.getAttribute("href") + location.hash;
+});
 
 // CheatSheet：上方切換資料庫分頁、左側目錄只列目前資料庫的章節、搜尋涵蓋所有資料庫
 (() => {
@@ -1810,11 +1839,11 @@ const store = {
       if (pre.querySelector(".copy")) return;
       const raw = pre.querySelector("code").textContent;
       const btn = document.createElement("button");
-      btn.type = "button"; btn.className = "copy"; btn.textContent = "複製";
+      btn.type = "button"; btn.className = "copy"; btn.textContent = t("copy");
       btn.addEventListener("click", async () => {
-        try { await navigator.clipboard.writeText(raw); btn.textContent = "已複製"; }
-        catch { btn.textContent = "請手動選取複製"; }
-        setTimeout(() => (btn.textContent = "複製"), 1600);
+        try { await navigator.clipboard.writeText(raw); btn.textContent = t("copied"); }
+        catch { btn.textContent = t("copy.manual"); }
+        setTimeout(() => (btn.textContent = t("copy")), 1600);
       });
       pre.appendChild(btn);
     });
@@ -1841,8 +1870,8 @@ const store = {
     const total = matched.size;
     hits.hidden = !query;
     hits.textContent = total
-      ? `「${input.value.trim()}」在所有資料庫共找到 ${total} 節，分頁上的數字是各資料庫的節數。`
-      : `沒有任何章節包含「${input.value.trim()}」。`;
+      ? t("cs.hits", { q: input.value.trim(), n: total })
+      : t("cs.none", { q: input.value.trim() });
     observeAll();
   }
 

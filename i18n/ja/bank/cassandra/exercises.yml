@@ -1,0 +1,328 @@
+- id: by-order-id
+  chapter: 主キーでの検索
+  title: 注文番号で注文を検索
+  prompt: |
+    注文 77621 のステータス（status）と合計金額（total）を調べてください。
+  hints:
+    - orders の主キーは order_id で、WHERE order_id = … は「単一パーティション」の読み取りになります。
+  explanation: |
+    Cassandra はパーティションキーのハッシュ値（token）でデータを置くノードを決めます。WHERE でパーティションキーを完全に指定すれば、コーディネーターは担当ノードを直接見つけられ、
+    クラスタのマシンが何台あっても 1 か所しか読みません。これが Cassandra で最も速く、最も「正しい」検索方法です。
+
+- id: customer-orders
+  chapter: 主キーでの検索
+  title: 会員の注文（新しい順）
+  prompt: |
+    会員 4242 のすべての注文を新しい順に一覧にしてください。
+    order_time、order_id、status、total の 4 列を返します。
+  hints:
+    - orders は customer_id では検索できません（主キーではないため）。「会員ごとに保存した」テーブルを探しましょう。
+    - orders_by_customer のクラスタリングキーは order_time DESC で、データはパーティション内で既に並んでいるので、ORDER BY は不要です。
+  explanation: |
+    同じパーティション内の行は、クラスタリングキーで並べた状態でまとめて保存されます。テーブル作成時に CLUSTERING ORDER BY (order_time DESC) と書いたので、
+    読み出すとそのまま新しい順で、並べ替えは不要です。これが Cassandra の「クエリ先行」設計です：まずどう検索するかを決めてから、テーブルの主キーを決めます。
+
+- id: latest-three
+  chapter: 主キーでの検索
+  title: 最新 3 件の注文
+  prompt: |
+    会員 1 の最新 3 件の注文。order_id、total を新しい順に返します。
+  hints:
+    - LIMIT はパーティション内でも有効で、データは既に時刻順なので 3 行目を読んだところで止まります。
+  explanation: |
+    パーティション内は既に order_time DESC で並んでいるので、LIMIT 3 はパーティションの先頭 3 行を読むだけです。SQL のように全体を並べ替えてから 3 件取る必要はありません。
+
+- id: oldest-first
+  chapter: 主キーでの検索
+  title: 古い順
+  prompt: |
+    会員 4242 の注文を古い順に変え、order_time、order_id を返します。
+  hints:
+    - ORDER BY にはクラスタリングキーしか使えず、しかもテーブル作成時の順序かその完全な逆順だけです。
+  explanation: |
+    ORDER BY にはクラスタリングキーしか書けません：テーブル作成時と同じ順序か、すべて逆（パーティションを逆向きに読む）かのどちらかです。
+    ORDER BY order_time ASC はクラスタリング順序全体を逆にすることなので、order_id も一緒に逆になります。total で並べ替えることはできず、アプリケーション側で並べ替えるか、total をクラスタリングキーにした別のテーブルを作るしかありません。
+
+- id: year-count
+  chapter: 主キーでの検索
+  title: ある年の注文数
+  prompt: |
+    会員 1 は 2025 年（台湾時間）に何件注文しましたか？1 つの数値を返します。
+  hints:
+    - パーティションキーには等号を、クラスタリングキー order_time には範囲を使えます。
+    - 時刻の文字列にはタイムゾーンを付けます。例えば '2025-01-01 00:00:00+0800' とすれば、サーバーのタイムゾーンに左右されません。
+  explanation: |
+    パーティションキーの等号 + クラスタリングキーの範囲は、Cassandra の最も典型的な検索方法です：パーティションを見つけたら、並んだデータから一区間を切り出します。
+    単一パーティション内に限定した COUNT(*) は安価ですが、パーティションキーなしの COUNT(*) はテーブル全体をスキャンします（落とし穴問題で実演しています）。
+    時刻の文字列にタイムゾーンがないと、Cassandra はサーバーのタイムゾーンで解釈します。このコンテナはたまたま Asia/Taipei に設定されていますが、別のマシンでは結果が変わり得るので、明記するのが確実です。
+
+- id: login-by-email
+  chapter: 主キーでの検索
+  title: email でログイン
+  prompt: |
+    email 'user04242@example.com' で会員番号（customer_id）と氏名（name）を調べてください。
+  hints:
+    - customers の主キーは customer_id なので、email で検索するには別のテーブルを探します。
+  explanation: |
+    同じ会員データを異なるパーティションキーで 2 回保存しており（customers、customers_by_email）、どの検索方法も単一パーティションの読み取りになります。
+    代償は書き込みが 2 回になることで、email を変更するときは両方のテーブルを変更する必要があります（通常は logged BATCH で両方の書き込みが最終的に成功することを保証します）。
+
+- id: multi-get
+  chapter: 主キーでの検索
+  title: 複数の商品を一度に検索
+  prompt: |
+    商品 540、541、542 の product_id、name、price を一度に調べてください。順序は問いません。
+  hints:
+    - パーティションキーには IN を使えます。
+  explanation: |
+    パーティションキーに IN を使うと、コーディネーターは各パーティション（別々のノードにあるかもしれない）をそれぞれ探しに行く必要があり、IN の値が多いとコーディネーターの負荷が大きくなります。
+    実務では数個から数十個なら問題ありません。それ以上なら、アプリケーションから単一パーティションのクエリを並行して複数送る方が、通常は速くて安定します。
+
+- id: category-top
+  chapter: クラスタリングキーと時間バケット
+  title: カテゴリ内で最も高い 5 件
+  prompt: |
+    「手機」（スマートフォン）カテゴリで最も高い 5 件の商品。name、price を価格の高い順に返します。
+  hints:
+    - products_by_category のパーティションキーは category、クラスタリングキーは price DESC です。
+  explanation: |
+    クラスタリングキー (price DESC, product_id) により、パーティション内の商品は既に価格の高い順に並んでいます。
+    product_id もクラスタリングキーに入れているのは、「同じ価格の 2 つの商品」の主キーが異なるようにして、互いに上書きしないためです。
+
+- id: price-range
+  chapter: クラスタリングキーと時間バケット
+  title: 価格帯
+  prompt: |
+    「筆電」（ノートパソコン）カテゴリで、価格が 20,000 から 30,000 まで（両端を含む）の商品。
+    product_id、name、price を価格の低い順に返します。
+  hints:
+    - クラスタリングキーは >=、<= で範囲を切れます。
+    - 低い順はテーブル作成時の順序と逆なので、ORDER BY を書きます。
+  explanation: |
+    範囲条件はクラスタリングキーにしか置けず、しかもクラスタリングキーの順序に従う必要があります：先に price を限定してから、product_id を限定できます。
+    ORDER BY price ASC はパーティションを逆向きに読むだけで、追加の並べ替えは不要です。
+
+- id: day-count
+  chapter: クラスタリングキーと時間バケット
+  title: ある日の注文数
+  prompt: |
+    2026-09-01（台湾時間）の注文は何件ですか？1 つの数値を返します。
+  hints:
+    - orders_by_day は 1 日 1 パーティションで、order_day は台湾時間の日付です。
+  explanation: |
+    これを「時間バケット」（bucketing）と呼びます：パーティションキーが「全注文」や「年」だけだと、パーティションは際限なく大きくなります。
+    日付をパーティションキーにすれば各パーティションの大きさは一定（1 日数十〜数百件）で、ある期間を検索するときはその日数分のパーティションを読むだけです。
+    バケットの粒度は書き込み量で決めます：書き込みが非常に多いシステムでは時間単位、さらには (日付, 0〜9 のハッシュ) でさらに分割することもあります。
+
+- id: week-by-day
+  chapter: クラスタリングキーと時間バケット
+  title: 1 週間の日別注文数
+  prompt: |
+    2026-09-01 から 2026-09-07（台湾時間）までの各日の注文は何件ですか？
+    order_day と件数を、日付の古い順に返します。
+  hints:
+    - パーティションキーには IN で 7 日分を列挙できます。
+    - GROUP BY には主キーの列しか使えません。ここではパーティションキー order_day を使います。
+  explanation: |
+    GROUP BY には主キーの列しか使えず、しかも主キーの順序（パーティションキー → クラスタリングキーの先頭部分）に従う必要があります。
+    実行すると「Aggregation query used on multiple partition keys」という警告が出ます：IN が複数のパーティションにまたがり、コーディネーターはそれらをすべて読み戻してから集計する必要があるからです。
+    7 日分なら問題ありませんが、データ量の多いレポートには Spark のようなツールを使うか、書き込み時に別途集計しておく（例えばカウンタテーブル）のが普通です。
+
+- id: evening-orders
+  chapter: クラスタリングキーと時間バケット
+  title: ある日の夜の注文
+  prompt: |
+    2026-09-01 の夜 8 時から 10 時まで（台湾時間、8 時を含み 10 時を含まない）の注文。
+    order_time、order_id、total を時刻の早い順に返します。
+  hints:
+    - まずパーティションキーでその日を選び、次にクラスタリングキー order_time で範囲を切ります。
+  explanation: |
+    orders_by_day のクラスタリングキー order_time は既定の ASC なので、読み出すとそのまま早い順です。
+    返される時刻は UTC です（2026-09-01T12:00:00Z が台湾時間の夜 8 時）。Cassandra は timestamp を常に UTC で保存します。
+
+- id: first-of-each-day
+  chapter: クラスタリングキーと時間バケット
+  title: 毎日の最初の注文
+  prompt: |
+    2026-09-01、09-02、09-03 の 3 日間について、各日で最も早い注文。
+    order_day、order_time、order_id を返します。
+  hints:
+    - LIMIT は結果全体の上限です。「パーティションごと」の最大行数を制限する構文があります。
+  explanation: |
+    PER PARTITION LIMIT n は各パーティションの先頭 n 行だけを返し（クラスタリングキーの順序で）、Cassandra 版の「グループごとの上位 n 件」です。
+    SQL では ROW_NUMBER() OVER (PARTITION BY …) を使わないとできません。
+
+- id: latest-buyers
+  chapter: クラスタリングキーと時間バケット
+  title: 最近この商品を買った人
+  prompt: |
+    商品 540 が最近購入された 5 回分。customer_id、order_time を新しい順に返します。
+  hints:
+    - 注文明細は商品ごとにもう 1 部保存されています。
+  explanation: |
+    同じ明細が orders（注文ごと）と items_by_product（商品ごと）の 2 か所に保存されています。
+    Cassandra では書き込みが安価で、高くつくのはパーティションをまたぐ読み取りなので、「何部か多く書いて、どの検索も 1 パーティションだけを読むようにする」のが普通です。
+
+- id: filter-in-partition
+  chapter: クラスタリングキーと時間バケット
+  title: パーティション内でさらに絞り込む
+  prompt: |
+    会員 4242 の注文のうち、ステータスが returned（返品）のものはどれですか？order_id、total を返します。
+  hints:
+    - status は主キーではないので、そのまま書くと拒否されます。
+    - 既に単一パーティションに限定しているので、絞り込みのコストはこのパーティションの大きさだけで決まります。
+  explanation: |
+    ALLOW FILTERING 自体が悪いわけではありません。悪いのは「パーティションを限定していない」ALLOW FILTERING で、これはテーブル全体をスキャンします。
+    パーティションキーを限定していれば、1 つのパーティション（この会員の数件の注文）の中で 1 行ずつ絞り込むだけなので、コストは小さいです。
+
+- id: distinct-partitions
+  chapter: クラスタリングキーと時間バケット
+  title: すべてのカテゴリを一覧にする
+  prompt: |
+    products_by_category にはどのカテゴリがありますか？カテゴリごとに 1 行で、category だけを返します。順序は問いません。
+  hints:
+    - DISTINCT はパーティションキーにしか使えません。
+  explanation: |
+    DISTINCT はパーティションキー（と static 列）にしか使えず、各パーティションの先頭だけを読み、パーティション内の行は読みません。
+    それでもすべてのパーティションをたどるので、パーティションが多ければやはり全表スキャンです。順序はパーティションキーの token（ハッシュ値）順なので、ばらばらに見えます。
+
+- id: collections
+  chapter: コレクションと関数
+  title: set と map
+  prompt: |
+    商品 540 の tags（set）と、specs の color というキーの値を調べてください。2 つの列を返します。
+  hints:
+    - map は 列['key'] で単一の値を取り出せます。
+  explanation: |
+    set、list、map は「少量で、この行と一緒に読む」データ（数十個以内）を保存するのに向いています。
+    frozen でないコレクションは要素を 1 つだけ更新できます。frozen なコレクション（例えば orders.items の list<frozen<order_item>> の各要素）は丸ごと置き換えるしかありません。
+
+- id: avg-decimal
+  chapter: コレクションと関数
+  title: 平均注文金額
+  prompt: |
+    会員 4242 の注文件数、合計金額、平均金額（小数あり）、最大金額。4 つの数値を返します。
+  hints:
+    - 集約関数：COUNT、SUM、AVG、MIN、MAX。
+    - total は int で、AVG(int) の結果も int になります（小数は切り捨てられます）。
+  explanation: |
+    CQL の AVG は列と同じ型を返します：int 列の平均は小数がそのまま切り捨てられます（9672.17 が 9672 になる）。
+    小数が必要なら先に double か decimal に CAST します。集約も単一パーティション内でだけ使うことが推奨されています。
+
+- id: writetime
+  chapter: コレクションと関数
+  title: 書き込み時刻
+  prompt: |
+    会員 4242 の name と、この列の書き込み時刻 WRITETIME（マイクロ秒）を調べてください。2 つの列を返します。
+  hints:
+    - WRITETIME(列) はその列が最後に書き込まれたタイムスタンプを返します。
+  explanation: |
+    Cassandra では列の値（cell）ごとに、それ自身の書き込みタイムスタンプと TTL を持っています。同じ列が何度も書き込まれたときは、タイムスタンプが最大のものが勝ちます（last write wins）。
+    これがロックなしで、複数のレプリカ間でデータをマージできる理由です。主キーの列には WRITETIME がありません。
+
+- id: batch-two-tables
+  chapter: 書き込み
+  title: 新規会員を 2 つのテーブルに書き込む
+  prompt: |
+    会員を 1 人追加します：customer_id 99999、name '測試會員'、email 'test99999@example.com'、
+    signup_date '2026-10-06'、vip_level 'normal'。
+    会員データは customers と customers_by_email（email、customer_id、name）の両方に書き込む必要があります。
+  hints:
+    - 両方のテーブルに書き込み、しかも両方が最終的に成功することを保証する必要があります。
+    - BEGIN BATCH … APPLY BATCH で複数の文をまとめられます。
+  explanation: |
+    logged BATCH（既定）はまずバッチ全体を batchlog に書き込み、「すべてが最終的に適用される」ことを保証します。非正規化した複数のテーブルの一貫性を保つために使います。
+    トランザクションではありません：分離性がなく、他の人が半分だけ書き込まれた状態を読むことがあり、ROLLBACK もできません。
+    BATCH は高速化のためのものでもありません：多数のパーティションにまたがるバッチは、かえってコーディネーターを遅くします。
+
+- id: update-set
+  chapter: 書き込み
+  title: 在庫を変更し、タグを追加
+  prompt: |
+    商品 540 が売り切れました：在庫（stock）を 0 にし、tags に '缺貨'（在庫切れ）を追加します（既存のタグは残します）。
+  hints:
+    - set は tags = tags + {'…'} で要素を追加できます。
+  explanation: |
+    tags = tags + {…} は新しい要素だけを書き込み、set 全体を先に読み出す必要はありません。tags = {'缺貨'} と書くと set 全体が置き換えられ、
+    元の「特價」が消えてしまいます。しかも丸ごと置き換えるとトゥームストーン（tombstone）も 1 つ生成されます。
+
+- id: map-update
+  chapter: 書き込み
+  title: map のキーを 1 つ変更
+  prompt: |
+    商品 540 の仕様：specs の color を '黑'（黒）に変更し、'5g' というキーを削除します。他の仕様はそのままにします。
+  hints:
+    - map は SET specs['key'] = 値 と書けます。
+    - キーの削除：DELETE specs['key'] FROM …、または SET specs = specs - {'key'}。
+  explanation: |
+    frozen でない map では各キーが独立した cell なので、単独で更新・削除でき、map 全体を読み出して書き戻す必要はありません。
+
+- id: counter
+  chapter: 書き込み
+  title: カウンタ
+  prompt: |
+    商品 540 がまた 1 件の注文で 2 個購入されました：product_sales の units に 2、orders に 1 を足します。
+  hints:
+    - カウンタは UPDATE … SET 列 = 列 + n でしか変更できません。
+  explanation: |
+    counter は分散環境での加減算で、先に読んでから書く必要はありません。ただし冪等ではありません：書き込みがタイムアウトした後に再試行すると、2 回加算されることがあります。
+    そのためカウンタは統計（閲覧数、販売数）には向いていますが、正確さが必要な金額や在庫には向いていません。
+
+- id: lwt-insert
+  chapter: 書き込み
+  title: email の重複登録を防ぐ
+  prompt: |
+    誰かが email 'user04242@example.com' で新しい会員（customer_id 99999、name '冒用者'、なりすまし）を登録しようとしています。
+    customers_by_email に書き込みますが、email が既に存在する場合は元のデータを上書きしてはいけません。
+  hints:
+    - Cassandra の INSERT は既定でそのまま上書きし（upsert）、主キーの重複を報告しません。
+    - INSERT … IF NOT EXISTS は軽量トランザクション（LWT）です。
+  explanation: |
+    IF NOT EXISTS は Paxos でまずこの主キーがまだ存在しないことを確認してから書き込みます。返される [applied] で書き込みに成功したかが分かり、
+    失敗したときは現在の値も返されます。代償はノード間の往復が何回も増えること（通常の書き込みの約 4 倍の遅延）で、本当に「確認してから書く」必要がある場所でだけ使います。
+
+- id: lwt-update
+  chapter: 書き込み
+  title: 楽観的ロック
+  prompt: |
+    商品 540 の価格を 27999 に変えたいのですが、価格が「まだ 30000」のときだけ変更します
+    （以前読んだ値は 30000 でしたが、誰かに変えられているかもしれません）。
+  hints:
+    - UPDATE … IF 列 = 値 は、条件が成り立たないときは書き込みません。
+  explanation: |
+    現在の価格は 29949 なので条件は成り立たず、[applied] = false で価格は変わりません。返される price 列が現在の値です。
+    これが compare-and-set（楽観的ロック）です：データをロックせず、条件付き書き込みで誰かが先に変更したかを検出します。
+
+- id: ttl-update
+  chapter: 書き込み
+  title: 自動で消える列
+  prompt: |
+    会員 4242 がキャンペーンに参加し、vip_level を一時的に 'gold' に上げ、24 時間（86400 秒）後に自動で失効させます。
+  hints:
+    - USING TTL 秒数 を、UPDATE テーブル名 の後に書きます。
+  explanation: |
+    TTL は行全体ではなく「今回書き込んだ列」に設定されます：時間が来ると vip_level だけが消え（トゥームストーンになる）、name、city は残ります。
+    行全体を期限切れにしたいなら、INSERT … USING TTL で行全体を書き直すか、テーブル作成時に default_time_to_live を設定します。
+
+- id: range-delete
+  chapter: 書き込み
+  title: ある期間のデータを削除
+  prompt: |
+    会員 1 が 2023 年より前（台湾時間 2023-01-01 より前）の注文記録の削除を求めています。
+    orders_by_customer からこれらの行を、CQL 1 文で削除してください。
+  hints:
+    - DELETE の WHERE ではクラスタリングキーに範囲を使えます。
+  explanation: |
+    範囲削除は、範囲に何行あっても「1 つ」の範囲トゥームストーン（range tombstone）しか書き込みません。
+    先に 39 件を検索して 1 件ずつ削除すると 39 個のトゥームストーンが生成され、以後このパーティションを読むたびにそれらを飛ばす必要があります（実験室でトゥームストーンの影響を実演しています）。
+
+- id: delete-column
+  chapter: 書き込み
+  title: 列を 1 つ削除
+  prompt: |
+    会員 4242 が誕生日データの削除を求めています：birth_date だけを削除し、他の列は残します。
+  hints:
+    - DELETE 列名 FROM テーブル WHERE …
+  explanation: |
+    Cassandra では、列の DELETE と UPDATE … SET birth_date = null の効果は同じで、どちらもトゥームストーンを書き込みます。
+    データはすぐにはディスクから消えず、gc_grace_seconds（既定 10 日）が過ぎた後の compaction で本当に消去されます。

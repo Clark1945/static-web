@@ -1,0 +1,155 @@
+- id: left-join-where
+  title: LEFT JOIN conditions in ON or in WHERE
+  question: Do these two queries count the same number of customers?
+  options:
+    - The same
+    - Different, A has more
+    - Different, B has more
+  sqls:
+    - label: "A: condition in ON"
+    - label: "B: condition in WHERE"
+  explanation: |
+    A puts the condition in ON: rows are matched by the condition, and customers without a match are still kept (order columns filled with NULL), so all 20,000 customers are there.
+    B puts the condition in WHERE: it filters after the LEFT JOIN. For customers without returns, o.status is NULL, NULL = 'returned' is not true, and they're all filtered out.
+    B's LEFT JOIN effectively becomes an INNER JOIN.
+    Rule of thumb: to "keep the left table", put right-table conditions in ON; put them in WHERE only to "filter rows out".
+
+- id: not-in-null
+  title: NOT IN meets NULL
+  question: We want categories with no child categories (leaf nodes). How many rows does A return?
+  options:
+    - The same as B
+    - 0 rows
+    - 27 rows (every category)
+    - An error
+  sqls:
+    - label: "A: NOT IN"
+    - label: "B: NOT EXISTS"
+  explanation: |
+    Top-level categories have parent_id NULL, so the subquery result contains NULL.
+    id NOT IN (2, 4, NULL) expands to id <> 2 AND id <> 4 AND id <> NULL.
+    Any comparison with NULL is "unknown", not true, so no row passes: the result is 0 rows, with no error.
+    ★ Use NOT EXISTS to find what "doesn't exist"; if you must use NOT IN, add WHERE parent_id IS NOT NULL to the subquery.
+
+- id: count-star-left-join
+  title: count(*) after a LEFT JOIN
+  question: Customer 19999 has never placed an order. What does A's count(*) return?
+  options:
+    - '0'
+    - '1'
+    - 'NULL'
+  sqls:
+    - label: "A: count(*)"
+    - label: "B: count(o.id)"
+  explanation: |
+    When a LEFT JOIN finds no order, it still produces "one row": customer columns have values and order columns are all NULL.
+    count(*) counts rows, so it's 1; count(o.id) skips NULL and gives the correct 0.
+    Watch out for this in any "how many Y per X, show 0 if none" report.
+
+- id: count-column-null
+  title: count(*) vs count(column)
+  question: How do count(*) and count(birth_date) compare?
+  options:
+    - The same
+    - count(birth_date) is smaller
+    - count(birth_date) is larger
+  sqls:
+    - label: "A: count(*)"
+    - label: "B: count(birth_date)"
+  explanation: |
+    count(*) counts "rows"; count(column) only counts rows where that column is not NULL.
+    Some customers have no birthday (NULL), so B is smaller.
+    sum, avg, max and min skip NULL as well.
+
+- id: equals-null
+  title: = NULL
+  question: We want customers who didn't fill in a city. What does A return?
+  options:
+    - The same as B
+    - '0'
+    - An error
+  sqls:
+    - label: "A: = NULL"
+    - label: "B: IS NULL"
+  explanation: |
+    NULL means "unknown". Comparing anything with NULL using =, <> or > gives unknown (not true), so no row passes WHERE.
+    The only way to test for NULL is IS NULL / IS NOT NULL.
+
+- id: integer-division
+  title: Integer division
+  question: What cancellation rate does A compute?
+  options:
+    - About 0.1
+    - '0'
+    - About 10
+    - An error
+  sqls:
+    - label: "A: integer division"
+    - label: "B: multiply by 100.0 first"
+  explanation: |
+    count(*) is an integer (bigint), and integer divided by integer is still an integer, with the fraction dropped: 8000 / 80000 = 0.
+    If either side is a decimal you get a decimal; the usual forms are 100.0 * a / b or a::numeric / b.
+    Java's int / int works the same way.
+
+- id: and-or-precedence
+  title: AND vs OR precedence
+  question: Does A find "cancelled or returned orders in 台北市 (Taipei)"?
+  options:
+    - Yes, the same as B
+    - No, A finds more
+    - No, A finds fewer
+  sqls:
+    - label: "A: no parentheses"
+    - label: "B: with parentheses"
+  explanation: |
+    AND binds tighter than OR, so A is actually:
+    status = 'cancelled' OR (status = 'returned' AND shipping_city = '台北市')
+    That is "cancelled orders in every city" plus "returned orders in Taipei", so it finds more.
+    Always add parentheses when mixing OR and AND. status IN ('cancelled', 'returned') avoids the problem too.
+
+- id: between-timestamp
+  title: BETWEEN and timestamps
+  question: We want the orders of January 2026. Does A return the same count as B?
+  options:
+    - The same
+    - A returns fewer
+    - A returns more
+  sqls:
+    - label: "A: BETWEEN"
+    - label: "B: >= and <"
+  explanation: |
+    order_date is a timestamp. '2026-01-31' is read as 2026-01-31 00:00:00,
+    so every order on Jan 31 after midnight is missed.
+    Always write time ranges as ">= start AND < start of the next period"; it's correct whether the column is a date or a timestamp.
+
+- id: jsonb-text-compare
+  title: Values extracted from JSONB are text
+  question: We want phones with more than 64GB of storage. Does A return the same count as B?
+  options:
+    - The same
+    - A returns fewer
+    - A returns more
+  sqls:
+    - label: "A: compare the ->> result directly"
+    - label: "B: cast to a number first"
+  explanation: |
+    ->> extracts text, and text is compared character by character from the first one:
+    '128' > '64' compares '1' with '6' first; '1' is smaller, so it's false. '256' and '512' also lose to '6'.
+    So A finds nothing at all, and there's no error message.
+    To compare numbers inside JSONB, always cast first: (specs->>'storage_gb')::int.
+
+- id: jsonb-null-concat
+  title: Merging JSONB into NULL
+  question: |-
+    Some products have NULL specs. What does A's specs || '{"on_sale": true}' give for them?
+  options:
+    - '{"on_sale": true}'
+    - 'NULL'
+    - An error
+  sqls:
+    - label: "A: merge directly"
+    - label: "B: COALESCE to an empty object first"
+  explanation: |
+    In SQL, almost any operation involving NULL yields NULL: NULL || anything = NULL, NULL + 1 = NULL.
+    So with UPDATE … SET specs = specs || '{…}', products whose specs were NULL don't get the new field, and there's no error message.
+    Fill them with an empty object first using COALESCE(specs, '{}').

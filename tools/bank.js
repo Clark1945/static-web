@@ -15,31 +15,31 @@
     store.set(KNOWN_KEY, known);
     try { localStorage.removeItem("pg-bank-known"); } catch { /* 無法存取就算了 */ }
   }
-  const state = { db: data.dbs[0].id, kind: "practice", chapter: "全部", showAnswers: false, hideKnown: false };
+  const state = { db: data.dbs[0].id, kind: "practice", chapter: "*", showAnswers: false, hideKnown: false };
   const dbOf = (id) => data.dbs.find((d) => d.id === id) ?? data.dbs[0];
   const kinds = (db) => [
-    { id: "practice", label: "練習題", n: db.exercises.length },
-    { id: "traps", label: "陷阱題", n: db.traps.length },
+    { id: "practice", label: t("kind.practice"), n: db.exercises.length },
+    { id: "traps", label: t("kind.traps"), n: db.traps.length },
     ...(db.steps.length ? [{ id: "lab", label: db.labName, n: db.steps.length }] : []),
   ];
   const total = (k) => data.dbs.reduce((s, d) => s + d[k].length, 0);
   document.getElementById("sub").textContent =
-    `資料庫面試題庫 · ${data.dbs.length} 種資料庫 · 練習題 ${total("exercises")} · 陷阱題 ${total("traps")} · 更新於 ${data.built}`;
+    t("bank.sub", { dbs: data.dbs.length, ex: total("exercises"), traps: total("traps"), built: data.built });
 
   // ---------- 共用片段 ----------
-  const fmtNum = (n) => Number(n).toLocaleString("zh-TW");
+  const fmtNum = (n) => Number(n).toLocaleString(t("locale"));
   const code = (text, lang) => `<pre class="code" data-lang="${esc(lang)}"><code>${esc(String(text).trim())}</code></pre>`;
   const matches = (q, ...texts) => !q || texts.some((t) => String(t ?? "").toLowerCase().includes(q));
 
-  function table(t) {
-    if (t.rows.length === 0) return '<p class="result-head">0 列</p>';
-    const head = t.columns.map((c) => `<th>${esc(c)}</th>`).join("");
-    const body = t.rows.map((row) => "<tr>" + row.map((v) =>
+  function table(tb) {
+    if (tb.rows.length === 0) return `<p class="result-head">${t("rows.zero")}</p>`;
+    const head = tb.columns.map((c) => `<th>${esc(c)}</th>`).join("");
+    const body = tb.rows.map((row) => "<tr>" + row.map((v) =>
       v === null ? '<td class="nul">null</td>'
-      : typeof v === "number" ? `<td class="num">${v.toLocaleString("zh-TW")}</td>`
+      : typeof v === "number" ? `<td class="num">${v.toLocaleString(t("locale"))}</td>`
       : `<td>${esc(v)}</td>`).join("") + "</tr>").join("");
-    const more = t.total > t.rows.length ? `，以下只列前 ${t.rows.length} 列` : "";
-    return `<p class="result-head">共 ${fmtNum(t.total)} 列${more}</p>
+    const more = tb.total > tb.rows.length ? t("rows.more", { k: tb.rows.length }) : "";
+    return `<p class="result-head">${t("rows.total", { n: fmtNum(tb.total) })}${more}</p>
       <div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
 
@@ -47,13 +47,13 @@
    * 執行結果。連續的文字結果（Redis、MongoDB、cqlsh 訊息）合成一段終端機紀錄：› 指令、下一行是回應；
    * 表格結果（PostgreSQL、Cassandra 的查詢）單獨顯示。
    */
-  function blocks(list, title = "正確答案的執行結果") {
+  function blocks(list, title = t("run.title")) {
     if (!list || !list.length) return "";
     const parts = [];
     let lines = [];
     const flush = () => { if (lines.length) { parts.push(`<pre class="blk-out">${lines.join("\n")}</pre>`); lines = []; } };
     for (const b of list) {
-      const warn = (b.warn ?? []).map((w) => `<p class="blk-warn">⚠ 伺服器警告：${esc(w)}</p>`).join("");
+      const warn = (b.warn ?? []).map((w) => `<p class="blk-warn">${esc(t("run.warn"))}${esc(w)}</p>`).join("");
       if (b.table) {
         flush();
         parts.push(`<div class="blk">${b.cmd ? `<div class="blk-cmd"><span class="prompt-mark">›</span><code>${esc(b.cmd)}</code></div>` : ""}${table(b.table)}${warn}</div>`);
@@ -88,17 +88,17 @@
     const db = dbOf(state.db);
     if (!kinds(db).some((k) => k.id === state.kind)) state.kind = "practice";
     renderTabs(q);
-    const kindTabs = `<div class="kinds" role="tablist" aria-label="題型">${kinds(db).map((k) => {
+    const kindTabs = `<div class="kinds" role="tablist" aria-label="${esc(t("kind.aria"))}">${kinds(db).map((k) => {
       const n = q ? (k.id === "practice" ? db.exercises.filter((e) => exerciseMatch(e, q)).length
         : k.id === "traps" ? db.traps.filter((t) => trapMatch(t, q)).length : db.steps.filter((s) => stepMatch(s, q)).length) : k.n;
       return `<button type="button" role="tab" data-kind="${k.id}" aria-selected="${k.id === state.kind}">${esc(k.label)}<span>${n}</span></button>`;
     }).join("")}</div>`;
-    const note = `<p class="note">離線複習版：可以看題目、提示、答案與正確答案的執行結果${db.hasResults ? "" : "（這次產生時展示台沒有在執行，所以沒有附上結果）"}。
-      要自己寫、自動批改，請啟動展示台後打開 <a href="http://localhost:8081/#/${SHOWCASE[db.id]}">http://localhost:8081/#/${SHOWCASE[db.id]}</a>。</p>`;
+    const url = `http://localhost:8081/#/${SHOWCASE[db.id]}`;
+    const note = `<p class="note">${t("note.offline", { missing: db.hasResults ? "" : esc(t("note.missing")), link: `<a href="${url}">${url}</a>` })}</p>`;
     const body = state.kind === "practice" ? renderPractice(db, q) : state.kind === "traps" ? renderTraps(db, q) : renderLab(db, q);
     bank.innerHTML = kindTabs + note + body;
     bank.dataset.db = db.id;
-    document.title = `${db.name} · 題庫`;
+    document.title = t("bank.doctitle", { db: db.name });
     enhanceCode(bank);
   }
 
@@ -107,29 +107,29 @@
 
   function renderPractice(db, q) {
     const chapters = [...new Set(db.exercises.map((e) => e.chapter))];
-    if (state.chapter !== "全部" && !chapters.includes(state.chapter)) state.chapter = "全部";
+    if (state.chapter !== "*" && !chapters.includes(state.chapter)) state.chapter = "*";
     const doneCount = db.exercises.filter((e) => known[`${db.id}:${e.id}`]).length;
     const filters = `
       <div class="filters">
-        <div class="chips" role="group" aria-label="章節">
-          ${["全部", ...chapters].map((c) =>
-            `<button type="button" class="chip-btn" data-chapter="${esc(c)}" aria-pressed="${state.chapter === c}">${esc(c)}</button>`).join("")}
+        <div class="chips" role="group" aria-label="${esc(t("chap.aria"))}">
+          ${["*", ...chapters].map((c) =>
+            `<button type="button" class="chip-btn" data-chapter="${esc(c)}" aria-pressed="${state.chapter === c}">${esc(c === "*" ? t("chap.all") : c)}</button>`).join("")}
         </div>
         <div class="toggles">
-          <span class="progress">已標記會了 <b>${doneCount}</b> / ${db.exercises.length}</span>
-          <label><input type="checkbox" data-toggle="showAnswers" ${state.showAnswers ? "checked" : ""}> 展開所有答案</label>
-          <label><input type="checkbox" data-toggle="hideKnown" ${state.hideKnown ? "checked" : ""}> 隱藏已會的</label>
+          <span class="progress">${t("progress", { n: doneCount, total: db.exercises.length })}</span>
+          <label><input type="checkbox" data-toggle="showAnswers" ${state.showAnswers ? "checked" : ""}> ${esc(t("showAnswers"))}</label>
+          <label><input type="checkbox" data-toggle="hideKnown" ${state.hideKnown ? "checked" : ""}> ${esc(t("hideKnown"))}</label>
         </div>
       </div>`;
     let html = "", chapter = null, shown = 0;
     db.exercises.forEach((e, i) => {
       const key = `${db.id}:${e.id}`;
-      if (state.chapter !== "全部" && e.chapter !== state.chapter) return;
+      if (state.chapter !== "*" && e.chapter !== state.chapter) return;
       if (state.hideKnown && known[key]) return;
       if (!exerciseMatch(e, q)) return;
       if (e.chapter !== chapter) {
         chapter = e.chapter;
-        html += `<h2 class="chapter-head">${esc(chapter)}<span>${db.exercises.filter((x) => x.chapter === chapter).length} 題</span></h2>`;
+        html += `<h2 class="chapter-head">${esc(chapter)}<span>${esc(t("chap.count", { n: db.exercises.filter((x) => x.chapter === chapter).length }))}</span></h2>`;
       }
       shown++;
       html += `
@@ -137,41 +137,41 @@
           <div class="card-head">
             <span class="num">#${i + 1}</span>
             <h3>${esc(e.title)}</h3>
-            ${e.write ? '<span class="tag write">寫入題</span>' : ""}
-            ${e.ordered ? "" : '<span class="tag">順序不拘</span>'}
-            <label class="known-box"><input type="checkbox" data-known="${esc(key)}" ${known[key] ? "checked" : ""}> 我會了</label>
+            ${e.write ? `<span class="tag write">${esc(t("tag.write"))}</span>` : ""}
+            ${e.ordered ? "" : `<span class="tag">${esc(t("tag.unordered"))}</span>`}
+            <label class="known-box"><input type="checkbox" data-known="${esc(key)}" ${known[key] ? "checked" : ""}> ${esc(t("known"))}</label>
           </div>
           <p class="prompt">${esc(e.prompt.trim())}</p>
-          ${e.setup ? `<div class="step-label">題目已經先執行了</div>${code(e.setup, db.lang)}` : ""}
-          ${e.hints.length ? `<details class="hint"><summary>提示（${e.hints.length}）</summary>
+          ${e.setup ? `<div class="step-label">${esc(t("setup.ran"))}</div>${code(e.setup, db.lang)}` : ""}
+          ${e.hints.length ? `<details class="hint"><summary>${esc(t("hints", { n: e.hints.length }))}</summary>
             <ol>${e.hints.map((h) => `<li>${esc(h)}</li>`).join("")}</ol></details>` : ""}
-          <details class="ans" ${state.showAnswers ? "open" : ""}><summary>看答案</summary>
+          <details class="ans" ${state.showAnswers ? "open" : ""}><summary>${esc(t("seeAnswer"))}</summary>
             ${code(e.answer, db.lang)}
             ${e.explanation ? `<div class="explain">${esc(e.explanation.trim())}</div>` : ""}
             ${blocks(e.result)}
-            ${blocks(e.checks, "執行之後，用這些指令檢查資料")}
+            ${blocks(e.checks, t("checks.title"))}
           </details>
         </article>`;
     });
-    return filters + (shown ? html : '<p class="empty">沒有符合條件的題目。</p>');
+    return filters + (shown ? html : `<p class="empty">${esc(t("empty"))}</p>`);
   }
 
   // ---------- 陷阱題 ----------
-  const trapMatch = (t, q) => matches(q, t.title, t.question, t.explanation, t.setup, ...t.options, ...t.scripts.map((s) => s.code));
+  const trapMatch = (tr, q) => matches(q, tr.title, tr.question, tr.explanation, tr.setup, ...tr.options, ...tr.scripts.map((s) => s.code));
 
   function renderTraps(db, q) {
-    const list = db.traps.filter((t) => trapMatch(t, q));
-    if (!list.length) return '<p class="empty">沒有符合條件的題目。</p>';
-    return list.map((t) => `
-      <article class="card" data-trap="${esc(t.id)}">
-        <div class="card-head"><span class="num">#${db.traps.indexOf(t) + 1}</span><h3>${esc(t.title)}</h3></div>
-        ${t.setup ? `<div class="step-label">每段指令執行前，都先執行</div>${code(t.setup, db.lang)}` : ""}
-        <div class="pair ${t.scripts.length === 1 ? "single" : ""}">
-          ${t.scripts.map((s) => `<div><div class="pair-label">${esc(s.label)}</div>${code(s.code, db.lang)}</div>`).join("")}
+    const list = db.traps.filter((tr) => trapMatch(tr, q));
+    if (!list.length) return `<p class="empty">${esc(t("empty"))}</p>`;
+    return list.map((tr) => `
+      <article class="card" data-trap="${esc(tr.id)}">
+        <div class="card-head"><span class="num">#${db.traps.indexOf(tr) + 1}</span><h3>${esc(tr.title)}</h3></div>
+        ${tr.setup ? `<div class="step-label">${esc(t("trap.setup"))}</div>${code(tr.setup, db.lang)}` : ""}
+        <div class="pair ${tr.scripts.length === 1 ? "single" : ""}">
+          ${tr.scripts.map((s) => `<div><div class="pair-label">${esc(s.label)}</div>${code(s.code, db.lang)}</div>`).join("")}
         </div>
-        <p class="question">${esc(t.question)}</p>
+        <p class="question">${esc(tr.question)}</p>
         <div class="options">
-          ${t.options.map((o, i) => `<button type="button" class="option" data-choice="${i}">${esc(o)}</button>`).join("")}
+          ${tr.options.map((o, i) => `<button type="button" class="option" data-choice="${i}">${esc(o)}</button>`).join("")}
         </div>
         <div class="reveal" hidden></div>
       </article>`).join("");
@@ -179,19 +179,19 @@
 
   function answerTrap(card, choice) {
     const db = dbOf(state.db);
-    const t = db.traps.find((x) => x.id === card.dataset.trap);
+    const tr = db.traps.find((x) => x.id === card.dataset.trap);
     const buttons = [...card.querySelectorAll("[data-choice]")];
     buttons.forEach((b) => (b.disabled = true));
-    buttons[t.answer].classList.add("correct");
-    if (choice !== t.answer) buttons[choice].classList.add("wrong");
+    buttons[tr.answer].classList.add("correct");
+    if (choice !== tr.answer) buttons[choice].classList.add("wrong");
     const reveal = card.querySelector(".reveal");
     reveal.hidden = false;
     reveal.innerHTML = `
-      <p class="verdict ${choice === t.answer ? "ok" : "bad"}">${choice === t.answer ? "✓ 猜對了！" : `✗ 答案是「${esc(t.options[t.answer])}」`}</p>
-      <div class="explain">${esc(t.explanation.trim())}</div>
-      ${t.results ? `<div class="pair ${t.results.length === 1 ? "single" : ""}">${t.results.map((r, i) =>
-        `<div>${blocks(r, t.scripts[i].label + " 的執行結果")}</div>`).join("")}</div>` : ""}
-      <button type="button" class="retry">重新作答</button>`;
+      <p class="verdict ${choice === tr.answer ? "ok" : "bad"}">${choice === tr.answer ? esc(t("trap.right")) : esc(t("trap.wrong", { a: tr.options[tr.answer] }))}</p>
+      <div class="explain">${esc(tr.explanation.trim())}</div>
+      ${tr.results ? `<div class="pair ${tr.results.length === 1 ? "single" : ""}">${tr.results.map((r, i) =>
+        `<div>${blocks(r, t("trap.result", { label: tr.scripts[i].label }))}</div>`).join("")}</div>` : ""}
+      <button type="button" class="retry">${esc(t("retry"))}</button>`;
   }
 
   // ---------- 實驗 ----------
@@ -199,15 +199,15 @@
 
   function renderLab(db, q) {
     const list = db.steps.filter((s) => stepMatch(s, q));
-    if (!list.length) return '<p class="empty">沒有符合條件的步驟。</p>';
+    if (!list.length) return `<p class="empty">${esc(t("empty.steps"))}</p>`;
     return `<p class="note">${esc(db.labNote)}</p>` + list.map((s) => `
       <article class="card">
-        <div class="card-head"><span class="num">步驟 ${db.steps.indexOf(s) + 1}</span><h3>${esc(s.title)}</h3></div>
+        <div class="card-head"><span class="num">${esc(t("step.n", { n: db.steps.indexOf(s) + 1 }))}</span><h3>${esc(s.title)}</h3></div>
         <p class="goal">${esc(s.goal.trim())}</p>
-        ${s.setup.length ? `<div class="step-label">這一步會用到的索引</div>${code(s.setup.join("\n"), db.lang)}` : ""}
+        ${s.setup.length ? `<div class="step-label">${esc(t("step.indexes"))}</div>${code(s.setup.join("\n"), db.lang)}` : ""}
         ${s.queries.map((x) => `<div class="step-label">${esc(x.label)}</div>${code(x.code, db.lang)}`).join("")}
-        ${s.question ? `<p class="question">想一想：${esc(s.question)}</p>` : ""}
-        <details ${state.showAnswers ? "open" : ""}><summary>看解說</summary><div class="explain">${esc(s.takeaway.trim())}</div></details>
+        ${s.question ? `<p class="question">${esc(t("step.think", { q: s.question }))}</p>` : ""}
+        <details ${state.showAnswers ? "open" : ""}><summary>${esc(t("step.explain"))}</summary><div class="explain">${esc(s.takeaway.trim())}</div></details>
       </article>`).join("");
   }
 
@@ -253,7 +253,7 @@
     const changedDb = db !== state.db;
     state.db = dbOf(db).id;
     state.kind = kind || "practice";
-    if (changedDb) state.chapter = "全部";
+    if (changedDb) state.chapter = "*";
     store.set(LAST_KEY, `${state.db}/${state.kind}`);
     if (push) { try { history.replaceState(null, "", `#${state.db}/${state.kind}`); } catch { /* 有些環境不允許改網址 */ } }
     render();

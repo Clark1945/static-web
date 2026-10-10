@@ -1,0 +1,290 @@
+- id: find-customer
+  chapter: Basic MATCH
+  title: Find a customer
+  prompt: |
+    Look up customer 4242's name (name) and VIP level (vipLevel).
+  hints:
+    - "MATCH (var:Label {property: value}) RETURN var.property"
+  explanation: |
+    MATCH describes what to find with a "pattern": (c:Customer {id: 4242}) is a node labeled Customer with id 4242.
+    Customer.id has a uniqueness constraint (which comes with an index), so this is an index lookup (NodeUniqueIndexSeek), not a scan of every customer.
+
+- id: customer-city
+  chapter: Basic MATCH
+  title: Follow one relationship
+  prompt: |
+    Which city does customer 4242 live in? Return the city name.
+  hints:
+    - The city isn't a property of the customer; it's the node that the (:Customer)-[:LIVES_IN]->(:City) relationship points to.
+  explanation: |
+    In a graph database, a "relationship" is stored, not matched at query time through foreign keys.
+    Starting from the customer node, it walks the LIVES_IN relationship straight to the city node (index-free adjacency); the cost depends only on how many relationships this customer has, not on the total number of customers.
+    Nodes you don't use need no variable name, like (:Customer {id: 4242}) here.
+
+- id: customer-orders
+  chapter: Basic MATCH
+  title: A customer's orders
+  prompt: |
+    List customer 4242's orders: order id and total (total), newest first.
+  hints:
+    - (:Customer)-[:PLACED]->(:Order)
+    - Sort with ORDER BY o.orderDate DESC.
+  explanation: |
+    ORDER BY can sort by properties that aren't returned. orderDate is a datetime with a time zone; comparison and sorting use the actual point in time.
+
+- id: order-items
+  chapter: Basic MATCH
+  title: Properties on relationships
+  prompt: |
+    Which products were bought in order 77621? Return the product name and quantity (qty). Any order.
+  hints:
+    - "The quantity isn't on the product node but on the CONTAINS relationship: -[r:CONTAINS]->"
+  explanation: |
+    Relationships can have properties too. Quantity, unit price and discount describe something "between this order and this product", so they live on the relationship,
+    corresponding to the junction table (order_items) in a relational database.
+
+- id: gold-in-taipei
+  chapter: Basic MATCH
+  title: Combining conditions
+  prompt: |
+    How many gold-level customers live in 台北市 (Taipei)? Return a single number.
+  hints:
+    - The customer conditions go on one node and the city on another, connected by LIVES_IN.
+  explanation: |
+    {property: value} in a pattern is an equality condition in WHERE; more complex conditions (ranges, OR, string matching) go in WHERE.
+    Equivalent: MATCH (c:Customer)-[:LIVES_IN]->(city:City) WHERE c.vipLevel = 'gold' AND city.name = '台北市'.
+
+- id: followers
+  chapter: Direction and aggregation
+  title: Follower count (reverse direction)
+  prompt: |
+    How many customers follow customer 4242? Return a single number.
+  hints:
+    - (a)-[:FOLLOWS]->(b) means a follows b. To find who follows 4242, the arrow must point at 4242.
+  explanation: |
+    Relationships always have a direction; a query can specify ->, <-, or no direction (-), which counts both ways.
+    Following is directional: 4242 follows 6 people, but only 4 people follow them.
+
+- id: top-followed
+  chapter: Direction and aggregation
+  title: Customers with the most followers
+  prompt: |
+    The 5 customers with the most followers: return customer id, name and follower count, most followers first.
+  hints:
+    - "Cypher has no GROUP BY: any column in RETURN that isn't an aggregate is a grouping key."
+  explanation: |
+    In RETURN c.id, c.name, count(fan), the grouping keys are c.id and c.name (an implicit GROUP BY).
+    Customer 1 has 895 followers, a "supernode": traversals through it pass very many relationships, something to watch out for in graph design.
+
+- id: brand-products
+  chapter: Direction and aggregation
+  title: Products per brand
+  prompt: |
+    The 5 brands with the most products: return the brand name and product count, highest first, ties by brand name.
+  hints:
+    - (:Product)-[:MADE_BY]->(:Brand)
+  explanation: |
+    Adding a second sort key for ties makes the result deterministic; with only ORDER BY products DESC, the order of ties isn't guaranteed.
+
+- id: city-revenue
+  chapter: Direction and aggregation
+  title: Revenue per city
+  prompt: |
+    For delivered (status = 'delivered') orders in 2026 (Taiwan time), sum total by shipping city,
+    and return the top 3 cities by revenue with their revenue.
+  hints:
+    - (:Order)-[:SHIPPED_TO]->(:City)
+    - datetime('2026-01-01T00:00:00+08:00') creates a point in time to compare against.
+  explanation: |
+    datetime() creates a point in time with a time zone; you can also compare dates with date('2026-01-01') and date(o.orderDate).
+    This kind of "aggregate the whole table" report isn't really a graph database's strength (it walks every order); a relational database does it just as well.
+
+- id: no-orders
+  chapter: Direction and aggregation
+  title: Customers who never ordered
+  prompt: |
+    How many customers have never placed an order? Return a single number.
+  hints:
+    - WHERE NOT (c)-[:PLACED]->() means "no such relationship exists".
+  explanation: |
+    A pattern can be used directly as a condition: it's true if (c)-[:PLACED]->() exists. In Cypher 5 you can also write WHERE NOT EXISTS { (c)-[:PLACED]->() }.
+    Compare SQL: LEFT JOIN … WHERE o.id IS NULL, or a NOT EXISTS subquery.
+
+- id: collect-names
+  chapter: Direction and aggregation
+  title: Collect into a list
+  prompt: |
+    For the people customer 4242 follows, sorted by customer id ascending, collect their names into "one list" (a single row with one column).
+  hints:
+    - collect() gathers several rows into one list.
+    - "Sort first, then collect: MATCH … WITH f ORDER BY f.id RETURN collect(f.name)"
+  explanation: |
+    WITH is like a RETURN in the middle of a query: it passes results to the next part, where you can sort, filter and aggregate.
+    collect() gathers in the order the data flows in, so sort it in WITH first.
+
+- id: friends-of-friends
+  chapter: Paths and traversal
+  title: Friends of friends
+  prompt: |
+    The people followed by the people customer 224 follows, excluding 224 themselves and the people 224 already follows: how many distinct customers?
+  hints:
+    - (me)-[:FOLLOWS]->()-[:FOLLOWS]->(fof)
+    - The same person may be followed by several friends; use count(DISTINCT fof).
+    - If someone and 224 follow each other, 224 also shows up in the result.
+  explanation: |
+    This is the basic "people you may know", and every condition changes the answer:
+    without DISTINCT it's 44 (the same person reached via two friends counts twice), with DISTINCT 42, excluding yourself 41, and also excluding people you already follow 40.
+    In a relational database you JOIN the follows table to itself twice; in a graph database it's two steps. The more steps, the bigger the difference (compared in the lab).
+
+- id: reach-in-three
+  chapter: Paths and traversal
+  title: Within three steps
+  prompt: |
+    Following the follow direction, how many distinct customers can customer 4242 reach within 1 to 3 steps (excluding 4242 themselves)?
+  hints:
+    - "Variable-length relationship: -[:FOLLOWS*1..3]->"
+  explanation: |
+    *1..3 means 1 to 3 relationships. Always give an upper bound: an unbounded * on a large graph can hit millions of paths.
+    The same person may be reachable by several paths, so DISTINCT is needed.
+
+- id: shortest-path
+  chapter: Paths and traversal
+  title: Shortest path
+  prompt: |
+    Following the follow direction, what is the minimum number of steps from customer 4242 to customer 1? Return a single number.
+  hints:
+    - shortestPath((a)-[:FOLLOWS*..10]->(b)) finds one shortest path; length(p) is the number of relationships in the path.
+  explanation: |
+    shortestPath uses a bidirectional breadth-first search and stops when found, without enumerating every path. allShortestPaths returns all paths of the same minimal length.
+    This is "six degrees of separation": in a social network most people are only a few steps apart.
+
+- id: category-tree
+  chapter: Paths and traversal
+  title: A whole category subtree
+  prompt: |
+    Every category under 「3C電子」 (consumer electronics): subcategories, their subcategories and so on, excluding 3C電子 itself. Return the category names. Any order.
+  hints:
+    - (:Category)-[:SUBCATEGORY_OF]->(:Category) points from a subcategory to its parent.
+    - When you don't know how many levels there are, use *1.. (or a reasonable upper bound).
+  explanation: |
+    Compare PostgreSQL: you need WITH RECURSIVE to query a whole tree. In a graph database, a variable-length relationship is the recursion.
+    The category tree is tiny (27 nodes), so no upper bound is fine; for a large graph like social relationships you must give one.
+
+- id: path-nodes
+  chapter: Paths and traversal
+  title: Nodes along a path
+  prompt: |
+    The "full path" from product 540's category up to the top-level category:
+    return a list containing the product's category name, then its parent's name… up to the top level.
+  hints:
+    - "MATCH p = (:Product {id: 540})-[:IN_CATEGORY]->(:Category)-[:SUBCATEGORY_OF*0..]->(top:Category)"
+    - "The top-level category has no further SUBCATEGORY_OF: WHERE NOT (top)-[:SUBCATEGORY_OF]->()"
+    - nodes(p) gets the nodes of the path; [n IN list WHERE … | n.name] is a list comprehension.
+  explanation: |
+    *0.. allows 0 steps (so it still works when the product is attached directly to a top-level category). nodes(p) and relationships(p) get the nodes and relationships of a path;
+    the list comprehension [x IN list WHERE condition | expression] is like filter + map in a programming language.
+
+- id: also-bought
+  chapter: Recommendations
+  title: People who bought this also bought
+  prompt: |
+    Which other products did the customers who bought product 540 buy? (Products bought in the same order count too.)
+    Return the product name and "the number of customers who bought it" (each customer counted once), most customers first, ties by product name; top 5.
+  hints:
+    - "First find the customers who bought 540: MATCH (:Product {id: 540})<-[:CONTAINS]-(:Order)<-[:PLACED]-(c:Customer)"
+    - "Then find every product these customers bought: MATCH (c)-[:PLACED]->(:Order)-[:CONTAINS]->(other:Product)"
+    - ★ Why two MATCHes? In one long path the same relationship isn't traversed twice, so the two PLACED must be different orders.
+  explanation: |
+    This is the simplest form of collaborative filtering: product → people who bought it → other products those people bought.
+    ★ Within "one MATCH pattern" the same relationship is never traversed twice (relationship isomorphism).
+    Written as a single path (:Product)<-[:CONTAINS]-(:Order)<-[:PLACED]-(c)-[:PLACED]->(:Order)-[:CONTAINS]->(other),
+    the two PLACED must be different relationships, i.e. different orders, so customers who "bought them together in the same order" are missed (the Avène item drops from 16 to 14 people).
+    With two MATCHes, uniqueness is checked only within each pattern, so nothing is missed. In SQL it takes a five-table JOIN: order_items, orders, orders, order_items, products.
+
+- id: friends-bought
+  chapter: Recommendations
+  title: Bought by friends, not yet by you
+  prompt: |
+    Products bought by the people customer 4242 follows, but not by 4242 themselves.
+    Return the product id and "the number of friends who bought it", most friends first, ties by product id ascending; top 5.
+  hints:
+    - Find what friends bought first, then exclude what you bought with WHERE NOT (me)-[:PLACED]->(:Order)-[:CONTAINS]->(p).
+  explanation: |
+    Social recommendations combine "relationships" (following) and "behavior" (purchases), exactly the kind of query graph databases are best at.
+    WHERE NOT (pattern) checks each candidate product once, walking only 4242's own orders, so it's fast.
+
+- id: create-customer
+  chapter: Writes
+  title: Create a node and a relationship
+  prompt: |
+    Add a customer: id 99999, name '測試會員', vipLevel 'normal',
+    living in the existing 「台北市」 (Taipei) (create a LIVES_IN relationship).
+  hints:
+    - "MATCH the city first, then CREATE the customer and relationship: MATCH (city:City {name: '台北市'}) CREATE (c:Customer {…})-[:LIVES_IN]->(city)"
+  explanation: |
+    In CREATE (c)-[:LIVES_IN]->(city), city is the existing node matched earlier.
+    Writing CREATE (:Customer {…})-[:LIVES_IN]->(:City {name: '台北市'}) would create another new 「台北市」 node (here a uniqueness constraint makes it fail outright).
+
+- id: merge-follow
+  chapter: Writes
+  title: Create a relationship without duplicates (MERGE)
+  prompt: |
+    Make customer 4242 follow customer 15084 and customer 1.
+    4242 actually already follows 15084, and that must not create a duplicate relationship.
+  hints:
+    - MERGE looks first and creates only if nothing is found.
+    - "MATCH both end nodes first, then MERGE the relationship: MATCH (a …), (b …) MERGE (a)-[:FOLLOWS]->(b)"
+  explanation: |
+    MERGE = "use it if it exists, create it if not". CREATE would add another FOLLOWS between 4242 and 15084 (relationships have no uniqueness constraint),
+    and follower counts would then double-count.
+    ★ With MERGE, always MATCH both ends first and MERGE only the relationship; a trap shows what happens if you MERGE the whole pattern.
+    You'll see a "cartesian product" server notification: the two unconnected patterns (me), (other) produce every combination;
+    here that's only 1 × 2 = 2, exactly what we want, so it can be ignored. Be careful only when the number of combinations is large (shown in the traps).
+
+- id: set-props
+  chapter: Writes
+  title: Change properties and lists
+  prompt: |
+    Product 540 sold out: set stock to 0 and add '缺貨' (out of stock) to the tags list (keeping the existing tags).
+  hints:
+    - "SET p.property = value; lists can be concatenated with +: p.tags + '缺貨'"
+  explanation: |
+    list + element appends an element to the list. SET p.tags = ['缺貨'] would replace the whole list.
+    SET p += {stock: 0} updates several properties at once and keeps the others; SET p = {…} replaces all properties (careful).
+
+- id: merge-on-create
+  chapter: Writes
+  title: MERGE with ON CREATE / ON MATCH
+  prompt: |
+    Record logins: run one "login" each for customer 4242 and customer 99999:
+    if the customer exists, set lastLogin = date('2026-10-07'); if not, create the customer with name '新會員' (new member) and the same lastLogin.
+  hints:
+    - "MERGE (c:Customer {id: …}) ON CREATE SET … ON MATCH SET …"
+    - Both customers can be handled at once with UNWIND [4242, 99999] AS id.
+  explanation: |
+    ON CREATE SET runs only when this MERGE creates a new node, and ON MATCH SET only when it finds an existing one,
+    so 4242's name isn't changed to 「新會員」. UNWIND expands a list into rows and is often used for batch writes (that's how the data was loaded too).
+
+- id: unfollow
+  chapter: Writes
+  title: Delete a relationship
+  prompt: |
+    Customer 4242 unfollows customer 15084 (delete only this relationship; both customers stay).
+  hints:
+    - "Give the relationship a variable, then DELETE it: MATCH (…)-[r:FOLLOWS]->(…) DELETE r"
+  explanation: |
+    DELETE can delete nodes or relationships. Before deleting a node, all its relationships must be deleted first, or use DETACH DELETE to delete them together (next exercise).
+
+- id: detach-delete
+  chapter: Writes
+  title: Delete nodes (DETACH DELETE)
+  prompt: |
+    Clean up: delete every customer who "never placed an order".
+    These customers may still have follow, follower and city relationships.
+  hints:
+    - A node with relationships can't be DELETEd directly.
+    - DETACH DELETE deletes all of a node's relationships first, then the node.
+  explanation: |
+    DETACH DELETE removes 1,629 customers and all their relationships (following, followers, LIVES_IN) in one go.
+    With just DELETE c it looks successful inside the transaction, but those customers' relationships are still there (the LIVES_IN count in the third check query doesn't drop),
+    and Neo4j would reject it with an error at commit, because "dangling relationships" aren't allowed. The showcase always rolls back, so the check queries catch the difference.

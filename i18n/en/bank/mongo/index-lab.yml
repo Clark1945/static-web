@@ -1,0 +1,78 @@
+- id: collscan
+  title: "No index: COLLSCAN"
+  question: How many documents are returned? How many did MongoDB look at to find them (docsExamined)?
+  goal: |
+    orders has only the _id index. Query customer 4242's orders, newest first.
+  takeaway: |
+    COLLSCAN = scan the whole collection from start to end, like PostgreSQL's Seq Scan.
+    The three most important numbers in explain: nReturned (documents returned), totalKeysExamined (index entries looked at), totalDocsExamined (documents read).
+    Ideally the three are about equal; docsExamined far larger than nReturned means an index is missing.
+    The plan also has a SORT: no index provides the order, so it sorts in memory (which fails above 100 MB unless disk use is allowed).
+  queries:
+    - label: Customer 4242's orders
+
+- id: single-field
+  title: "Single-field index: IXSCAN, but still a sort"
+  question: What does the plan become? How many documents are examined now? Is there still a SORT?
+  goal: |
+    Create an index on customerId and run the same query again.
+  takeaway: |
+    It becomes IXSCAN → FETCH: find the matching positions in the index, then read the documents. docsExamined drops from 80,000 to the same as nReturned.
+    But there's still a SORT: this index is ordered only by customerId, and one customer's orders aren't ordered by time.
+  queries:
+    - label: Customer 4242's orders
+
+- id: compound
+  title: A compound index removes the sort too
+  question: Is the SORT still there?
+  goal: |
+    Create the compound index { customerId: 1, orderDate: -1 } (you can drop customerId_1 from the previous step to see it more clearly).
+  takeaway: |
+    The compound index is ordered by customerId, then orderDate; once 4242 is found the data is already in time order, so the SORT disappears.
+    Sort direction: a single-field index works either way; a compound index works only when "all the same direction" or "all reversed". { customerId: 1, orderDate: -1 } supports
+    sort({ customerId: 1, orderDate: -1 }) and sort({ customerId: -1, orderDate: 1 }), but not sort({ customerId: 1, orderDate: 1 }).
+  queries:
+    - label: Customer 4242's orders
+
+- id: esr
+  title: "★ The ESR rule: Equality, Sort, Range"
+  question: Which of A and B has a SORT? How many index entries does each examine (keysExamined)? Which one does the optimizer choose?
+  goal: |
+    Query delivered orders of at least 50,000, newest first, taking the newest 10 (a typical paginated query). The query has three kinds of conditions:
+    Equality on status, Range on total, Sort on orderDate.
+    Create two indexes with the fields in different orders, force each with hint, and compare.
+  takeaway: |
+    ★ The ESR rule (MongoDB's recommended field order for compound indexes): Equality → Sort → Range.
+    A (E-R-S): after the range, orderDate is no longer in order, so it must find "all" documents in the range (about 5,000) and sort them to know which are the newest 10.
+    B (E-S-R): after the equality, the data is already in time order; it reads from the newest down, filtering by total, and stops once it has 10. It looks at only a hundred-odd index entries, with no SORT.
+    The looser the range, the bigger the gap (try changing 50000 to 1000).
+    But without a limit and with a very selective range, A can be faster, because it jumps straight into the range and examines the fewest entries.
+    So ESR is "a good default", especially for pagination and sorted queries; when unsure, compare with explain. The same reasoning applies to PostgreSQL's composite indexes.
+  queries:
+    - label: "A: index order E-R-S"
+    - label: "B: index order E-S-R"
+    - label: "C: no hint, let the optimizer choose"
+
+- id: multikey
+  title: "Indexing an array field: multikey index"
+  question: How different is docsExamined before and after the index? What is isMultiKey in explain?
+  goal: |
+    Query the orders that bought product 540. items is an array; create an index on items.productId.
+  takeaway: |
+    An index on an array field is a multikey index: every array element gets its own index entry, so an order with 4 items has 4 entries.
+    Limits: a compound index can contain at most one array field, and large arrays make large indexes.
+  queries:
+    - label: Orders that bought product 540
+
+- id: covered
+  title: "Covered query: no documents read at all"
+  question: What is A's docsExamined? Is there a FETCH in the plan?
+  goal: |
+    Make sure the { customerId: 1, orderDate: -1 } index exists (step 3). Compare "only fields in the index" with "one extra field".
+  takeaway: |
+    Every field A needs is in the index, so it's returned straight from the index: a covered query, with docsExamined = 0 and no FETCH.
+    ★ You must write _id: 0, because _id isn't in this index and is returned by default.
+    B also wants total, so it has to go back and read the documents. Compare PostgreSQL's Index Only Scan.
+  queries:
+    - label: "A: only customerId, orderDate (excluding _id)"
+    - label: "B: plus total"

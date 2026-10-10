@@ -1,0 +1,297 @@
+- id: str-get
+  chapter: String
+  title: 注文総数を読み出す
+  prompt: |
+    注文総数は stats:orders:total という String に保存されています。それを読み出してください。
+  hints:
+    - GET key
+  explanation: |
+    String は Redis の最も基本的な型で、値にはテキスト、数値、シリアライズした JSON を入れられます。最大 512 MB です。
+    Redis のキーはコロンで階層化するのが慣例です：オブジェクト種別:id:フィールド。例：stats:orders:total、product:540。
+
+- id: str-incr
+  chapter: String
+  title: カウンタを 1 増やす（INCR）
+  prompt: |
+    新しい注文が 1 件入りました。stats:orders:total に 1 を足し、足した後の値を取得してください。
+    コマンド 1 つで行います。
+  hints:
+    - INCR key は数値に 1 を足し、新しい値を返します。
+  explanation: |
+    ★ INCR はアトミックな操作です：1000 件のリクエストが同時に加算しても、結果は必ず正しくなります。
+    GET → プログラムで +1 → SET と書くと、2 つのリクエストが同じ値を同時に読み、最終的に 1 しか増えないことがあります（実験室の「在庫の引き当て」で実演しています）。
+    関連コマンド：INCRBY key 10、DECR、INCRBYFLOAT。
+
+- id: str-session
+  chapter: String
+  title: 30 分後に期限切れになるセッションを作る
+  prompt: |
+    ユーザーがログインしました。値が customer:42 の session:zz9 を作成し、30 分後に自動で期限切れになるようにします。
+    コマンド 1 つで行います（SET と EXPIRE の 2 つに分けないこと）。
+  hints:
+    - SET key value EX 秒数
+  explanation: |
+    SET の EX（秒）/ PX（ミリ秒）オプションを使うと、書き込みと同時に有効期限を設定でき、しかも 1 つのアトミックな操作になります。
+    SET + EXPIRE の 2 つのコマンドに分けると、途中でプログラムが落ちたときに、永遠に期限切れにならないキーが残ってしまいます。
+
+- id: str-lock
+  chapter: String
+  title: ロックの取得（SET NX）
+  prompt: |
+    注文 1 のロック lock:order:1 は現在 worker-b が保持しています（問題側で設定済み、30 秒後に期限切れ）。
+    今度は worker-a もこのロックを取りたい：キーが存在しないときだけ worker-a を書き込み、10 秒後に期限切れにします。
+    注意：worker-b の既存のロックに影響を与えてはいけません。
+  hints:
+    - SET key value NX EX 秒数：NX = キーが存在しないときだけ書き込む。
+    - ロックを取れなかったときは nil が返ります。
+  explanation: |
+    ★ 分散ロックの基本形：SET key token NX EX/PX。
+    よくある間違いは SETNX の後に EXPIRE を書くことです：SETNX が失敗しても、続く EXPIRE が worker-b のロックの有効期限を 10 秒に変えてしまい、他人のロックに手を出すことになります。
+    （SETNX + EXPIRE で一度提出して、採点結果を見てみましょう。）
+    ロックの解放にも落とし穴があります：いきなり DEL してはいけません。まず値がまだ自分の token かを確認する必要があります（実験室で実演しています）。
+
+- id: hash-getall
+  chapter: Hash
+  title: 商品 540 のすべてのフィールド
+  prompt: |
+    商品データは Hash として product:{id} に保存されています。product:540 のすべてのフィールドと値を読み出してください。
+  hints:
+    - HGETALL key
+  explanation: |
+    HGETALL は「フィールド、値、フィールド、値…」が交互に並んだ配列を返します。
+    ★ フィールドが非常に多い Hash（数万個）に HGETALL を使うと Redis がブロックされます。HSCAN で分割して読むか、必要なフィールドだけを読みましょう。
+
+- id: hash-hmget
+  chapter: Hash
+  title: 必要なフィールドだけを読む
+  prompt: |
+    会員 1 の氏名（name）と都市（city）だけが必要です。コマンド 1 つでこの 2 つのフィールドを読み出してください。
+  hints:
+    - HMGET key field1 field2
+  explanation: |
+    HMGET は指定したフィールドの順に値を返し、存在しないフィールドの位置は nil になります。
+    オブジェクトのキャッシュに JSON の String 丸ごとではなく Hash を使う利点：一部のフィールドだけを読んだり変更したりできます。
+
+- id: hash-hincrby
+  chapter: Hash
+  title: 在庫を減らす（HINCRBY）
+  prompt: |
+    商品 540 が 2 個売れました。stock フィールドから 2 を引き、新しい在庫数を返してください。
+  hints:
+    - HINCRBY key field 増分。増分は負の数でも構いません。
+  explanation: |
+    HINCRBY は INCR と同じくアトミックな操作で、カウンタ系のフィールド（在庫、いいね数、閲覧数）に向いています。
+    ただし「マイナスになる」ことはチェックしません。「在庫が足りるときだけ減らす」には Lua スクリプトか WATCH が必要です（実験室の在庫の引き当てで実演しています）。
+
+- id: hash-hset-new-field
+  chapter: Hash
+  title: 新しいフィールドを追加
+  prompt: |
+    会員 1 に phone フィールドを追加します。値は 0912345678 です。
+  hints:
+    - HSET key field value。返り値は「追加されたフィールドの数」です。
+  explanation: |
+    HSET は新しく追加されたフィールドの数を返します。フィールドが既に存在し、値を更新しただけなら 0 が返ります。
+    Redis 7.4 からは個別のフィールドに有効期限を設定できます：HEXPIRE key 秒数 FIELDS 1 field。
+
+- id: list-lrange
+  chapter: List
+  title: 最新 3 件の注文
+  prompt: |
+    customer:1:recent_orders は会員 1 の最近の注文 id で、インデックス 0 が最新です。
+    最新の 3 件を読み出してください。
+  hints:
+    - LRANGE key start stop。stop は範囲に含まれます。
+  explanation: |
+    ★ LRANGE の stop は「含む」：0 2 で 3 件です（Java の subList は含みません）。
+    -1 は最後の要素を意味するので、LRANGE key 0 -1 はすべてになります。
+
+- id: list-push-trim
+  chapter: List
+  title: 新しい注文を先頭に、10 件だけ残す
+  prompt: |
+    会員 1 が注文 90001 をしたところです。それを customer:1:recent_orders の先頭に入れ、
+    List 全体で最新の 10 件だけを残してください。
+  hints:
+    - LPUSH は左側（先頭）から入れます。
+    - LTRIM key 0 9 でインデックス 0〜9 だけを残します。
+  explanation: |
+    LPUSH + LTRIM は「固定長の最新リスト」の定番の書き方です：最新のアクティビティ、最近見た商品、最新 N 件のログ。
+    2 つのコマンドを一緒に成功させたいなら、MULTI / EXEC で包むか、パイプラインで一度に送ります。
+
+- id: set-scard
+  chapter: Set
+  title: セール商品は何件か
+  prompt: |
+    tag:特價 は「特價」（セール）タグの付いた商品 id を入れた Set です。何件ありますか？
+  hints:
+    - SCARD key は Set の要素数を返します。
+  explanation: |
+    SCARD は O(1) です。Set 全体を読み出してから数える必要はありません。
+
+- id: set-sinter
+  chapter: Set
+  title: 人気かつ限定（SINTER）
+  prompt: |
+    「熱銷」（人気）と「限量」（限定）の両方のタグが付いた商品 id はどれですか？
+  hints:
+    - SINTER key1 key2 で積集合を取ります。
+  explanation: |
+    Set には順序がないので、この問題では順序を比較しません。SINTER は積集合、SUNION は和集合、SDIFF は差集合です。
+    件数だけが必要なら SINTERCARD 2 key1 key2 を使えば、結果を送り返す必要がありません。
+
+- id: set-sismember
+  chapter: Set
+  title: 商品 540 は人気商品か
+  prompt: |
+    商品 540 に「熱銷」（人気）タグがあるかを判定してください。
+  hints:
+    - SISMEMBER key member：あれば 1、なければ 0 を返します。
+  explanation: |
+    SISMEMBER は O(1) です。よくある用途：ユーザーがいいね済みか、クーポンを受け取り済みか、ブラックリストに入っているか。
+
+- id: set-sdiffstore
+  chapter: Set
+  title: 人気だがセールではない商品の数
+  prompt: |
+    「熱銷」（人気）タグはあるが「特價」（セール）タグはない商品は何件ですか？最後のコマンドがこの数を返すようにしてください。
+  hints:
+    - SDIFF は id の一覧をすべて返します。件数が欲しいなら、SDIFFSTORE で結果を新しいキーに保存すれば、結果の要素数が返ります。
+  explanation: |
+    SDIFF A B = A にあって B にないもの。*STORE 版（SINTERSTORE、SUNIONSTORE、SDIFFSTORE）は結果を保存して件数を返すので、
+    「先に計算して、後で繰り返し使う」場面に向いています。一時キーには有効期限を設定するのを忘れずに。
+
+- id: zset-top5
+  chapter: Sorted Set
+  title: 販売数トップ 5（ランキング）
+  prompt: |
+    leaderboard:products:sales は商品の販売数ランキングで、スコア = 売れた個数です。
+    販売数が最も多い 5 つの商品 id と個数を、多い順に一覧にしてください。
+  hints:
+    - ZRANGE key 0 4 REV WITHSCORES（Redis 6.2 より前は ZREVRANGE key 0 4 WITHSCORES）
+  explanation: |
+    ★ ランキングは Sorted Set の最も典型的な用途です：スコアの更新は O(log N)、上位 N 件の取得は O(log N + N)。
+    SQL でランキングを作ると毎回全表を ORDER BY する必要がありますが、Redis では常に並んだ状態です。
+
+- id: zset-rank
+  chapter: Sorted Set
+  title: 会員 1 の購入額の順位
+  prompt: |
+    leaderboard:customers:spend は会員の累計購入額のランキングです。会員 1 は何位ですか（購入額が多いほど上位）？
+    Redis が返す順位をそのまま返してください。
+  hints:
+    - ZREVRANK key member：スコアの高い順の順位。
+  explanation: |
+    ★ 順位は 0 から始まります：1 位は 0 が返ります。画面に表示するときは +1 します。
+    ZRANK は低い順の順位です。Redis 7.2 からは WITHSCORE を付けてスコアも一緒に取得できます。
+
+- id: zset-count
+  chapter: Sorted Set
+  title: 購入額が 5 万〜10 万の会員数
+  prompt: |
+    累計購入額が 50000 から 100000 まで（両端を含む）の会員は何人ですか？
+  hints:
+    - ZCOUNT key min max
+  explanation: |
+    ZCOUNT はスコアの範囲で数え、O(log N) です。境界を含まないときは (50000 (100000 と書きます。
+    スコアの範囲でデータを取得するには ZRANGE key 50000 100000 BYSCORE を使います。
+
+- id: zset-incr
+  chapter: Sorted Set
+  title: 購入後にランキングを更新
+  prompt: |
+    会員 1 がさらに 1200 元の注文を完了しました。leaderboard:customers:spend の会員 1 のスコアを更新し、新しいスコアを返してください。
+  hints:
+    - ZINCRBY key 増分 member
+  explanation: |
+    ZINCRBY はスコアをアトミックに増やし、順位は自動で更新されます。member が存在しなければ自動で追加され、スコアは 0 から加算されます。
+
+- id: stream-len
+  chapter: Stream
+  title: イベントストリームの件数
+  prompt: |
+    orders:stream は注文イベントのストリームです。現在イベントは何件ありますか？
+  hints:
+    - XLEN key
+  explanation: |
+    Stream は Redis 5.0 で追加された「追記専用のログ」で、軽量なメッセージキュー（Kafka に似たもの）として使えます。
+
+- id: stream-latest
+  chapter: Stream
+  title: 最新 3 件のイベント
+  prompt: |
+    orders:stream の最新 3 件のイベントを読み出してください（最新のものが先頭）。
+  hints:
+    - XREVRANGE key + - COUNT 3：+ は最大の ID、- は最小の ID です。
+  explanation: |
+    Stream の ID の形式は「ミリ秒のタイムスタンプ-連番」です。このデータの ID には注文日時を使っているので、時間の範囲で直接検索できます。
+    コンシューマーグループ（XGROUP、XREADGROUP、XACK）を使うと複数の worker で分担処理でき、確認の仕組みもあるのでメッセージが失われません。
+
+- id: bitmap-count
+  chapter: Bitmap / HyperLogLog
+  title: 9/1 に注文した会員は何人か（Bitmap）
+  prompt: |
+    active:2026-09-01 は Bitmap です：N 番目のビットが 1 なら、会員 N がその日に注文したことを表します。
+    9 月 1 日に注文した会員の人数を求めてください。
+  hints:
+    - BITCOUNT key は 1 になっているビットの数を数えます。
+  explanation: |
+    2 万人の会員でも 2 万ビット ≈ 2.5 KB で済みます。Set に 2 万個の id を入れると数百 KB になります。
+    よくある用途：毎日のチェックイン、日次アクティブユーザー、機能フラグ。
+
+- id: bitmap-and
+  chapter: Bitmap / HyperLogLog
+  title: 9/1 と 9/2 の両日に注文した会員
+  prompt: |
+    9 月 1 日と 9 月 2 日の「両日とも注文した」会員は何人ですか？最後のコマンドがこの数を返すようにしてください。
+  hints:
+    - BITOP AND 宛先キー ソース1 ソース2：2 つの Bitmap をビットごとに AND し、結果を宛先キーに保存します。
+    - その結果を BITCOUNT で数えます。
+  explanation: |
+    BITOP は AND、OR、XOR、NOT に対応しています。「7 日連続でチェックイン」は 7 つの Bitmap の AND です。
+
+- id: hll-week
+  chapter: Bitmap / HyperLogLog
+  title: 9/1〜9/7 のユニーク注文者数（HyperLogLog）
+  prompt: |
+    uv:{日付} は毎日の注文会員の HyperLogLog です。9 月 1 日から 9 月 7 日までの「重複のない」注文者数を推定してください。
+  hints:
+    - PFCOUNT には複数のキーを一度に渡せ、それらを「合わせた後」の重複のない数を数えます。
+  explanation: |
+    ★ HyperLogLog は最大 12 KB の固定サイズで重複のない数を推定し、標準誤差は約 0.81% です。誰がいるかは列挙できず、何人かだけが分かります。
+    UV（ユニーク訪問者）のように「量が非常に多く、少しの誤差は許容できる」統計に向いています。正確な値が必要なら Bitmap か Set を使います。
+
+- id: geo-dist
+  chapter: Geo
+  title: 台北から高雄までの距離
+  prompt: |
+    store:locations には各都市の店舗の座標が保存されています。台北市の店舗から高雄市の店舗までの直線距離は何キロですか？
+  hints:
+    - GEODIST key メンバー1 メンバー2 km
+  explanation: |
+    Geo の中身は Sorted Set です：緯度経度が geohash にエンコードされてスコアになっているので、ZRANGE や ZREM も Geo のキーに使えます。
+
+- id: geo-search
+  chapter: Geo
+  title: 台北から 60 キロ以内の店舗
+  prompt: |
+    台北市の店舗から 60 キロ以内のすべての店舗（台北市自身を含む）を、近い順に探してください。店舗名だけで構いません。
+  hints:
+    - GEOSEARCH key FROMMEMBER 台北市 BYRADIUS 60 km ASC
+  explanation: |
+    GEOSEARCH（Redis 6.2+）は古い GEORADIUS を置き換えるものです。FROMLONLAT で任意の座標から探したり、BYBOX で矩形の範囲を探したりもできます。
+    WITHDIST を付けると距離も一緒に返ります。デリバリーアプリの「近くのお店」はこうして検索しています。
+
+- id: multi-exec
+  chapter: トランザクション
+  title: 2 つの処理を一緒に行う（MULTI / EXEC）
+  prompt: |
+    会員 1 が注文 90001 をしました。トランザクションを使って、次の 2 つを一緒に実行してください：
+    1. stats:orders:total に 1 を足す
+    2. 90001 を customer:1:recent_orders の先頭に入れる
+  hints:
+    - MULTI でトランザクションを開始すると、続くコマンドはキューに入り（QUEUED が返る）、EXEC のときにまとめて実行されます。
+  explanation: |
+    ★ Redis のトランザクションは「途中に他のクライアントのコマンドが割り込まない」ことは保証しますが、オール・オア・ナッシングは保証しません：
+    EXEC のときにある文が失敗しても、他の文はそのまま反映され、ROLLBACK はありません（落とし穴問題で実演しています）。
+    「条件が成り立つときだけ実行」したいなら WATCH（楽観的ロック）か Lua スクリプトを使います。

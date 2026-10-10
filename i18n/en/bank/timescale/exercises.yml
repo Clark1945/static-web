@@ -1,0 +1,220 @@
+- id: daily-views
+  chapter: time_bucket basics
+  title: Views per day (Taiwan time)
+  prompt: |
+    How many page views were there on each day from 2026-09-08 to 2026-09-10 (Taiwan time, three days)?
+    Return "the start of the day" and the count, sorted by date.
+  hints:
+    - time_bucket('1 day', view_time, 'Asia/Taipei') cuts days in Taiwan time.
+    - Without the third argument, time_bucket cuts in UTC, so a day starts at 8 a.m. Taiwan time.
+  explanation: |
+    time_bucket is TimescaleDB's most-used function: it cuts time into fixed-length buckets (like date_trunc, but any length, e.g. 5 or 15 minutes).
+    ★ timestamptz is cut in UTC by default; a Taiwan "day" needs the time zone argument. 9/9 is a shopping festival, with 3 times the usual views.
+
+- id: peak-hours
+  chapter: time_bucket basics
+  title: The busiest hours of a day
+  prompt: |
+    On 2026-09-01 (Taiwan time), the 3 hours with the most views:
+    return the start of the hour and the view count, most views first.
+  hints:
+    - "time_bucket('1 hour', view_time): one bucket per hour; full hours are the same in UTC and Taiwan time."
+  explanation: |
+    8–10 p.m. is e-commerce's traffic peak. For buckets that "don't cross a day", like an hour or a minute, UTC and Taiwan boundaries are the same and no time zone argument is needed;
+    only buckets that span days, like a day, week or month, need it.
+
+- id: monthly-views
+  chapter: time_bucket basics
+  title: Views per month
+  prompt: |
+    How many page_views are there in each month (Taiwan time)? Return the start of the month and the count, sorted by month.
+  hints:
+    - time_bucket also accepts '1 month' (calendar months).
+  explanation: |
+    '1 month' cuts by calendar month (buckets of different lengths); '30 days' is a fixed 30 days and doesn't line up with months (shown in the traps).
+    This query reads all 1.9 million rows; continuous aggregates (later exercises) exist so that reports like this don't have to be recomputed every time.
+
+- id: device-share
+  chapter: time_bucket basics
+  title: Share of views per device
+  prompt: |
+    For September 2026 (Taiwan time), the views per device (device) and their percentage of the month's total views (rounded to 1 decimal),
+    most views first.
+  hints:
+    - "The share can use a window function: count(*) * 100.0 / sum(count(*)) OVER ()"
+  explanation: |
+    TimescaleDB is entirely PostgreSQL: window functions, JOINs and CTEs all work as usual. To users, a hypertable is just an ordinary table.
+
+- id: weekly-orders
+  chapter: time_bucket basics
+  title: Orders and revenue per week
+  prompt: |
+    For Q3 2026 (7/1–9/30, Taiwan time), the number of orders and revenue (sum of total) per week, sorted by week.
+    Weeks start on Monday.
+  hints:
+    - time_bucket('1 week', …) starts weeks on Monday by default.
+  explanation: |
+    time_bucket's default origin is 2000-01-03 (a Monday), so week buckets start on Monday.
+    The first week starts on 6/29: 7/1 is a Wednesday, so that week has only orders from 7/1 on (WHERE filtered out the first two days).
+    To start weeks on Sunday, specify the origin: time_bucket('1 week', order_time, 'Asia/Taipei', origin => '2000-01-02').
+
+- id: last-reading
+  chapter: Time series analysis
+  title: The last reading of each sensor
+  prompt: |
+    The last temperature of each sensor on 2026-09-30 (Taiwan time).
+    Return sensor_id and the temperature, sorted by sensor_id.
+  hints:
+    - "last(value, time): the value of the last row ordered by time; first() gives the first."
+  explanation: |
+    first() / last() are TimescaleDB aggregates that turn "the latest value of each device" into one line.
+    In plain PostgreSQL you'd write DISTINCT ON (sensor_id) … ORDER BY sensor_id, time DESC, or use the window function ROW_NUMBER().
+
+- id: cold-alarm
+  chapter: Time series analysis
+  title: Cold room temperature alarms
+  prompt: |
+    Readings above 8°C from sensors in cold storage (sensors.kind = '冷藏', "refrigerated"):
+    grouped by sensor, return sensor_id, warehouse, the time of the first and last over-limit readings, the number of over-limit readings and the maximum temperature.
+  hints:
+    - sensor_readings JOIN sensors USING (sensor_id)
+    - min(time), max(time), count(*), max(temperature)
+  explanation: |
+    A hypertable can be joined with ordinary tables (sensor metadata lives in the ordinary table sensors).
+    From 2:10 to 2:30 a.m. on 9/18, the cold storage in zone B of the Taoyuan warehouse reached 12.5°C; probably a door left open.
+
+- id: gapfill
+  chapter: Time series analysis
+  title: Fill in periods without data
+  prompt: |
+    The hourly average temperature of sensor 7 from 08:00 to 16:00 on 2026-09-10 (Taiwan time).
+    Hours without data must be listed too (average temperature NULL), sorted by time, 8 rows in total.
+  hints:
+    - A plain time_bucket only lists buckets "that have data".
+    - time_bucket_gapfill lists every bucket in the range; the range is inferred from the WHERE condition.
+  explanation: |
+    Sensor 7 was offline from 10:00 to 14:00, so a plain time_bucket returns only 4 rows and the gap "disappears" in a chart.
+    time_bucket_gapfill fills the empty buckets with NULL, so front-end charts and later calculations aren't misled.
+
+- id: locf
+  chapter: Time series analysis
+  title: Fill gaps with the previous value (LOCF)
+  prompt: |
+    Same as the previous exercise (sensor 7, hourly average temperature 08:00–16:00 on 9/10),
+    but fill hours without data with "the previous value that had data". Return the time and the filled temperature, 8 rows in total.
+  hints:
+    - "locf(avg(temperature)): Last Observation Carried Forward."
+  explanation: |
+    locf() carries the last observed value forward, which suits "state"-type data (temperature settings, stock levels, on/off states).
+    Another option is interpolate(): linear interpolation between the values before and after, suited to continuously changing quantities.
+
+- id: moving-average
+  chapter: Time series analysis
+  title: 3-day moving average
+  prompt: |
+    Views per day from 2026-09-01 to 2026-09-14 (Taiwan time), and the average views over "the last 3 days including that day" (rounded to an integer).
+    Return the start of the day, that day's views and the 3-day average, sorted by date.
+  hints:
+    - Compute each day's count with time_bucket first, then use the window function avg(…) OVER (ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW).
+  explanation: |
+    A moving average smooths out single-day spikes (the 9/9 shopping festival) to reveal the trend. The first two days have fewer than 3 days, so they average 1 and 2 days.
+    Window functions plus time_bucket are the most common combination in time series analysis.
+
+- id: day-over-day
+  chapter: Time series analysis
+  title: Compared with the previous day
+  prompt: |
+    Views per day from 2026-09-08 to 2026-09-11 (Taiwan time), and the change from the previous day (NULL for the first day).
+    Return the start of the day, the views and the change, sorted by date.
+  hints:
+    - lag(views) OVER (ORDER BY day)
+  explanation: |
+    lag() takes the previous row's value. The first day has no "previous day", so it's NULL; to compare with 9/7 outside the range, query one extra day and filter it out.
+
+- id: cagg-hourly
+  chapter: Continuous aggregates
+  title: Hourly statistics from a continuous aggregate
+  prompt: |
+    The continuous aggregate sensor_hourly already holds each sensor's hourly average, minimum and maximum temperature.
+    Use it to get sensor 2's maximum temperature per hour from 00:00 to 06:00 on 2026-09-18 (Taiwan time), sorted by time.
+  hints:
+    - "A continuous aggregate is used just like a view: SELECT hour, max_temp FROM sensor_hourly WHERE …"
+  explanation: |
+    A continuous aggregate is "a materialized view that updates incrementally by itself": raw data has one row per minute, the aggregate one row per hour,
+    so the query reads only 6 rows instead of scanning 360 raw rows. The more data and the more often a report runs, the bigger the difference (compared in the lab).
+
+- id: cagg-top-products
+  chapter: Continuous aggregates
+  title: Popular products (from the daily aggregate)
+  prompt: |
+    Using the continuous aggregate page_views_daily, find the 5 most viewed products from 2026-09-01 to 2026-09-22 (Taiwan time, inclusive):
+    return product_id and total views, most views first.
+  hints:
+    - page_views_daily has one row per "day × product", so sum(views) again.
+  explanation: |
+    Rolling up further from a daily aggregate (daily → monthly, product → category) is cheap.
+    ★ Counts and sums can be summed again; averages can't simply be averaged again (each day has a different count). Store sum and count, and divide at the end.
+
+- id: chunk-count
+  chapter: Hypertables and chunks
+  title: How many chunks
+  prompt: |
+    How many chunks is the page_views hypertable split into? Return a single number.
+  hints:
+    - show_chunks('page_views') lists every chunk; or query timescaledb_information.chunks.
+  explanation: |
+    Underneath, a hypertable is many small tables (chunks), each holding one time span of data (7 days here).
+    Queries read only the chunks relevant to their time range (chunk exclusion); deleting old data drops whole chunks (drop_chunks) instead of DELETEing row by row.
+
+- id: chunk-range
+  chapter: Hypertables and chunks
+  title: Which chunk a point in time is in
+  prompt: |
+    Which page_views chunk holds the views from 2026-09-01 12:00 (Taiwan time)?
+    Return that chunk's time range (range_start, range_end).
+  hints:
+    - timescaledb_information.chunks has each chunk's hypertable_name, range_start and range_end.
+  explanation: |
+    Chunk boundaries align to "fixed intervals in UTC", so the range is 8/27 08:00 – 9/3 08:00 (Taiwan time, Thursday 8 a.m.),
+    not starting at the beginning of a month or on Monday. A recommended chunk size: the recent data (the chunk being written and its indexes) fits in about 25% of memory.
+
+- id: insert-reading
+  chapter: Writes
+  title: Write a new reading
+  prompt: |
+    Sensor 2 reports at 2026-10-01 00:00 (Taiwan time): temperature 4.2, humidity 85.0.
+    Write it to sensor_readings and use RETURNING to return time, sensor_id, temperature and humidity.
+  hints:
+    - INSERT INTO sensor_readings (time, sensor_id, temperature, humidity) VALUES (…) RETURNING …
+  explanation: |
+    Writing to a hypertable is exactly like writing to an ordinary table. This row's time is beyond the existing chunks, so TimescaleDB creates a new chunk automatically
+    (inside this transaction; the sandbox rolls back at the end). Time series writes are mostly "appended at the end"; the chunk being written is small and its indexes are in memory, so writes are fast.
+
+- id: late-data
+  chapter: Writes
+  title: Write late-arriving data
+  prompt: |
+    After sensor 7 came back online, it sent a reading for 2026-09-10 11:00 (Taiwan time): temperature 21.5, humidity 61.0.
+    After writing it, query how many readings sensor 7 has on 9/10 (Taiwan time) in total.
+  hints:
+    - INSERT first, then SELECT count(*) … (the sandbox can run several statements at once)
+  explanation: |
+    Late data is written into old chunks. If that period has already been materialized by a continuous aggregate, the aggregate doesn't know automatically:
+    it waits for the next refresh (refresh recomputes "the ranges where data changed"; TimescaleDB tracks the modified time ranges).
+    If the old chunk is already compressed, writing to it costs more too.
+
+- id: retention-delete
+  chapter: Writes
+  title: Delete old data
+  prompt: |
+    The oldest week of data is no longer needed: delete page_views from before 2026-04-08 (Taiwan time),
+    and return how many rows were deleted (one row, one number).
+  hints:
+    - WITH removed AS (DELETE … RETURNING 1) SELECT count(*) FROM removed
+  explanation: |
+    This takes several seconds: DELETE removes rows one by one, updates indexes, writes WAL, and needs VACUUM afterwards. Deleting 70,000 rows takes about 5 seconds in testing,
+    and deleting a month (300,000 rows) exceeds the showcase's 15-second limit.
+    ★ TimescaleDB's way is to drop whole chunks: SELECT drop_chunks('page_views', older_than => '2026-05-01'::timestamptz).
+    Dropping 5 chunks takes only a few milliseconds in testing (like DROP TABLE), and leaves no dead rows to VACUUM.
+    You can also set an automatic retention policy: add_retention_policy('page_views', INTERVAL '5 months').
+    Note drop_chunks only drops chunks "entirely older than the condition"; the chunk on the boundary stays.

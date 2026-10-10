@@ -1,0 +1,298 @@
+- id: tag-values
+  chapter: データモデルと基本のクエリ
+  title: どんなホストがあるか：SHOW TAG VALUES
+  prompt: |
+    cpu という measurement の host という tag には、どんな値がありますか？
+  hints:
+    - SHOW TAG VALUES FROM 測定名 WITH KEY = "tag 名"
+    - InfluxQL の識別子（measurement、tag、field の名前）はダブルクォート、文字列の値はシングルクォートで囲みます。
+  explanation: |
+    InfluxDB の 1 件のデータ（point）= measurement + tag set + field set + タイムスタンプです。例えば：
+    cpu,host=db-01,region=tpe,role=db usage_user=35.8,usage_system=10.2 1790783940
+    tag はインデックスが作られ（絞り込みやグループ化に使う）、値は常に文字列です。field はインデックスが作られません（実際の測定値を保存し、数値・文字列・ブール値を取れる）。
+    measurement + tag set で 1 本の「series」（時系列）が決まります：cpu には 5 本（ホスト 5 台）あり、それぞれ時刻順に並んで保存されています。
+
+- id: field-keys
+  chapter: データモデルと基本のクエリ
+  title: フィールドの型：SHOW FIELD KEYS
+  prompt: |
+    orders にはどんな field があり、それぞれ何型ですか？
+  hints:
+    - SHOW FIELD KEYS FROM 測定名
+  explanation: |
+    orders の customer_id、order_id、items、total は field（integer）、city、status、vip_level は tag です。
+    ★ 値の種類が非常に多いデータ（注文番号、顧客番号、ユーザー ID、trace id）を tag にしてはいけません：異なる tag の組み合わせはそれぞれ新しい series になり、
+    series 数（cardinality）が爆発するとメモリを使い果たし、書き込みもクエリも遅くなります。これが InfluxDB のデータモデルで最も重要なルールです。
+    同じ field の型は最初の書き込みで決まり（同じ shard 内）、以後違う型を書き込むと拒否されます。
+
+- id: raw-range
+  chapter: データモデルと基本のクエリ
+  title: 時間範囲 + tag の条件
+  prompt: |
+    db-01 の 2026-09-18 14:00 から 14:05（台湾時間、14:05 を含まない）の usage_user と usage_system の生データ。
+  hints:
+    - 時間条件は time >= '2026-09-18T14:00:00+08:00' AND time < '…' と書きます。
+    - tag の値は文字列なのでシングルクォートで：host = 'db-01'
+  explanation: |
+    1 分に 1 件なので 5 行です。結果は必ず時刻順（既定は古い順）で、1 列目は常に time です。
+    ★ 時間範囲は必ず付けましょう：InfluxDB はデータを時間で shard（shard group）に分けており、時間条件がないとすべての shard をスキャンする必要があります。
+    InfluxQL には JOIN がなく、クエリの単位は「1 つの measurement の中の 1 本以上の series」です。
+
+- id: last-per-host
+  chapter: データモデルと基本のクエリ
+  title: 各ホストの最後の報告
+  prompt: |
+    各ホスト（host）が最後に報告した時刻と、そのときの usage_user。
+  hints:
+    - last() は selector です：最後の 1 件の値を返し、time 列はその 1 件の時刻になります。
+    - GROUP BY host で、ホストごとに 1 回ずつ計算します。
+  explanation: |
+    他のホストの最後の 1 件はすべて 9/30 23:59 ですが、web-03 は 9/20 12:00 で止まっています：オフラインになったのです。監視システムはこのようなクエリで「接続断アラート」（deadman check）を行います。
+    selector（first、last、max、min、top、bottom、percentile）は実在する 1 件を返し、time はその 1 件の時刻です。
+    aggregate（mean、sum、count…）は計算した値を返し、time は区間の開始です（GROUP BY time がないときは 0、つまり 1970-01-01）。
+
+- id: latest-orders
+  chapter: データモデルと基本のクエリ
+  title: 最新の 3 件の注文
+  prompt: |
+    台北市（city = '台北市'）の最新 3 件の注文。すべての列（SELECT *）を新しい順に返します。
+  hints:
+    - ORDER BY time DESC LIMIT 3（InfluxQL は time でしか並べ替えられません）
+  explanation: |
+    SELECT * はすべての tag と field を返し、列は名前順に並びます。
+    ★ InfluxQL の ORDER BY には time しか使えません。「金額で並べ替える」には top() / bottom() を使うか、Flux で sort() を使います。
+    時系列データベースはクエリのほとんどが「ある期間を、時刻順に」だと想定しているので、データは時刻順に保存されており、それ以外の並べ替えは得意ではありません。
+
+- id: hourly-mean
+  chapter: 集約と GROUP BY time
+  title: 1 時間ごとの平均 CPU
+  prompt: |
+    db-01 の 2026-09-18 12:00 から 17:00（台湾時間）の、1 時間ごとの平均 usage_user。
+  hints:
+    - GROUP BY time(1h)：時間を 1 時間ずつに区切ります。
+    - 最後に tz('Asia/Taipei') を付けると、結果の時刻が台湾時間で揃います（時間単位はもともと揃いますが、日や週ではこれが必要です）。
+  explanation: |
+    GROUP BY time() ≈ TimescaleDB の time_bucket、Elasticsearch の date_histogram。
+    14 時台の平均は 76%：14:00〜14:40 は満杯で、最後の 20 分は正常に戻っています。1 時間平均だけでは障害の深刻さを過小評価してしまうので、max を見るか区間を小さく（5m）すると分かりやすくなります。
+
+- id: daily-max
+  chapter: 集約と GROUP BY time
+  title: 各ホストの日ごとの最大 CPU
+  prompt: |
+    2026-09-18、09-19 の 2 日間（台湾時間）について、各ホストの日ごとの usage_user の最大値。
+  hints:
+    - GROUP BY time(1d), host tz('Asia/Taipei')
+  explanation: |
+    GROUP BY には time() と tag を同時に指定できます：ホストごとに 1 つの結果（series）があり、その中で 1 日ごとに 1 行です。
+    ★ 1 日以上の区間には必ず tz() を付けます：ないと UTC で区切られ、台湾の 1 日が午前 8 時から始まってしまいます（落とし穴問題で実演しています）。
+    max は selector で、time 列は区間の開始です（GROUP BY time があると、selector の time も区間の開始になります）。
+
+- id: sensor-p95
+  chapter: 集約と GROUP BY time
+  title: 冷蔵センサーの P95 温度
+  prompt: |
+    冷蔵（kind = 'cold'）のセンサーについて、sensor_id ごとに 9 月 1 か月間の temperature の 95 パーセンタイル。
+  hints:
+    - percentile(temperature, 95)、GROUP BY sensor_id
+  explanation: |
+    冷蔵は 4 度前後のはずです。2 号の P95 が 1 号や 4 号とほとんど同じなのは、9/18 の温度上昇が 2 時間だけで、1 か月の 0.3% にすぎないからです。
+    「何か起きたか」を見るなら max か P99.9、「普段どうか」を見るなら中央値や P95 を使います。InfluxQL の percentile は正確に計算します（すべての値を並べ替える）。
+
+- id: orders-by-city
+  chapter: 集約と GROUP BY time
+  title: 9 月の都市別の注文数と売上
+  prompt: |
+    2026 年 9 月（台湾時間）の都市（city）ごとの注文数（count）と売上（sum）。どちらも total という field で計算します。
+  hints:
+    - SELECT count(total), sum(total) FROM orders WHERE … GROUP BY city
+  explanation: |
+    GROUP BY には tag（または time）しか使えません：city は tag なのでグループ化できますが、city が field ならできません（field で GROUP BY した結果は落とし穴問題で実演しています）。
+    count() には必ず field を指定します：InfluxQL には count(*) で「行数」を数えるという概念がなく、field ごとに数えます。
+
+- id: fill-gap
+  chapter: 集約と GROUP BY time
+  title: 接続が切れた時間帯：fill()
+  prompt: |
+    5 号センサーの 2026-09-10 09:00 から 15:00（台湾時間）の、1 時間ごとの平均温度。10:00〜14:00 は接続が切れていました。
+    データのない時間は「前の時間の値」で埋めます（fill(previous)）。
+  hints:
+    - GROUP BY time(1h) fill(previous) tz('Asia/Taipei')
+    - sensor_id は tag で、値は文字列です：sensor_id = '5'
+  explanation: |
+    GROUP BY time() は既定で範囲内のすべての区間を表示し、データのない区間の値は null になります（fill(null)）。他の選択肢：
+    fill(none) は表示しない、fill(0) は 0 で埋める、fill(previous) は前の値を使う、fill(linear) は線形補間。
+    ★ 値を埋めるとグラフはきれいになりますが、「接続断を隠す」ことにもなります：アラートやレポートでは、どれが実際に測った値かを区別しましょう。
+
+- id: top-orders
+  chapter: 集約と GROUP BY time
+  title: 金額の高い 5 件の注文：top()
+  prompt: |
+    2026 年 9 月（台湾時間）の金額（total）の高い 5 件の注文。order_id と city も一緒に返します。
+  hints:
+    - top(total, 5) は selector なので、他の field や tag と一緒に SELECT できます。
+  explanation: |
+    top() が返す行は時刻順で（金額順ではない）、time はその注文の時刻です。
+    InfluxQL では ORDER BY total ができず、top / bottom が「値で上位を取る」唯一の方法です。全データを値で並べ替えるには Flux の sort() を使います。
+
+- id: subquery-peak
+  chapter: 集約と GROUP BY time
+  title: サブクエリ：各ホストの最も忙しい 1 時間
+  prompt: |
+    2026-09-18（台湾時間）の 1 日で、各ホストの「1 時間ごとの平均 usage_user」が最も高かった時間帯と、その平均値。
+  hints:
+    - 内側：1 時間ごと、ホストごとの平均。外側：内側の結果から max(mean) を取り、GROUP BY host。
+    - SELECT max(mean) FROM (SELECT mean(usage_user) FROM cpu WHERE … GROUP BY time(1h), host tz('Asia/Taipei')) GROUP BY host
+  explanation: |
+    InfluxQL は 1.2 からサブクエリに対応しています：内側の結果の列名（mean）を外側では field として使い、内側の GROUP BY の tag も外側で使えます。
+    web ホストは夜 9 時に最も忙しく（トラフィックのピーク）、db-01 は午後 2 時です（障害）。
+
+- id: request-rate
+  chapter: 変化率とカウンタ
+  title: 累積カウンタ → 1 分あたりのリクエスト数
+  prompt: |
+    http の requests は「累積」カウンタです（増える一方）。api サービスの 2026-09-15 02:57 から 03:03（台湾時間）の 1 分ごとのリクエスト数を求めてください。
+    api は 03:00 に再起動してカウンタが 0 からやり直しになりましたが、その 1 分を負の値として数えてはいけません。
+  hints:
+    - non_negative_derivative(last(requests), 1m) … GROUP BY time(1m)
+  explanation: |
+    監視システム（Prometheus、Telegraf）が収集するのはほとんどが累積カウンタです：「これまでの合計回数」だけを報告し、差分はクエリ側で計算します。
+    利点は報告が何回か抜けても少なく数えないこと。欠点は、プログラムの再起動でカウンタが 0 に戻ると、単純に引き算すると巨大な負の数になることです（-360 万、落とし穴問題で実演しています）。
+    non_negative_derivative は負の値を捨てます。Prometheus の rate() はリセットを自動で検出して補正します。
+
+- id: errors-per-10m
+  chapter: 変化率とカウンタ
+  title: 10 分ごとのエラー数
+  prompt: |
+    api サービスで 2026-09-18 13:30 から 15:00（台湾時間）に、10 分ごとに新しく発生したエラーはいくつですか（errors も累積カウンタです）。
+  hints:
+    - non_negative_difference(last(errors)) は隣り合う 2 つの区間の差を計算します（時間では割りません）。
+  explanation: |
+    difference は「後ろの値 − 前の値」、derivative はさらに時間単位で割ります（速度になる）。14:00〜14:40 は 10 分ごとに数百件のエラーがあり、他の時間帯は 1 桁だけです。
+    最初の区間には引き算する前の値がないので、結果は区間の数より 1 行少なくなる点に注意しましょう。
+
+- id: moving-average
+  chapter: 変化率とカウンタ
+  title: 移動平均：moving_average()
+  prompt: |
+    2 号センサーの 2026-09-18 12:00 から 16:00（台湾時間）の 30 分ごとの平均温度を求め、さらに「直近 3 区間」の移動平均を取ります。
+  hints:
+    - moving_average(mean(temperature), 3) … GROUP BY time(30m) tz('Asia/Taipei')
+  explanation: |
+    移動平均は曲線をなめらかにし、傾向を見たり誤報を減らしたりするのに使います（温度が一瞬跳ねてもアラートせず、高い状態が続いたときだけアラートする）。代償は反応が遅くなることです。
+    最初の 2 区間は 3 つの値がそろわないので、出力されません。
+
+- id: memory-leak
+  chapter: 変化率とカウンタ
+  title: メモリは 1 日にどれだけ増えるか：derivative()
+  prompt: |
+    web-02 の 2026-09-10 から 09-20（台湾時間）の日ごとの平均 used_percent と、前日からの変化量（1 日あたり）。
+  hints:
+    - derivative(mean(used_percent), 1d) … GROUP BY time(1d) tz('Asia/Taipei')
+  explanation: |
+    毎日約 1.7% ずつ着実に増えています：典型的なメモリリークです。9/15 に大きく下がっているのは、午前 3 時に再起動したからです（リークしたメモリが解放された）。
+    変化率で「予測型アラート」を作れます：このペースなら数日後に使い切る、と分かれば、95% になるまで待つよりも早く警告できます。
+
+- id: flux-basic
+  chapter: Flux
+  title: Flux の基本パイプライン
+  prompt: |
+    Flux で、db-01 の 2026-09-18 14:00 から 15:00（台湾時間）の usage_user の平均値を計算してください。
+  hints:
+    - 'from(bucket: "metrics") |> range(start: …, stop: …) |> filter(fn: (r) => …) |> mean()'
+    - Flux の時刻は 2026-09-18T14:00:00+08:00 とそのまま書けます（引用符なし）。
+    - filter の中で _measurement、_field、host を同時に比較します。
+  explanation: |
+    Flux はパイプライン（|>）です：データは「テーブル」の形で下へ流れ、各関数が処理して次に渡します。
+    from の後には必ず range が必要で（時間範囲がないとエラー）、filter には無名関数を使い、r は 1 行を表します。
+    Flux のデータモデル：各行には値が 1 つだけ（_value）あり、フィールド名は _field にあります。同じ series（measurement + tags + field）が 1 つのテーブルです。
+    Flux は公式には新機能の開発が止まっています（InfluxDB 3 は SQL / InfluxQL に戻った）が、2.x のシステムでは大量に使われています。
+
+- id: flux-window
+  chapter: Flux
+  title: aggregateWindow：日ごとの最大値
+  prompt: |
+    Flux で、db-01 の 2026-09-18、09-19 の 2 日間（台湾時間）の日ごとの usage_user の最大値を計算してください。
+  hints:
+    - 'aggregateWindow(every: 1d, fn: max)'
+    - '台湾時間で 1 日ごとに区切るには：import "timezone" の後、option location = timezone.location(name: "Asia/Taipei") を加えます'
+  explanation: |
+    aggregateWindow ≈ InfluxQL の GROUP BY time()：区間ごとに 1 回計算し、_time は区間の「終了」時刻です（InfluxQL は開始で、両者は違います！）。
+    option location で 1d の区間を台湾時間に揃えます。ないと UTC で区切られます。createEmpty（既定 true）で、データのない区間を出力するかどうかを決めます。
+
+- id: flux-pivot
+  chapter: Flux
+  title: pivot + map：2 つの field を足し合わせる
+  prompt: |
+    db-01 の 2026-09-18 14:00 から 14:05（台湾時間）の 1 分ごとの CPU 合計使用率（usage_user + usage_system）。
+    結果には _time と total の 2 列だけを残します。
+  hints:
+    - 'Flux の各行には _value が 1 つしかなく、2 つの field は別々のテーブルにあります。まず pivot で同じ行にまとめます：pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")'
+    - '次に map で列を追加します：map(fn: (r) => ({ r with total: r.usage_user + r.usage_system }))'
+    - '最後に keep(columns: ["_time", "total"])'
+  explanation: |
+    InfluxQL なら SELECT usage_user + usage_system と直接書けますが、Flux は「1 行に 1 つの値」というデータモデルなので、field をまたぐ計算には先に pivot（ピボットテーブルのようなもの）が必要です。
+    InfluxDB 3 の SQL は「1 行に複数の field」のワイドテーブルに戻ったので、この問題はありません。
+
+- id: flux-rank-hosts
+  chapter: Flux
+  title: group + sort：平均 CPU でホストを順位付け
+  prompt: |
+    9 月 1 か月間（台湾時間）の各ホストの usage_user の平均値を高い順に並べ、host と _value の 2 列だけを残します。
+  hints:
+    - mean() の後もホストごとに別のテーブルなので、一緒に並べ替えるには先に group()（すべてを 1 つのテーブルにまとめる）します。
+    - 'sort(columns: ["_value"], desc: true) |> keep(columns: ["host", "_value"])'
+  explanation: |
+    Flux の「グループ」とはテーブルのことです：from で読み出した時点では series ごとに 1 つのテーブルで、group(columns: […]) は指定した列でテーブルを分け直し、group() はすべてを 1 つにまとめます。
+    集約関数（mean、sum、count）は「テーブルごとに 1 回」計算し、並べ替えや limit もテーブルごとに行われるので、ホストをまたいで順位を付ける前に必ず group() します。
+
+- id: flux-rate
+  chapter: Flux
+  title: 'Flux の変化率：derivative(nonNegative: true)'
+  prompt: |
+    Flux で、api サービスの 2026-09-15 02:57 から 03:03（台湾時間）の 1 分ごとのリクエスト数を計算してください（requests は累積カウンタで、再起動した 1 分の負の値は飛ばします）。
+    結果には _time と _value だけを残します。
+  hints:
+    - 'derivative(unit: 1m, nonNegative: true)'
+  explanation: |
+    InfluxQL の non_negative_derivative と同じく、再起動した 1 分の負の値は飛ばされます。Flux には他に increase()（カウンタのリセットを自動で処理する累積増加量）や
+    difference(nonNegative: true) もあります。
+
+- id: write-points
+  chapter: 書き込み
+  title: line protocol：測定値を 3 件書き込む
+  prompt: |
+    scratch バケットに、9 号センサー（sensor_id=9、kind=cold）の測定値を 3 件書き込みます。measurement は sensors です：
+    タイムスタンプ（秒）1790726400、1790726700、1790727000 で、temperature はそれぞれ 4.1、4.3、4.2。
+  hints:
+    - 形式：measurement,tag1=値,tag2=値 field1=値,field2=値 タイムスタンプ
+    - measurement と tag の間はカンマ、tag と field の間は空白 1 つ、field と時刻の間も空白 1 つです。
+    - sensors,kind=cold,sensor_id=9 temperature=4.1 1790726400
+  explanation: |
+    line protocol は InfluxDB の書き込み形式です：1 行に 1 点で、多くの行を一度に送れます（バッチ書き込み。1 バッチ 5,000 行程度が推奨）。
+    tag を名前順に並べてから書き込むと、サーバーの処理が速くなります。空白、カンマ、イコールはバックスラッシュでエスケープします。タイムスタンプの単位は precision パラメータで決まります（ここでは秒）。
+
+- id: write-types
+  chapter: 書き込み
+  title: field の型：整数には i を付ける
+  prompt: |
+    scratch に注文を 1 件書き込みます（measurement は orders）。タイムスタンプは 1790726400：
+    tag は city=台北市、status=paid。field は total（整数 1990）、items（整数 2）、coupon（文字列 "WELCOME"）、gift（ブール値 true）。
+  hints:
+    - 整数は数字の後ろに i を付けます（1990i）。i のない数字は浮動小数点数です。
+    - 文字列の field はダブルクォートで囲みます。ブール値は true / false と書きます（tag の値には引用符は不要）。
+  explanation: |
+    field には 4 つの型があります：浮動小数点数（既定）、整数（i で終わる）、文字列（ダブルクォート）、ブール値。tag の値は常に文字列です。
+    同じ field の型は最初の書き込みで決まります：以後同じ shard に別の型（例えば total=1.5）を書き込むと拒否されます（落とし穴問題で実演しています）。
+
+- id: write-overwrite
+  chapter: 書き込み
+  title: 書き間違えた値を修正する
+  prompt: |
+    センサー sensors,kind=cold,sensor_id=9 のタイムスタンプ 1790726400 の温度を書き間違えました。
+    まず間違った値 temperature=41.0 を書き込み、次に 4.1 に「修正」します。終わった後、この時点のデータは 1 件だけで、値は 4.1 でなければなりません。
+  hints:
+    - InfluxDB には UPDATE がありません：同じ series（measurement + tag set）、同じタイムスタンプでもう一度書き込むと、field の値が上書きされます。
+  explanation: |
+    measurement + tag set + タイムスタンプが同じ点は「同じ点」とみなされ、後から書いた field の値が前の値を上書きします（異なる field はマージされます）。
+    ★ これは落とし穴でもあります：2 つのイベントがたまたま同じ秒・同じ tag の組み合わせ（例えば同じ顧客が同じ秒に 2 件注文）だと、後の 1 件が前の 1 件を上書きしてしまいます。
+    解決策は、タイムスタンプをもっと細かい精度（ms、ns）にするか、区別できる tag を追加することです。データの削除には delete API を使います（時間範囲 + tag の条件で）。

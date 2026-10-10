@@ -1,0 +1,290 @@
+- id: find-customer
+  chapter: 基本の MATCH
+  title: 会員を 1 人探す
+  prompt: |
+    会員 4242 の氏名（name）と会員レベル（vipLevel）を調べてください。
+  hints:
+    - "MATCH (変数:ラベル {プロパティ: 値}) RETURN 変数.プロパティ"
+  explanation: |
+    MATCH は探したいものを「パターン」で表します：(c:Customer {id: 4242}) はラベルが Customer で id が 4242 のノードです。
+    Customer.id には一意制約（インデックス付き）があるので、これはインデックス検索（NodeUniqueIndexSeek）になり、全会員をスキャンする必要はありません。
+
+- id: customer-city
+  chapter: 基本の MATCH
+  title: リレーションシップを 1 歩たどる
+  prompt: |
+    会員 4242 はどの都市に住んでいますか？都市名を返してください。
+  hints:
+    - 都市は会員のプロパティではなく、(:Customer)-[:LIVES_IN]->(:City) というリレーションシップが指すノードです。
+  explanation: |
+    グラフデータベースでは、「関連」は保存されたリレーションシップであり、クエリ時に外部キーで突き合わせるものではありません。
+    会員ノードから LIVES_IN リレーションシップを直接たどって都市ノードに行くので（index-free adjacency）、コストはこの会員のリレーションシップの数だけで決まり、会員の総数とは関係ありません。
+    使わないノードには変数名を付けなくて構いません。例えばここの (:Customer {id: 4242}) です。
+
+- id: customer-orders
+  chapter: 基本の MATCH
+  title: 会員の注文
+  prompt: |
+    会員 4242 の注文を一覧にしてください：注文 id と合計金額（total）を新しい順に。
+  hints:
+    - (:Customer)-[:PLACED]->(:Order)
+    - 並べ替えは ORDER BY o.orderDate DESC。
+  explanation: |
+    ORDER BY では RETURN していないプロパティでも並べ替えられます。orderDate はタイムゾーン付きの datetime で、比較も並べ替えも実際の時点に基づきます。
+
+- id: order-items
+  chapter: 基本の MATCH
+  title: リレーションシップのプロパティ
+  prompt: |
+    注文 77621 ではどの商品を買いましたか？商品名と数量（qty）を返してください。順序は問いません。
+  hints:
+    - 数量は商品ノードではなく、CONTAINS リレーションシップにあります：-[r:CONTAINS]->
+  explanation: |
+    リレーションシップにもプロパティを持たせられます。注文明細の数量・単価・割引は「この注文とこの商品の間」のことを表すので、リレーションシップに置きます。
+    リレーショナルデータベースの中間テーブル（order_items）に相当します。
+
+- id: gold-in-taipei
+  chapter: 基本の MATCH
+  title: 条件の組み合わせ
+  prompt: |
+    台北市に住んでいて、会員レベルが gold の会員は何人ですか？1 つの数値を返します。
+  hints:
+    - 会員の条件はノードに、都市は別のノードに書き、2 つを LIVES_IN でつなぎます。
+  explanation: |
+    パターン内の {プロパティ: 値} は WHERE の等号条件と同じです。より複雑な条件（範囲、OR、文字列の比較）は WHERE に書きます。
+    同等の書き方：MATCH (c:Customer)-[:LIVES_IN]->(city:City) WHERE c.vipLevel = 'gold' AND city.name = '台北市'。
+
+- id: followers
+  chapter: 方向と集約
+  title: フォロワー数（逆方向）
+  prompt: |
+    会員 4242 をフォローしている会員は何人ですか？1 つの数値を返します。
+  hints:
+    - (a)-[:FOLLOWS]->(b) は a が b をフォローしているという意味です。4242 をフォローしている人を探すなら、矢印は 4242 を向きます。
+  explanation: |
+    リレーションシップには必ず方向があり、クエリでは ->、<- を指定するか、方向を書かない（-）こともできます。方向を書かないと両方向とも数えます。
+    フォローは方向のあるリレーションシップです：4242 は 6 人をフォローしていますが、4242 をフォローしているのは 4 人だけです。
+
+- id: top-followed
+  chapter: 方向と集約
+  title: フォロワーが最も多い会員
+  prompt: |
+    フォロワーが最も多い 5 人の会員：会員 id、氏名、フォロワー数をフォロワー数の多い順に返します。
+  hints:
+    - Cypher には GROUP BY がありません：RETURN の中で集約関数でない列が、グループ化の基準になります。
+  explanation: |
+    RETURN c.id, c.name, count(fan) のグループ化の基準は c.id、c.name です（暗黙の GROUP BY）。
+    会員 1 には 895 人のフォロワーがいる「スーパーノード」（supernode）です：そこから始まる走査は非常に多くのリレーションシップを通るので、グラフデータベースの設計で注意すべき点です。
+
+- id: brand-products
+  chapter: 方向と集約
+  title: ブランド別の商品数
+  prompt: |
+    商品数が最も多い 5 つのブランド：ブランド名と商品数を商品数の多い順に、同数ならブランド名順に返します。
+  hints:
+    - (:Product)-[:MADE_BY]->(:Brand)
+  explanation: |
+    同数のときのために 2 つ目の並べ替え列を加えると、結果が一定になります。ORDER BY products DESC だけだと、同数の順序は保証されません。
+
+- id: city-revenue
+  chapter: 方向と集約
+  title: 都市別売上
+  prompt: |
+    2026 年（台湾時間）の配送済み（status = 'delivered'）の注文について、配送先都市ごとに total を合計し、
+    売上上位 3 都市の都市名と売上を返します。
+  hints:
+    - (:Order)-[:SHIPPED_TO]->(:City)
+    - datetime('2026-01-01T00:00:00+08:00') で比較用の時点を作れます。
+  explanation: |
+    datetime() はタイムゾーン付きの時点を作ります。date('2026-01-01') と date(o.orderDate) で日付を比較することもできます。
+    このような「テーブル全体の集計」レポートは、実はグラフデータベースの得意分野ではなく（すべての注文をたどる必要がある）、リレーショナルデータベースでも同じようにうまくできます。
+
+- id: no-orders
+  chapter: 方向と集約
+  title: 一度も注文していない会員
+  prompt: |
+    一度も注文したことがない会員は何人ですか？1 つの数値を返します。
+  hints:
+    - WHERE NOT (c)-[:PLACED]->() は「そのようなリレーションシップが存在しない」という意味です。
+  explanation: |
+    パターンはそのまま条件として使えます：(c)-[:PLACED]->() が存在すれば true です。Cypher 5 では WHERE NOT EXISTS { (c)-[:PLACED]->() } とも書けます。
+    SQL と比べると：LEFT JOIN … WHERE o.id IS NULL、または NOT EXISTS サブクエリです。
+
+- id: collect-names
+  chapter: 方向と集約
+  title: リストにまとめる
+  prompt: |
+    会員 4242 がフォローしている人の氏名を、会員 id の昇順で「1 つのリスト」にまとめて返してください（1 行 1 列だけ）。
+  hints:
+    - collect() は複数の行を 1 つの list にまとめます。
+    - 先に並べ替えてからまとめます：MATCH … WITH f ORDER BY f.id RETURN collect(f.name)
+  explanation: |
+    WITH はクエリの途中の RETURN のようなもので、結果を次の部分に渡し、そこで並べ替え・絞り込み・集約ができます。
+    collect() がまとめる順序はデータが流れてきた順序なので、WITH で先に並べておく必要があります。
+
+- id: friends-of-friends
+  chapter: パスと走査
+  title: 友達の友達
+  prompt: |
+    会員 224 がフォローしている人が「さらにフォローしている人」のうち、224 自身と 224 が既にフォローしている人を除くと、異なる会員は何人ですか？
+  hints:
+    - (me)-[:FOLLOWS]->()-[:FOLLOWS]->(fof)
+    - 同じ人が何人もの友達からフォローされていることがあるので、count(DISTINCT fof) を使います。
+    - 224 と相互フォローしている人がいると、224 自身も結果に現れます。
+  explanation: |
+    これは「知り合いかも」の基本的な作り方で、条件の 1 つ 1 つが答えを変えます：
+    DISTINCT なしだと 44（2 人の友達経由で同じ人にたどり着くと 2 回数える）、DISTINCT ありで 42、自分を除くと 41、さらに既にフォローしている人を除くと 40。
+    リレーショナルデータベースでは follows テーブルを自分自身と 2 回 JOIN する必要がありますが、グラフデータベースでは 2 歩たどるだけです。歩数が多いほど差がはっきりします（実験室で比較しています）。
+
+- id: reach-in-three
+  chapter: パスと走査
+  title: 3 歩以内
+  prompt: |
+    フォローの方向に沿って、会員 4242 が 1〜3 歩以内でたどり着ける異なる会員は何人ですか（4242 自身は除く）？
+  hints:
+    - 可変長リレーションシップ：-[:FOLLOWS*1..3]->
+  explanation: |
+    *1..3 は 1〜3 本のリレーションシップを意味します。上限は必ず指定しましょう：上限のない * は、大きなグラフでは数百万本のパスをたどることがあります。
+    同じ人に複数のパスでたどり着けることがあるので、DISTINCT が必要です。
+
+- id: shortest-path
+  chapter: パスと走査
+  title: 最短経路
+  prompt: |
+    フォローの方向に沿って、会員 4242 から会員 1 まで最少で何歩かかりますか？1 つの数値を返します。
+  hints:
+    - shortestPath((a)-[:FOLLOWS*..10]->(b)) で最短経路を 1 本見つけます。length(p) はパスのリレーションシップの数です。
+  explanation: |
+    shortestPath は双方向の幅優先探索を使い、見つかった時点で止まり、すべてのパスを列挙することはありません。allShortestPaths は同じ長さの最短パスをすべて返します。
+    これが「6 次の隔たり」です：ソーシャルネットワークでは、ほとんどの人の間は数歩しか離れていません。
+
+- id: category-tree
+  chapter: パスと走査
+  title: カテゴリのサブツリー全体
+  prompt: |
+    「3C電子」（家電・デジタル製品）配下のすべてのカテゴリ（子カテゴリ、子カテゴリの子カテゴリ…。3C電子 自身は除く）のカテゴリ名を返します。順序は問いません。
+  hints:
+    - (:Category)-[:SUBCATEGORY_OF]->(:Category) は子カテゴリから親カテゴリへ向かいます。
+    - 何階層あるか分からないときは *1..（または妥当な上限）を使います。
+  explanation: |
+    PostgreSQL と比べると：ツリー全体を検索するには WITH RECURSIVE が必要です。グラフデータベースでは、可変長リレーションシップがそのまま再帰になります。
+    カテゴリツリーは小さい（27 ノード）ので上限なしでも問題ありませんが、ソーシャルな関係のような大きなグラフでは必ず上限を指定します。
+
+- id: path-nodes
+  chapter: パスと走査
+  title: パス上のノード
+  prompt: |
+    商品 540 が属するカテゴリから、最上位カテゴリまでの「完全なパス」：
+    商品が属するカテゴリ名、親カテゴリ名…最上位まで、順に並んだリストを 1 つ返します。
+  hints:
+    - "MATCH p = (:Product {id: 540})-[:IN_CATEGORY]->(:Category)-[:SUBCATEGORY_OF*0..]->(top:Category)"
+    - 最上位カテゴリにはさらに上への SUBCATEGORY_OF がありません：WHERE NOT (top)-[:SUBCATEGORY_OF]->()
+    - nodes(p) でパス上のノードを取り出します。[n IN リスト WHERE … | n.name] はリスト内包表記です。
+  explanation: |
+    *0.. は 0 歩を許します（商品が最上位カテゴリに直接属している場合も見つかります）。nodes(p)、relationships(p) でパス上のノードとリレーションシップを取り出します。
+    リスト内包表記 [x IN list WHERE 条件 | 式] は、プログラミング言語の filter + map に似ています。
+
+- id: also-bought
+  chapter: レコメンド
+  title: この商品を買った人はこんな商品も買っています
+  prompt: |
+    商品 540 を買った会員は、他にどの商品を買いましたか？（同じ注文で一緒に買ったものも含む）
+    商品名と「買った会員数」（同じ会員は 1 回だけ数える）を返し、会員数の多い順、同数なら商品名順で上位 5 件を取ります。
+  hints:
+    - "まず 540 を買った会員を探します：MATCH (:Product {id: 540})<-[:CONTAINS]-(:Order)<-[:PLACED]-(c:Customer)"
+    - "次にこれらの会員が買ったすべての商品を探します：MATCH (c)-[:PLACED]->(:Order)-[:CONTAINS]->(other:Product)"
+    - ★ なぜ 2 つの MATCH に分けるのか？1 本の長いパスで書くと、同じリレーションシップは 2 回たどられないので、2 つの PLACED は別々の注文でなければならなくなります。
+  explanation: |
+    これは協調フィルタリング（collaborative filtering）の最も単純な形です：商品 → 買った人 → その人たちが買った他の商品。
+    ★「同じ MATCH パターン」の中では、同じリレーションシップは 2 回たどられません（relationship isomorphism）。
+    1 本のパス (:Product)<-[:CONTAINS]-(:Order)<-[:PLACED]-(c)-[:PLACED]->(:Order)-[:CONTAINS]->(other) として書くと、
+    2 つの PLACED は別のリレーションシップ、つまり別の注文でなければならず、「同じ注文で一緒に買った」会員が漏れてしまいます（アベンヌの商品は 16 人から 14 人になります）。
+    2 つの MATCH に分ければ、一意性はそれぞれのパターン内でしかチェックされないので、漏れません。SQL なら order_items、orders、orders、order_items、products の 5 つのテーブルを JOIN する必要があります。
+
+- id: friends-bought
+  chapter: レコメンド
+  title: 友達は買ったが、自分はまだ買っていない
+  prompt: |
+    会員 4242 がフォローしている人が買っていて、4242 自身はまだ買っていない商品。
+    商品 id と「買った友達の人数」を返し、人数の多い順、同数なら商品 id の昇順で上位 5 件を取ります。
+  hints:
+    - まず友達が買った商品を探し、WHERE NOT (me)-[:PLACED]->(:Order)-[:CONTAINS]->(p) で自分が買ったものを除きます。
+  explanation: |
+    ソーシャルレコメンド：「関係」（フォロー）と「行動」（購入）の 2 種類のデータを組み合わせる、まさにグラフデータベースが最も得意とするクエリです。
+    WHERE NOT (パターン) は候補の商品ごとに 1 回チェックし、4242 自身の注文だけをたどるので高速です。
+
+- id: create-customer
+  chapter: 書き込み
+  title: ノードとリレーションシップの作成
+  prompt: |
+    会員を 1 人追加します：id 99999、name '測試會員'、vipLevel 'normal'。
+    さらに既存の「台北市」に住むようにします（LIVES_IN リレーションシップを作成）。
+  hints:
+    - "先に MATCH で都市を見つけてから、会員とリレーションシップを CREATE します：MATCH (city:City {name: '台北市'}) CREATE (c:Customer {…})-[:LIVES_IN]->(city)"
+  explanation: |
+    CREATE (c)-[:LIVES_IN]->(city) のとき、city は前の MATCH で見つけた既存のノードです。
+    CREATE (:Customer {…})-[:LIVES_IN]->(:City {name: '台北市'}) と書くと、新しい「台北市」ノードがもう 1 つ作られてしまいます（ここでは一意制約があるので、そのままエラーになります）。
+
+- id: merge-follow
+  chapter: 書き込み
+  title: 重複なしでリレーションシップを作る（MERGE）
+  prompt: |
+    会員 4242 に会員 15084 と会員 1 をフォローさせます。
+    4242 は実は既に 15084 をフォローしているので、重複したリレーションシップが増えてはいけません。
+  hints:
+    - MERGE はまず探し、見つからないときだけ作成します。
+    - "両端のノードを先に MATCH してから、リレーションシップを MERGE します：MATCH (a …), (b …) MERGE (a)-[:FOLLOWS]->(b)"
+  explanation: |
+    MERGE = 「あればそれを使い、なければ作る」。CREATE を使うと 4242 と 15084 の間にもう 1 本 FOLLOWS ができてしまい（リレーションシップには一意制約がない）、
+    以後フォロワー数を数えるときに重複して数えてしまいます。
+    ★ MERGE では必ず両端を先に MATCH し、リレーションシップだけを MERGE しましょう。パターン全体を直接 MERGE した結果は落とし穴問題で実演しています。
+    実行すると「cartesian product」というサーバーの通知が表示されます：つながっていない 2 つのパターン (me), (other) はすべての組み合わせを生成しますが、
+    ここでは 1 × 2 = 2 通りだけで、まさに欲しいものなので無視して構いません。組み合わせ数が大きいときだけ注意が必要です（落とし穴問題で実演しています）。
+
+- id: set-props
+  chapter: 書き込み
+  title: プロパティとリストの変更
+  prompt: |
+    商品 540 が売り切れました：stock を 0 にし、tags リストに '缺貨'（在庫切れ）を追加します（既存のタグは残します）。
+  hints:
+    - SET p.プロパティ = 値。リストは + で連結できます：p.tags + '缺貨'
+  explanation: |
+    list + 要素 はリストの末尾に要素を 1 つ追加します。SET p.tags = ['缺貨'] だとリスト全体が置き換えられます。
+    SET p += {stock: 0} は複数のプロパティを一度に更新し、他のプロパティは残します。SET p = {…} はすべてのプロパティを置き換えます（注意）。
+
+- id: merge-on-create
+  chapter: 書き込み
+  title: MERGE の ON CREATE / ON MATCH
+  prompt: |
+    会員のログインを記録します：会員 4242 と会員 99999 についてそれぞれ「ログイン」を 1 回実行します：
+    会員が既に存在すれば lastLogin = date('2026-10-07') を設定し、存在しなければ会員を作成して name を '新會員'（新規会員）に、lastLogin も同じ日に設定します。
+  hints:
+    - "MERGE (c:Customer {id: …}) ON CREATE SET … ON MATCH SET …"
+    - 2 人の会員は UNWIND [4242, 99999] AS id で一度に処理できます。
+  explanation: |
+    ON CREATE SET はこの MERGE が新しいノードを作成したときだけ、ON MATCH SET は既存のノードを見つけたときだけ実行されるので、
+    4242 の氏名が「新會員」に変わることはありません。UNWIND はリストを複数の行に展開し、バッチ書き込みによく使います（データの読み込みもこの方法です）。
+
+- id: unfollow
+  chapter: 書き込み
+  title: リレーションシップの削除
+  prompt: |
+    会員 4242 が会員 15084 のフォローを解除します（このリレーションシップだけを削除し、2 人の会員は残します）。
+  hints:
+    - リレーションシップに変数を付けてから DELETE します：MATCH (…)-[r:FOLLOWS]->(…) DELETE r
+  explanation: |
+    DELETE はノードもリレーションシップも削除できます。ノードを削除する前には、そのすべてのリレーションシップを先に削除するか、DETACH DELETE で一緒に削除する必要があります（次の問題）。
+
+- id: detach-delete
+  chapter: 書き込み
+  title: ノードの削除（DETACH DELETE）
+  prompt: |
+    データの整理：「一度も注文したことがない」会員をすべて削除します。
+    これらの会員にはまだ、フォロー、フォロワー、住んでいる都市のリレーションシップがあるかもしれません。
+  hints:
+    - リレーションシップを持つノードは直接 DELETE できません。
+    - DETACH DELETE はノードのすべてのリレーションシップを先に削除してから、ノードを削除します。
+  explanation: |
+    DETACH DELETE は 1,629 人の会員と、そのすべてのリレーションシップ（フォロー、フォロワー、LIVES_IN）を一度に削除します。
+    DELETE c とだけ書くと、トランザクション内では成功したように見えますが、それらの会員のリレーションシップは残っています（3 つ目の確認クエリの LIVES_IN の数が減っていません）。
+    commit 時に Neo4j は「宙に浮いたリレーションシップ」を許さないのでエラーで拒否します。ショーケースは常に ROLLBACK するので、確認クエリでこの違いを捉えています。

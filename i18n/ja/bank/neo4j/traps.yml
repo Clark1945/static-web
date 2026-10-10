@@ -1,0 +1,180 @@
+- id: merge-whole-pattern
+  title: パターン全体を MERGE する
+  question: |-
+    A と B の 2 つのノードは既に存在しますが、間にリレーションシップはありません。MERGE (a:Person {name: 'A'})-[:KNOWS]->(b:Person {name: 'B'}) を直接実行した後、Person ノードは全部で何個ですか？
+  options:
+    - 2 個：MERGE は既存の A と B を使う
+    - 4 個：パターン全体が見つからないので、パターン全体（2 つのノードを含む）をまとめて作成する
+    - エラー：A と B は既に存在する
+  scripts:
+    - label: A：パターン全体を直接 MERGE
+    - label: B：両端を先に MATCH してから、リレーションシップを MERGE
+  explanation: |
+    MERGE は「パターン全体」がすべて見つかるか、すべて作成されるかのどちらかです。A と B は存在しますが、A-[:KNOWS]->B という完全なパターンは存在しないので、
+    MERGE は 2 つのノードとリレーションシップをすべて新しく作成し、A と B が 1 つずつ増えてしまいます。
+    正しい書き方：両端のノードを先に MATCH（またはそれぞれ MERGE）してから、リレーションシップを MERGE します。一意制約があれば A はそのままエラーになり、かえって気づきやすくなります。
+
+- id: direction
+  title: 方向を書かない
+  question: |-
+    会員 4242 は 6 人をフォローし、フォロワーは 4 人です（相互フォローはなし）。矢印を書かずに MATCH (:Customer {id: 4242})-[:FOLLOWS]-(x) とすると、何行返りますか？
+  options:
+    - 10：両方向とも数える
+    - 6：既定は外向きの方向
+    - エラー：リレーションシップには必ず方向を書く
+  scripts:
+    - label: A：方向を書かない
+    - label: B：フォローしている人だけを見る
+  explanation: |
+    保存されるリレーションシップには必ず方向がありますが、クエリでは方向を書かなくてもよく、その場合は両方向のリレーションシップが一致します。
+    「フォロー」は方向のある関係なので、方向を書かないと「自分がフォローしている人」と「自分をフォローしている人」が混ざってしまいます。「知り合い」「友達」のような対称な関係でこそ、方向を書かない検索がよく使われます。
+
+- id: null-equals
+  title: = null で誕生日のない会員を探す
+  question: 1,141 人の会員が誕生日を入力していません（birthDate プロパティがない）。WHERE c.birthDate = null では何人見つかりますか？
+  options:
+    - 1,141
+    - 20,000（全員）
+    - '0'
+  scripts:
+    - label: A：= null
+    - label: B：IS NULL
+  explanation: |
+    SQL と同じく、どんな値も null と比較した結果は null（true ではない）なので、= null では決して何も見つかりません。IS NULL / IS NOT NULL を使います。
+    Neo4j では「プロパティが null」は「そのプロパティがない」ことと同じです：SET c.birthDate = null はこのプロパティを削除することになります。
+
+- id: optional-match-where
+  title: OPTIONAL MATCH の WHERE
+  question: 会員 1、2、4242 には 5 万元以上の注文がそれぞれ何件ありますか？（4242 にはなし）A は条件を OPTIONAL MATCH の WHERE に書き、B は MATCH を使います。A は何行返しますか？
+  options:
+    - 3 行：大口注文のない会員も現れ、件数は 0
+    - 3 行より少ない：大口注文のない会員は除外される
+    - エラー：OPTIONAL MATCH には WHERE を書けない
+  scripts:
+    - label: A：OPTIONAL MATCH … WHERE
+    - label: B：MATCH … WHERE
+  explanation: |
+    OPTIONAL MATCH の WHERE は「マッチ条件」の一部です。一致しないときはその変数が null になりますが、会員の行は残ります（count(null) = 0）。
+    SQL の LEFT JOIN … ON o.total >= 50000 と同じです。
+    条件を後ろの WITH … WHERE o.total >= 50000 に書くと、null の行が除外されて、普通の MATCH（INNER JOIN）に戻ってしまいます。
+
+- id: cartesian
+  title: 関係のない 2 つのパターンをカンマでつなぐ
+  question: |-
+    gold 会員は 891 人、販売終了の商品は 83 件です。MATCH (c:Customer {vipLevel: 'gold'}), (p:Product {isActive: false}) RETURN count(*) はいくつですか？
+  options:
+    - 73,953（891 × 83）で、デカルト積の警告が出る
+    - 974（891 + 83）
+    - 0：両者の間にはリレーションシップがない
+  scripts:
+    - label: つながっていない 2 つのパターン
+  explanation: |
+    カンマで区切られ、互いにリレーションシップでつながっていないパターンは、両側のすべての組み合わせ（デカルト積）になります。SQL の CROSS JOIN と同じです。
+    サーバーは「This query builds a cartesian product between disconnected patterns」という通知を返します。
+    クエリを書くときにリレーションシップを書き忘れる（例えば (c), (o) の間の -[:PLACED]-> を忘れる）と起こり、データ量が多いと終わりません。
+
+- id: duplicate-paths
+  title: 友達の友達に DISTINCT は必要か
+  question: 会員 224 の「友達の友達」：count(fof) と count(DISTINCT fof) の結果は同じですか？
+  options:
+    - 同じ：MATCH は重複したノードを返さない
+    - B の方が多い
+    - A の方が多い：同じ人に別々の友達経由でたどり着けるので、パスごとに 1 行になる
+  scripts:
+    - label: A：count(fof)
+    - label: B：count(DISTINCT fof)
+  explanation: |
+    MATCH が返すのは「マッチのしかたすべて」、つまりすべてのパスです。2 人の友達が同じ人をフォローしていれば、その人は 2 回現れます（44 vs 42）。
+    「人数」を数えるなら DISTINCT を付け、「たどり着けるパスが何本あるか」（例えばレコメンドの強さ）を数えるときだけ DISTINCT なしの count を使います。
+
+- id: fof-includes-me
+  title: 友達の友達が自分自身になることは？
+  question: |-
+    会員 6 と会員 10127 は相互フォローしています。(me {id: 6})-[:FOLLOWS]->()-[:FOLLOWS]->(fof) の結果に、6 自身は現れますか？
+  options:
+    - 現れる：6 → 10127 → 6 は 2 本の異なるリレーションシップなので、有効なパス
+    - 現れない：Cypher は出発点に戻らない
+  scripts:
+    - label: A：自分を除外していない
+    - label: B：WHERE fof <> me
+  explanation: |
+    Cypher は 1 つのパターンの中で「同じリレーションシップを 2 回たどらない」（relationship isomorphism）ものの、「同じノード」は何度でも現れ得ます。
+    6 → 10127 と 10127 → 6 は 2 本の異なるリレーションシップなので、6 自身も「友達の友達」になります。
+    レコメンドのクエリを書くときは WHERE fof <> me と、既にフォローしている人の除外を忘れずに。
+
+- id: delete-with-relationships
+  title: まだリレーションシップがあるノードを DELETE する
+  question: |-
+    4242 には注文とフォローのリレーションシップがあります。トランザクション内で MATCH (c:Customer {id: 4242}) DELETE c を実行すると、いつエラーになりますか？
+  options:
+    - DELETE の文ですぐにエラーになる
+    - DELETE は成功したように見え、リレーションシップは残る。commit 時に初めてエラーになる
+    - 決してエラーにならず、始点のないリレーションシップが残る
+  scripts:
+    - label: A：DELETE（トランザクション内）
+    - label: B：DETACH DELETE
+  explanation: |
+    Neo4j は「宙に浮いたリレーションシップ」を許しませんが、このチェックは commit 時にしか行われません：トランザクション内の DELETE c は成功したように見え（nodesDeleted: 1）、
+    注文を指す PLACED リレーションシップもまだ残っています。commit して初めて Neo.ClientError.Schema.ConstraintValidationFailed
+    （Cannot delete node … because it still has relationships）というエラーになり、トランザクション全体が失敗します。ショーケースは常に ROLLBACK するので、ここではそのエラーは見えません。
+    DETACH DELETE はノードのすべてのリレーションシップを先に削除してから、ノードを削除します。反対側のノードは削除しない点に注意：4242 の注文は残り、誰も PLACED していない孤児になります。
+
+- id: match-nothing-create
+  title: MATCH で見つからないと、その後の CREATE は？
+  question: |-
+    会員 999999 は存在しません。MATCH (c:Customer {id: 999999}) CREATE (c)-[:PLACED]->(:Order {id: 900001}) はどうなりますか？
+  options:
+    - エラー：会員が存在しない
+    - 会員のいない注文が 1 件作成される
+    - 何も起こらず、エラーにもならない
+  scripts:
+    - label: MATCH で見つからなかった後の CREATE
+  explanation: |
+    Cypher は 1 行ずつ処理します：MATCH が 0 行なら、後ろの CREATE は 0 回実行されるだけで、エラーも通知もありません。
+    アプリケーションでよくあるバグ：間違った id（例えば文字列 '999'）で「注文の追加」を呼ぶと、何も書き込まれていないのに成功が返ってきます。
+    書き込まれたことを確認するには、返された行や書き込みの統計（nodesCreated）を見るか、MERGE や OPTIONAL MATCH とチェックを組み合わせます。
+
+- id: integer-division
+  title: 整数同士の割り算
+  question: 会員 4242 の 6 件の注文の合計は 58,033 です。sum(o.total) / count(o) は何を返しますか？
+  options:
+    - 9672（整数の割り算で、小数は切り捨て）
+    - '9672.17'
+    - エラー：型が違う
+  scripts:
+    - label: A：sum / count
+    - label: B：avg()
+  explanation: |
+    2 つの整数を割った結果は整数で（Java と同じ）、小数はそのまま切り捨てられます。avg() は常に浮動小数点数を返します。
+    小数が必要なら toFloat(sum(o.total)) / count(o) と書きます。
+
+- id: type-mismatch
+  title: id を文字列で検索する
+  question: |-
+    会員の id は整数で保存されています。MATCH (c:Customer {id: '4242'})（文字列）では何人見つかりますか？
+  options:
+    - 0：文字列と整数は等しくなく、エラーにもならない
+    - 1：Cypher が自動で型変換する
+    - エラー：型が一致しない
+  scripts:
+    - label: A：文字列 '4242'
+    - label: B：整数 4242
+  explanation: |
+    Neo4j にはプロパティの型を強制するスキーマがなく（コミュニティ版には型制約もありません）、比較時に自動で型変換もしません：'4242' と 4242 は等しくないので見つからず、エラーにもなりません。
+    よくある原因：URL パラメータや JSON から受け取った値が文字列のまま、クエリのパラメータに渡されることです。toInteger($id) で変換するか、書き込み時に型を統一しましょう。
+
+- id: same-order-missing
+  title: 1 本の長いパスで同じ注文が漏れる
+  question: 「商品 540 を買った人は 雅漾 保養 C693（アベンヌのスキンケア）も買った」のは何人ですか？A は 1 本の長いパス、B は 2 つの MATCH に分けています。A の数は少なくなりますか？
+  options:
+    - 同じ：2 つの書き方は同じ意味
+    - A の方が少ない：1 本のパスの中の 2 つの PLACED は同じリレーションシップにできないので、同じ注文で一緒に買った人が除外される
+    - A の方が多い：1 本のパスだと重複して数える
+  scripts:
+    - label: A：1 本のパス
+    - label: B：2 つの MATCH
+  explanation: |
+    Cypher は 1 つの MATCH パターンの中で同じリレーションシップを 1 回しか使いません（relationship isomorphism）。これはグラフ上をぐるぐる回って無限のパスが生まれるのを防ぐためです。
+    その副作用：A の 2 つの -[:PLACED]-> は 2 本の異なるリレーションシップ、つまり 2 つの異なる注文でなければなりません。
+    同じ注文で 540 とアベンヌを一緒に買った人（そのような注文が 3 件ある）は A ではマッチしないので、16 人ではなく 14 人になります。
+    2 つの MATCH に分けると、一意性はそれぞれのパターン内でしかチェックされず、両側で同じ PLACED を使えます。

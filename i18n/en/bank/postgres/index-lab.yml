@@ -1,0 +1,150 @@
+- id: seq-scan
+  title: A query without an index
+  question: Only 5 rows come back, so why does it take tens of milliseconds? Look at Seq Scan and Rows Removed by Filter in the plan.
+  goal: |
+    perf.orders_big has 2 million orders and no index other than the primary key.
+    Find "customer 4242's 5 most recent orders" and see how PostgreSQL executes it.
+  takeaway: |
+    Seq Scan = read from the first row to the last. Without an index the database doesn't know where 4242's orders are, so it reads all 2 million rows and filters.
+    Rows Removed by Filter is the number of rows read for nothing. Parallel means PostgreSQL used several workers to scan together, but it's still a full table scan.
+  sqls:
+    - label: Customer 4242's 5 most recent orders
+
+- id: single-index
+  title: Create a single-column index
+  question: What does the scan become? Is there still a Sort in the plan?
+  goal: |
+    Create a B-tree index on customer_id, run the same query again and compare the execution time.
+  takeaway: |
+    It becomes Bitmap Index Scan + Bitmap Heap Scan: first find the matching row locations in the index, then go back to the table to read those rows. Usually hundreds of times faster.
+    But there's still a Sort: the index is ordered only by customer_id, and one customer's orders aren't ordered by order_date inside the index,
+    so all of this customer's orders must be read and sorted before we know which 5 are the most recent.
+    Building an index takes time too; look at the "build time" and the index size.
+  sqls:
+    - label: Customer 4242's 5 most recent orders
+
+- id: composite-index
+  title: A composite index removes the sort too
+  question: Is the Sort node still there?
+  goal: |
+    Create a composite index on (customer_id, order_date) and run it again.
+    You can drop idx_customer first, to see more clearly which index is doing the work.
+  takeaway: |
+    A composite index is ordered by customer_id first, then by order_date when customer_id is equal.
+    Once 4242 is found, the rows are already in time order: read 5 from the end (Index Scan Backward) and stop. No Sort, and no other orders read.
+    ★ When designing an index, put the equality conditions of WHERE first and the ORDER BY columns after them.
+    Note: without LIMIT, and with very few matching rows (this customer has only 6), the optimizer may still pick a Bitmap Scan and sort,
+    because sorting 6 rows costs almost nothing. The more data there is, or with a LIMIT, the clearer the composite index's advantage.
+  sqls:
+    - label: Customer 4242's 5 most recent orders
+
+- id: leftmost-prefix
+  title: Column order matters (leftmost prefix)
+  question: Don't create idx_date yet; just run it. order_date is in the composite index, so why can't it be used?
+  goal: |
+    With only the (customer_id, order_date) index, query one day's orders "by date only".
+  takeaway: |
+    ★ The leftmost prefix rule: a (customer_id, order_date) index is like a phone book sorted "by last name, then first name"; knowing only the first name doesn't help you find anyone.
+    The query has no customer_id condition, so it can't use this index's ordering and has to scan the whole table.
+    After creating idx_date, run it again and it becomes an Index Scan or Bitmap Scan.
+  sqls:
+    - label: Orders for the whole day of 2026-09-01
+
+- id: function-on-column
+  title: Wrap a column in a function and the index stops working
+  question: Both versions query the same day. Are the plans the same?
+  goal: |
+    Make sure idx_date exists (from the previous step). Compare two ways to "query one day".
+  takeaway: |
+    The index stores the original values of order_date. A converts the column before comparing, so the database has to compute it for every row and the index is useless (Seq Scan).
+    B compares the column with a range directly, so it can seek in the index; and since count(*) only needs the number of rows, it doesn't even read the table (Index Only Scan).
+    ★ Rule: put functions and arithmetic on "the constant side", never around the column. Likewise, WHERE amount * 2 > 1000 should be rewritten as amount > 500.
+  sqls:
+    - label: "A: convert the column to a date, then compare"
+    - label: "B: compare with a range"
+
+- id: low-selectivity
+  title: Low selectivity, so the index isn't used
+  question: Both queries have an index available. Did PostgreSQL use it for both?
+  goal: |
+    Create an index on status. status has only 4 values: delivered is 82%, pending only 3%.
+  takeaway: |
+    For delivered, 80% of the rows match; going back to the table row by row through the index would be slower, so the optimizer chooses a full table scan.
+    pending is only 3%, so the index pays off (Bitmap Scan). But 3% is still 60,000 rows, and fetching them from the table takes time, so the speed-up isn't as dramatic as in the earlier steps.
+    ★ "Having an index doesn't mean it will be used." The optimizer estimates cost from statistics and picks what it thinks is fastest. An index on a low-selectivity column alone (gender, status) is usually not very useful.
+  sqls:
+    - label: "A: delivered (82%)"
+    - label: "B: pending (3%)"
+
+- id: index-only-scan
+  title: "Index Only Scan: no need to read the table"
+  question: How do the scans of A and B differ? What is Heap Fetches?
+  goal: |
+    Make sure the (customer_id, order_date) composite index exists. Compare "only columns in the index" with "one extra column".
+  takeaway: |
+    Every column A needs is in the index, so it can be read straight from the index: an Index Only Scan, with no trip to the table.
+    B also wants amount, which isn't in the index, so it has to go back to the table.
+    This is another reason SELECT * is bad: it makes an Index Only Scan nearly impossible.
+    Since PostgreSQL 11, INCLUDE can "carry" columns in the index: CREATE INDEX … (customer_id, order_date) INCLUDE (amount).
+    ★ Finally, look at the sizes in the index list: indexes take space, and every INSERT / UPDATE / DELETE has to update them, so writes get slower. That's why you can't index every column.
+  sqls:
+    - label: "A: only customer_id, order_date"
+    - label: "B: plus amount"
+
+- id: partial-index
+  title: "Partial index: index only the rows you need"
+  question: Run it once without an index, then create each of the two indexes. Which is faster? How different are the two index sizes?
+  goal: |
+    Customer support often looks up "the newest pending orders". pending is only 3%; the other 97% of orders are never queried with this condition.
+    Compare two indexes: a regular index on status, and a partial index that "contains only pending orders".
+  takeaway: |
+    A partial index contains only the rows matching its WHERE condition. idx_pending has only 60,000 rows, about a tenth of the size of the full index.
+    It's ordered by order_date, so "the newest 20" is just 20 rows read from the end (Index Scan Backward), with no sort.
+    ★ The query's WHERE must "imply" the index condition (here status = 'pending') for the optimizer to use it.
+    Typical uses: index only non-deleted rows (WHERE deleted_at IS NULL), or only unfinished jobs (WHERE done = false).
+  sqls:
+    - label: The newest 20 pending orders
+
+- id: expression-index
+  title: "Expression index: index the result of an expression"
+  question: How does the plan differ before and after creating the expression index?
+  goal: |
+    Step 5 said "wrap a column in a function and the index stops working". But if the query can't be rewritten (say, the application always queries this way), there's another trick:
+    index "the result of the function" directly.
+  takeaway: |
+    An expression index stores the computed value; a query uses it as long as it writes "exactly the same" expression.
+    The classic example is case-insensitive email lookup: CREATE INDEX ON users (lower(email)), with WHERE lower(email) = lower(?).
+    ★ Only IMMUTABLE functions (same input, always the same output) may be used in the expression. now(), or conversions that depend on the time zone setting, are not allowed,
+    which is why AT TIME ZONE 'Asia/Taipei' has to be spelled out here.
+  sqls:
+    - label: Query one day by "Taiwan date"
+
+- id: brin-index
+  title: "BRIN: a tiny index, with a precondition"
+  question: Both tables have a BRIN index. Do A and B both use it? Then create a B-tree and compare the sizes.
+  goal: |
+    perf.order_events is an event log written in time order (like a log file), so its order on disk matches event_time.
+    perf.orders_big's order_date was written in random order. Create a BRIN index on each table and compare.
+  takeaway: |
+    BRIN (Block Range Index) doesn't record every row, only "the min and max of each range of disk blocks", so it's astonishingly small (tens of KB versus tens of MB for a B-tree).
+    order_events is written in time order, so each block range covers a narrow time span, and querying one day reads only a few ranges (see the Heap Blocks: lossy line).
+    orders_big is in random order, so every block range spans several years; BRIN can't skip any block, and the optimizer simply ignores it and scans the whole table.
+    ★ BRIN suits large tables that are "append-only and correlated with time": logs, IoT sensor data, transaction records. TimescaleDB relies heavily on this property too.
+  sqls:
+    - label: "A: one day of order_events"
+    - label: "B: one day of orders_big"
+
+- id: gin-jsonb
+  title: "GIN: indexing JSONB"
+  question: After creating the GIN index, did both A and B get faster?
+  goal: |
+    order_events.meta is JSONB, e.g. {"channel": "app", "device": "ios", "coupon": "VIP2026"}.
+    Only about one event in a thousand used the VIP2026 coupon. Compare the two ways of writing the query before and after creating a GIN index.
+  takeaway: |
+    GIN (Generalized Inverted Index) is an "inverted index": it splits every key/value in the JSON and every element of an array, and records which rows they appear in.
+    It supports the @>, ?, ?| and ?& operators, so A becomes a Bitmap Index Scan; B's ->> with = isn't supported, so it's still a full table scan.
+    ★ To use GIN, write @>. If one key is queried very often, you can also give it a B-tree expression index: CREATE INDEX ON … ((meta->>'coupon')).
+    @> and && on text[] arrays use GIN as well. Full-text search and pg_trgm fuzzy search are GIN applications too (an inverted index is also the core of Elasticsearch).
+  sqls:
+    - label: "A: containment with @>"
+    - label: "B: extract with ->> and compare"

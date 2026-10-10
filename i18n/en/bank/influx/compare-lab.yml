@@ -1,0 +1,52 @@
+- id: raw
+  title: Reading raw data
+  question: Do the two results look the same?
+  goal: db-01's usage_user from 14:00 to 14:05 on 9/18.
+  takeaway: |
+    InfluxQL returns a table of "one series, several columns" (time, usage_user), much like SQL.
+    Every row Flux returns carries the full information: _start, _stop (the query range), _time, _value, _field, _measurement and every tag.
+    Flux's data model is "one value per row": to see two fields side by side you have to pivot (see step 4).
+
+- id: group
+  title: The average per host
+  question: Flux has no GROUP BY host, so why is there still one average per host?
+  goal: Each host's average usage_user on 9/18.
+  takeaway: |
+    InfluxQL computes over the whole measurement by default and needs GROUP BY tag to split it.
+    Flux is the opposite: from produces one table per series (measurement + tags + field), and mean() computes once per table, so the default is "one value per series";
+    to compute over everything together, group() first; to group by a tag, use group(columns: ["role"]).
+
+- id: timezone
+  title: Days in Taiwan time
+  question: Are the time columns the same on both sides?
+  goal: db-01's daily maximum on 9/18 and 9/19.
+  takeaway: |
+    The values are the same but the times differ: InfluxQL's time is the start of the interval (9/18 00:00), while Flux's aggregateWindow labels the end by default (9/19 00:00).
+    Time zones: InfluxQL uses tz() and Flux uses option location; both must be specified explicitly, or the cut is in UTC.
+
+- id: arithmetic
+  title: Adding two fields
+  question: Why does Flux need an extra pivot?
+  goal: db-01's usage_user + usage_system from 14:00 to 14:05 on 9/18.
+  takeaway: |
+    An InfluxQL row has several fields, so they can be added directly. In Flux the two fields are in different tables and rows, so you pivot them into one row first (the _field values become column names), then compute with map.
+    map can produce any new column and is more powerful than InfluxQL's arithmetic (string handling, conditionals, joins across measurements).
+
+- id: ranking
+  title: Ranking across series
+  question: How do the two approaches differ?
+  goal: The 3 hosts with the highest average usage_user over all of September.
+  takeaway: |
+    InfluxQL can't ORDER BY a value; it can only use top(field, tag, N), "the maximum per tag group, then the top N groups", and needs a subquery to rank across series.
+    Flux merges into one table with group(), then sorts and limits, the same way you'd think in SQL.
+    db-01 ranks first (the database is usually busier, plus the 9/18 incident).
+
+- id: join
+  title: "Across measurements: CPU and memory"
+  question: Can InfluxQL put two measurements in the same row?
+  goal: Each host's average CPU and average memory usage on 9/30, in the same row.
+  takeaway: |
+    InfluxQL has no JOIN: you can only run two queries and merge them in the application.
+    Flux can join different measurements, different buckets, and even (with the sql package) relational database data; that's one of the main reasons Flux was designed.
+    web-03 went offline on 9/20 and has no data on 9/30, so the result has only 4 hosts.
+    (InfluxDB 3 went back to SQL: JOINs, subqueries and window functions are all written in standard SQL.)

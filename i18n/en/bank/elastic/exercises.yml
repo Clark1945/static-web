@@ -1,0 +1,314 @@
+- id: get-doc
+  chapter: Query basics
+  title: Get a document by _id
+  prompt: |
+    Get the product with _id 806 from the products index.
+  hints:
+    - GET /index/_doc/_id
+  explanation: |
+    Getting a document by _id is "real-time" (realtime GET): even if it was just written and not yet refreshed, you get it (not necessarily so with _search; see the lab).
+    _version, _seq_no and _primary_term in the response are used for optimistic locking (if_seq_no / if_primary_term).
+
+- id: match-basic
+  chapter: Query basics
+  title: "Full-text search: match"
+  prompt: |
+    Products whose description (description) mentions 「降噪」 (noise cancelling), sorted by relevance, top 5.
+  hints:
+    - 'GET /products/_search with the body { "size": 5, "query": { "match": { field: text } } }'
+  explanation: |
+    match first runs the text through the field's analyzer (description uses cjk) to turn 「降噪」 into terms, looks up documents containing those terms in the inverted index, and scores relevance (_score) with BM25.
+    Documents with the same score are ordered by their position in the index. hits.total in the response is the number of matches (above 10,000 it reports only "≥ 10000" by default).
+
+- id: term-keyword
+  chapter: Query basics
+  title: "Exact match: term"
+  prompt: |
+    How many products have the brand (brand) Sony? Return the count with _count.
+  hints:
+    - "brand is a keyword field: the whole value is stored unchanged as one term, matched exactly with term."
+    - 'GET /products/_count { "query": { "term": { … } } }'
+  explanation: |
+    term doesn't analyze the query text; it looks up "Sony" in the inverted index as-is. The keyword field also stores the original "Sony", so they match.
+    ★ term on a text field often finds nothing: text fields store analyzed terms (lowercased, split), e.g. name stores "sony" (shown in the traps).
+
+- id: bool-filter
+  chapter: Query basics
+  title: "bool + filter: several conditions"
+  prompt: |
+    List every product whose category (category) is 「無線耳機」 (wireless headphones), with a price of 3000–6000 (inclusive) and the tag (tags) 「熱銷」 (best seller), sorted by price, lowest first.
+  hints:
+    - "bool's filter holds yes/no conditions: no scoring, and cacheable."
+    - 'Use range for price: { "range": { "price": { "gte": 3000, "lte": 6000 } } }'
+    - 'Sort: "sort": [{ "price": "asc" }]'
+  explanation: |
+    bool has four clauses: must (must match, scored), filter (must match, not scored), should (adds score; with no must / filter at least one must match), must_not (must not match, not scored).
+    ★ Conditions that don't need relevance (category, price, status, time) always go in filter: no scoring, and results are cached so repeated queries are faster.
+    tags is a keyword array; term matches if any value in the array matches.
+
+- id: time-range
+  chapter: Query basics
+  title: A time range + a numeric range
+  prompt: |
+    In logs, how many records between 14:00 and 14:40 on 2026-09-18 (Taiwan time, excluding 14:40) have a status of 500 or above?
+  hints:
+    - 'Times can be written directly as ISO 8601 with a time zone: "2026-09-18T14:00:00+08:00"'
+    - Put both ranges in bool's filter.
+  explanation: |
+    Date fields are stored in Elasticsearch as UTC milliseconds; write the time zone (+08:00) in queries, or use range's "time_zone" parameter.
+    These 40 minutes are the payment incident: payment timeouts (504) and failed orders (500).
+
+- id: sort-source
+  chapter: Query basics
+  title: Sorting and returning only some fields
+  prompt: |
+    The 5 products with the highest rating (rating); on equal ratings, more reviews (review_count) first; on equal review counts, lower price first.
+    Return only the three fields name, rating and review_count.
+  hints:
+    - '"sort": [{ "rating": "desc" }, { "review_count": "desc" }, …]'
+    - '"_source": ["name", "rating", "review_count"] returns only these fields.'
+  explanation: |
+    With sort, no relevance score is computed (_score is null); documents are sorted by field values (using doc values, a columnar store).
+    ★ A product rated 5.0 may have only 1 review. Real "popularity" sorting also takes the number of reviews into account (e.g. a Bayesian average), or adjusts scores with function_score.
+
+- id: analyze-cjk
+  chapter: Full-text search and analyzers
+  title: See which terms an analyzer produces
+  prompt: |
+    Analyze 「主動降噪耳機」 (active noise-cancelling headphones) with the cjk analyzer and see which terms it produces.
+  hints:
+    - 'POST /_analyze { "analyzer": "cjk", "text": "…" }'
+  explanation: |
+    The cjk analyzer pairs CJK characters two at a time (bigrams): 主動, 動降, 降噪, 噪耳, 耳機.
+    The standard analyzer makes each character a term (主, 動, 降, 噪, 耳, 機), so 「降噪」 is split apart and searches easily match a pile of unrelated documents.
+    Neither does real "word segmentation": Chinese segmentation needs a plugin (IK, smartcn, jieba) to produce 主動 / 降噪 / 耳機.
+    You can also name an index field: POST /products/_analyze { "field": "name", "text": "…" } uses that field's analyzer.
+
+- id: match-and
+  chapter: Full-text search and analyzers
+  title: "Every term must appear: operator and"
+  prompt: |
+    How many reviews mention both 「音質」 (sound quality) and 「降噪」 (noise cancelling) in their content (content)?
+  hints:
+    - "match is OR by default: any matching term counts."
+    - '{ "match": { "content": { "query": "音質 降噪", "operator": "and" } } }'
+  explanation: |
+    match's default operator is or: 「音質 降噪」 matches anything with either 「音質」 or 「降噪」, giving far more results.
+    operator and requires every term; for the middle ground use minimum_should_match (e.g. "75%", "2").
+
+- id: match-phrase
+  chapter: Full-text search and analyzers
+  title: "Phrases: match_phrase"
+  prompt: |
+    How many reviews contain the exact phrase 「通勤戴很舒服」 ("very comfortable to wear while commuting")?
+  hints:
+    - "match_phrase: every term must appear, in order and adjacent."
+  explanation: |
+    match matches if any term (通勤, 勤戴, 戴很, 很舒, 舒服) appears, finding over two thousand; match_phrase requires those terms in order and adjacent, so only reviews that really contain the sentence match.
+    Besides "which documents have this term", the inverted index also records each term's position in the document, which match_phrase uses.
+    The slop parameter allows a few terms in between.
+
+- id: multi-match
+  chapter: Full-text search and analyzers
+  title: Several fields + boosts
+  prompt: |
+    Search for 「Sony 耳機」 ("Sony headphones"): search both name and description, with name weighted 3 times description; top 5.
+  hints:
+    - multi_match's fields can be written as "name^3" to multiply by 3.
+  explanation: |
+    multi_match defaults to best_fields: each field is scored separately and the highest is taken (plus tie_breaker times the other fields).
+    Other types: most_fields (field scores added), cross_fields (several fields treated as one big field, good for first and last names stored separately), phrase.
+    Boosting is the most common tool for tuning relevance: titles and names usually matter more than body text.
+
+- id: fuzzy
+  chapter: Full-text search and analyzers
+  title: "Find it despite typos: fuzziness"
+  prompt: |
+    A user typed Samsung as "Samsng". How many products does a match with fuzziness ("AUTO") on the name field find?
+  hints:
+    - '{ "match": { "name": { "query": "Samsng", "fuzziness": "AUTO" } } }'
+  explanation: |
+    fuzziness finds similar terms by edit distance (Levenshtein): samsng → samsung is one inserted letter (distance 1).
+    AUTO: no errors for 1–2 characters, 1 for 3–5 characters, 2 for longer.
+    ★ It doesn't help much with Chinese bigrams (one wrong character in a two-character term makes a different term); Chinese typos and homophones are usually handled with synonym lists or pinyin plugins.
+
+- id: should-minimum
+  chapter: Full-text search and analyzers
+  title: "Match at least some of them: minimum_should_match"
+  prompt: |
+    How many reviews mention "at least two" of the three terms 「音質」 (sound quality), 「續航」 (battery life) and 「降噪」 (noise cancelling)?
+  hints:
+    - 'Put three match_phrase clauses in bool''s should, then add "minimum_should_match": 2'
+  explanation: |
+    should is "extra score" by default: the more it matches, the higher the score. With no must / filter at least one must match; adding minimum_should_match makes it "match at least N".
+    match works too: 「音質」, 「續航」 and 「降噪」 are each two characters, so cjk analyzes each into exactly one term.
+
+- id: terms-agg
+  chapter: Aggregations
+  title: "Group and count: terms"
+  prompt: |
+    The 5 brands (brand) with the most products, and each one's product count. Only the aggregation result is needed, no documents (size: 0).
+  hints:
+    - '"aggs": { "by_brand": { "terms": { "field": "brand", "size": 5 } } }'
+  explanation: |
+    A terms aggregation ≈ SQL's GROUP BY … ORDER BY count(*) DESC LIMIT 5. By default it sorts by doc_count descending, ties by key.
+    ★ With many shards terms counts are approximate: each shard takes its own top shard_size first and then they're merged, which can undercount (doc_count_error_upper_bound is the possible error).
+    terms works only on fields with doc values like keyword and numbers; not on text fields (use their .keyword subfield).
+
+- id: avg-by-category
+  chapter: Aggregations
+  title: Group averages + sorting by a sub-aggregation
+  prompt: |
+    The average price of each category (category), sorted by average price, highest first (all 19 categories).
+  hints:
+    - Put an avg sub-aggregation inside terms.
+    - 'terms'' "order": { "sub-aggregation name": "desc" } sorts by the sub-aggregation''s value.'
+  explanation: |
+    Aggregations nest level by level: outer grouping (bucket aggregations: terms, date_histogram, range…), inner computation (metric aggregations: avg, sum, max, percentiles, cardinality…).
+    Sorting by a sub-aggregation has larger errors with many shards (each shard's top few aren't necessarily the overall top few).
+
+- id: orders-per-day
+  chapter: Aggregations
+  title: "Grouping by time: date_histogram"
+  prompt: |
+    The number of orders per day from September 1 to September 7, 2026 (Taiwan time, 7 days).
+  hints:
+    - "First filter these 7 days with range, then use date_histogram's calendar_interval: day."
+    - 'Add "time_zone": "+08:00" to date_histogram so days start at midnight Taiwan time.'
+  explanation: |
+    date_histogram ≈ TimescaleDB's time_bucket: calendar_interval (day, week, month, by calendar) or fixed_interval (1h, 10m, fixed length).
+    ★ Without time_zone it cuts in UTC, a Taiwan day starts at 8 a.m., and every day's number is wrong (the same trap as time_bucket).
+    Kibana's bar and line charts are date_histogram underneath.
+
+- id: p95-latency
+  chapter: Aggregations
+  title: P95 latency per service
+  prompt: |
+    For each service (service) in logs, the number of requests and the 95th percentile (P95) of latency_ms. Services sorted by request count, highest first, all listed (7).
+  hints:
+    - 'Put percentiles as a terms sub-aggregation: { "percentiles": { "field": "latency_ms", "percents": [95] } }'
+  explanation: |
+    Monitoring looks at P95 and P99, not the average: the average is dragged down by huge numbers of fast requests and hides "a few users waiting a long time".
+    payment's P95 is nearly 30 seconds, caused by the timeouts in the 9/18 incident.
+    percentiles are approximate (the TDigest algorithm), computing very accurate percentiles with very little memory.
+
+- id: incident-hours
+  chapter: Aggregations
+  title: "Find incidents: 5xx per hour"
+  prompt: |
+    Records in September with status ≥ 500, grouped by hour (Taiwan time), listing only hours with more than 20 (min_doc_count: 21).
+  hints:
+    - "Filter status with range in query, and aggregate with date_histogram (fixed_interval: 1h, time_zone: +08:00, min_doc_count: 21)."
+  explanation: |
+    Both incidents stand out at a glance: 2 p.m. on 9/18 (payment timeouts) and 3 a.m. on 9/25 (the cart couldn't reach Redis).
+    min_doc_count defaults to 0 (empty intervals are listed too, so charts don't break); raise it when hunting anomalies to see only "high-volume" intervals.
+
+- id: top-404-ip
+  chapter: Aggregations
+  title: Who is scanning the site
+  prompt: |
+    Among records with status 404, the 3 IPs with the most hits and their counts.
+  hints:
+    - The ip field has the ip type, and can be aggregated with terms too.
+  explanation: |
+    198.51.100.66 alone has over 1,500 404s (in the early hours of 9/12, probing URLs like /.env and /wp-login.php), while normal users have single digits.
+    This is what SIEM (security information and event management) commonly does: use aggregations to find anomalous sources.
+
+- id: unique-users
+  chapter: Aggregations
+  title: "How many distinct users: cardinality"
+  prompt: |
+    How many distinct user_id values are in logs?
+  hints:
+    - '{ "cardinality": { "field": "user_id" } }'
+  explanation: |
+    cardinality ≈ count(DISTINCT …), but approximate (HyperLogLog++): memory use is fixed no matter how many millions of distinct values there are.
+    Below precision_threshold (default 3000) it's nearly exact; above it the error is about 1–2%. For an exact number, page through every value with a composite aggregation.
+
+- id: nested-query
+  chapter: Nested documents
+  title: "One item meeting both conditions: nested"
+  prompt: |
+    orders.items has the nested type. How many orders contain a single item whose category is 「手機」 (phones) and whose quantity is ≥ 2?
+  hints:
+    - '{ "nested": { "path": "items", "query": { "bool": { "filter": [ … ] } } } }'
+    - "Fields inside nested use the full path: items.category, items.quantity"
+  explanation: |
+    With the nested type each item is a separate hidden document, and a nested query matches both conditions within "the same item".
+    ★ If items were a plain object (orders_object), items would be flattened into items.category = [手機, 男裝], items.quantity = [1, 3],
+    so 「手機」 and "quantity 3" from different items would also match (shown in the traps).
+    The cost: each item is a Lucene document (_cat/indices docs.count is 280,000, not 80,000), and updating an order rewrites the whole thing.
+
+- id: nested-agg
+  chapter: Nested documents
+  title: "Aggregating items: nested aggregation"
+  prompt: |
+    Group all order items by category (items.category), compute the total quantity sold per category (sum of items.quantity), and take the top 5 categories by quantity.
+  hints:
+    - 'Use a { "nested": { "path": "items" } } aggregation on the outside; only inside it can you group by items.* fields.'
+    - 'Sort terms by the sub-aggregation: "order": { "qty": "desc" }'
+  explanation: |
+    To aggregate nested fields, you must first "enter" the items with a nested aggregation; a terms aggregation directly on items.category gives an empty result.
+    To go back from items to the order level (e.g. how many "orders" per category), use reverse_nested.
+
+- id: index-doc
+  chapter: Writes
+  title: Add a document
+  prompt: |
+    Add a review to scratch_reviews with _id review-1:
+    product_id 806, rating 5, title 「很滿意」 ("very satisfied"), content 「降噪效果很棒，通勤戴很舒服」 ("great noise cancelling, very comfortable while commuting"), verified true.
+  hints:
+    - PUT /scratch_reviews/_doc/review-1 with the JSON document (PUT when you choose the _id; POST /index/_doc to let Elasticsearch generate one).
+  explanation: |
+    PUT with an _id: if it already exists the whole document is overwritten (_version + 1); for "insert only if absent" use PUT /index/_create/review-1.
+    After writing, it's searchable only after a refresh (1 second by default); getting it by _id is real-time. Use _bulk for bulk writes.
+
+- id: partial-update
+  chapter: Writes
+  title: "Partial update: _update"
+  prompt: |
+    In scratch_products, change product 806's price to 2990 and its stock to 0, leaving the other fields unchanged.
+  hints:
+    - 'POST /scratch_products/_update/806 { "doc": { … } }'
+  explanation: |
+    Elasticsearch documents can't be modified: _update is really "read the whole document → merge → rewrite it whole and mark the old one deleted", costing about as much as a full PUT overwrite, just with less data sent.
+    Old versions are only purged when segments merge, so workloads that frequently update the same document (e.g. counters) don't suit Elasticsearch.
+
+- id: update-by-query
+  chapter: Writes
+  title: "Bulk update: _update_by_query"
+  prompt: |
+    In scratch_products, add 「週年慶」 (anniversary sale) to the tags of every product in the 「無線耳機」 (wireless headphones) category.
+  hints:
+    - POST /scratch_products/_update_by_query, with query and script in the body.
+    - '"script": { "source": "ctx._source.tags.add(params.tag)", "params": { "tag": "週年慶" } }'
+  explanation: |
+    _update_by_query runs a painless script on every matching document (ctx._source is the document's content); updated in the response is how many were updated.
+    ★ Pass values through params; don't concatenate them into the script string: scripts are compiled and cached, and constantly changing content recompiles every time (and may hit the compilation rate limit).
+    By default it aborts on version conflicts (someone else editing at the same time); conflicts=proceed skips conflicting documents and continues.
+
+- id: bulk
+  chapter: Writes
+  title: "Write several at once: _bulk"
+  prompt: |
+    Use "one" _bulk request on scratch_reviews to do three things:
+    add a review with _id b1 (rating 5), add a review with _id b2 (rating 1), then update b1's helpful to 10.
+    Write any content you like; use product_id 806.
+  hints:
+    - "_bulk is NDJSON: one line of action (index / create / update / delete), and the next line is the content (delete has none)."
+    - '{"index": {"_id": "b1"}} followed by the document; {"update": {"_id": "b1"}} followed by {"doc": {…}}'
+  explanation: |
+    _bulk puts many write actions in one request, saving a network round trip for each; it's the standard way to write in bulk (about 5–15 MB per batch).
+    ★ _bulk isn't a transaction: each action succeeds or fails on its own; when errors in the response is true, check items one by one to find the failures.
+    This exercise's check looks only at b1's rating and helpful and b2's rating, so the content can be anything.
+
+- id: delete-by-query
+  chapter: Writes
+  title: "Delete by condition: _delete_by_query"
+  prompt: |
+    Delete every review in scratch_reviews that has 1 star (rating 1) and isn't verified (verified is false).
+  hints:
+    - 'POST /scratch_reviews/_delete_by_query { "query": { "bool": { "filter": [ … ] } } }'
+  explanation: |
+    _delete_by_query searches first and then deletes in batches (the documents matching at the snapshot). Deletion only marks documents; space is reclaimed when segments merge.
+    ★ To delete "a whole period of old data" (e.g. logs older than 30 days), don't use delete_by_query: split indices by time (logs-2026.09, or a data stream) and delete whole indices, which is fast and leaves no garbage.

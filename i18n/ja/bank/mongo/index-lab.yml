@@ -1,0 +1,78 @@
+- id: collscan
+  title: インデックスなし：COLLSCAN
+  question: 返されたドキュメントは何件ですか？それを見つけるために MongoDB は何件のドキュメントを見ましたか（docsExamined）？
+  goal: |
+    orders には _id のインデックスしかありません。会員 4242 の注文を、注文日時の新しい順に検索します。
+  takeaway: |
+    COLLSCAN = コレクション全体を先頭から末尾までスキャンすること。PostgreSQL の Seq Scan に相当します。
+    explain で最も重要な 3 つの数値：nReturned（返した件数）、totalKeysExamined（見たインデックス項目の数）、totalDocsExamined（読んだドキュメントの数）。
+    理想は 3 つの数値がほぼ同じであること。docsExamined が nReturned よりはるかに大きいなら、インデックスが足りません。
+    さらに実行計画には SORT もあります：順序を提供するインデックスがないので、メモリ上で並べ替えるしかありません（ディスクの使用を許可しない限り、100 MB を超えると失敗します）。
+  queries:
+    - label: 会員 4242 の注文
+
+- id: single-field
+  title: 単一フィールドインデックス：IXSCAN、ただし並べ替えは残る
+  question: 実行計画は何に変わりましたか？docsExamined はいくつになりましたか？SORT はまだありますか？
+  goal: |
+    customerId にインデックスを作成し、同じクエリをもう一度実行します。
+  takeaway: |
+    IXSCAN → FETCH になります：まずインデックスで該当する位置を見つけ、それからドキュメントを読みます。docsExamined は 8 万から nReturned と同じ数になります。
+    しかしまだ SORT があります：このインデックスは customerId でしか並んでおらず、同じ会員の注文は時刻順になっていません。
+  queries:
+    - label: 会員 4242 の注文
+
+- id: compound
+  title: 複合インデックスで並べ替えも不要に
+  question: SORT はまだありますか？
+  goal: |
+    { customerId: 1, orderDate: -1 } の複合インデックスを作成します（前のステップの customerId_1 を先に削除すると分かりやすくなります）。
+  takeaway: |
+    複合インデックスは customerId、次に orderDate の順で並んでいるので、4242 を見つけた時点でデータはすでに時刻順になっており、SORT が消えます。
+    並び順の向き：単一フィールドインデックスは正順・逆順どちらでも使えます。複合インデックスは「すべて同じ向き」か「すべて逆向き」のときだけ使えます。{ customerId: 1, orderDate: -1 } は
+    sort({ customerId: 1, orderDate: -1 }) と sort({ customerId: -1, orderDate: 1 }) には使えますが、sort({ customerId: 1, orderDate: 1 }) には使えません。
+  queries:
+    - label: 会員 4242 の注文
+
+- id: esr
+  title: ★ ESR ルール：等値、ソート、範囲
+  question: A と B のどちらに SORT がありますか？それぞれ何個のインデックス項目を見ましたか（keysExamined）？オプティマイザはどちらを選びましたか？
+  goal: |
+    配送済みで金額 5 万以上の注文を、時刻の新しい順に最新 10 件取得します（典型的なページングクエリ）。このクエリには 3 種類の条件があります：
+    等値（Equality）の status、範囲（Range）の total、ソート（Sort）の orderDate。
+    フィールドの順序が異なる 2 つのインデックスを作り、hint でインデックスを指定して両者を比較します。
+  takeaway: |
+    ★ ESR ルール（MongoDB 公式が推奨する複合インデックスのフィールド順）：Equality → Sort → Range。
+    A（E-R-S）：範囲の後の orderDate にはもう順序がないので、範囲に合う「すべて」（約 5 千件）を見つけてから並べ替えないと、最新 10 件がどれか分かりません。
+    B（E-S-R）：等値の後のデータはすでに時刻順に並んでいるので、最新のものから順に見ながら total で絞り込み、10 件そろった時点で止まります。見たインデックス項目は百数十個だけで、SORT もありません。
+    範囲条件が緩いほど差は大きくなります（50000 を 1000 に変えてみましょう）。
+    ただし limit がなく、範囲条件が非常に厳しい場合は、A の方が速いこともあります。範囲に直接ジャンプでき、見る項目が最も少ないからです。
+    つまり ESR は「既定の良い選択」で、特にページングやソートのクエリに向いています。迷ったら explain で比較しましょう。PostgreSQL の複合インデックスも同じ理屈です。
+  queries:
+    - label: A：インデックスの順序 E-R-S
+    - label: B：インデックスの順序 E-S-R
+    - label: C：インデックスを指定せず、オプティマイザに選ばせる
+
+- id: multikey
+  title: 配列フィールドのインデックス：マルチキーインデックス
+  question: インデックス作成前後で docsExamined はどれだけ違いますか？explain の isMultiKey は何ですか？
+  goal: |
+    商品 540 を買った注文を検索します。items は配列なので、items.productId にインデックスを作成します。
+  takeaway: |
+    配列フィールドに作るインデックスはマルチキーインデックス（multikey index）と呼ばれます：配列の要素ごとにインデックス項目が 1 つでき、明細が 4 件ある注文なら 4 項目になります。
+    制限：1 つの複合インデックスに含められる配列フィールドは 1 つまで。配列が大きいとインデックスも大きくなります。
+  queries:
+    - label: 商品 540 を買った注文
+
+- id: covered
+  title: カバードクエリ：ドキュメントを読む必要すらない
+  question: A の docsExamined はいくつですか？実行計画に FETCH はありますか？
+  goal: |
+    { customerId: 1, orderDate: -1 } のインデックス（ステップ 3）があることを確認してください。「インデックスにあるフィールドだけ」と「もう 1 つ多いフィールド」を比較します。
+  takeaway: |
+    A が必要とするフィールドはすべてインデックスにあるので、インデックスから直接返せます。これをカバードクエリ（covered query）と呼び、docsExamined = 0 で FETCH もありません。
+    ★ 必ず _id: 0 と書きましょう。_id はこのインデックスにないのに、既定で返されるからです。
+    B は total も必要なので、ドキュメントを読みに戻るしかありません。PostgreSQL の Index Only Scan と比べてみましょう。
+  queries:
+    - label: A：customerId、orderDate だけ（_id を除外）
+    - label: B：total も取得
