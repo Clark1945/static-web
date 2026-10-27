@@ -1,8 +1,9 @@
-# Render 靜態網站設定：直接發佈 docs/ 資料夾（不需要建置）
+# Render 靜態網站設定：直接發佈 db-lab/docs/ 資料夾（不需要建置）
+# 這個檔案必須留在 repo 根目錄，Render 才讀得到
 # 在 Render 選 New → Blueprint，連結這個 repo 就會自動套用
 services:
   - type: web
     name: pg-lab-docs
     runtime: static
-    buildCommand: echo "docs/ 已經是產生好的靜態檔，不需要建置"
-    staticPublishPath: ./docs
+    buildCommand: echo "db-lab/docs/ 已經是產生好的靜態檔，不需要建置"
+    staticPublishPath: ./db-lab/docs
