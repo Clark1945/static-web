@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>全球歷史資料庫</title>
+  <meta name="description" content="用時間軸瀏覽各國歷史大事。目前收錄台灣 1603 年至今的關鍵事件，並附維基百科延伸閱讀。">
+  <meta name="theme-color" content="#f6f9f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14232d" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314232e'/%3E%3Cpath d='M9 6v20M9 10h6M9 16h9M9 22h6' stroke='%23e0b25a' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar" id="topbar">
+    <div class="topbar-row">
+      <div class="brand">
+        <h1>全球歷史資料庫</h1>
+        <span class="tagline">橫軸是國家，縱軸是年份，往下捲就是時間往前走</span>
+      </div>
+      <p class="stats" id="stats" aria-live="polite"></p>
+    </div>
+    <div class="topbar-row controls">
+      <label class="search">
+        <span class="sr-only">搜尋事件</span>
+        <input id="search" type="search" placeholder="搜尋事件，例如：條約、起義、選舉" autocomplete="off">
+      </label>
+      <button type="button" class="pill" id="majorBtn" aria-pressed="false">只看重大事件</button>
+      <div class="chips" id="countryChips" role="group" aria-label="選擇國家"></div>
+    </div>
+    <nav class="bucket-nav" id="bucketNav" aria-label="跳到年代"></nav>
+  </header>
+
+  <main class="scroller" id="scroller" tabindex="0" aria-label="歷史時間軸">
+    <div class="grid" id="grid"></div>
+    <p class="note">
+      這裡只用一兩句話交代每件事的大概，方便快速掌握脈絡。想看細節，請點事件下方的「維基百科」連結自行延伸閱讀。
+      部分年代與事件的定義，史料與學界說法不一，以學術文獻為準。
+    </p>
+  </main>
+
+  <noscript><p class="noscript">這個網站需要啟用 JavaScript 才能顯示時間軸。</p></noscript>
+
+  <!-- 載入順序不能變：registry → 各國資料 → app -->
+  <script defer src="js/registry.js"></script>
+  <script defer src="data/taiwan.js"></script>
+  <!-- 新增國家：複製上一行，改成 data/xxx.js 即可 -->
+  <script defer src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,2074 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HTML / CSS / JavaScript 入門講義</title>
+<meta name="description" content="給後端工程師的前端入門講義：HTML、CSS、JavaScript，附可直接修改的範例、小測驗與練習題。">
+<script>
+(function(){var l;try{l=localStorage.getItem("html-css-js-handout:lang");}catch(e){}
+var h=location.hash;if(/^#en-/.test(h))l="en";else if(/^#ch\d/.test(h))l="zh";
+if(l!=="en"&&l!=="zh")l=/^zh/i.test(navigator.language||"")?"zh":"en";
+var r=document.documentElement;r.dataset.lang=l;r.lang=l==="en"?"en":"zh-Hant";})();
+</script>
+<style>
+:root {
+  --desk: #e4e9f0;
+  --sheet: #ffffff;
+  --ink: #1b2a41;
+  --muted: #566780;
+  --rule: #d3dbe6;
+  --red: #d62839;
+  --hl: #fff1a6;
+  --code-bg: #f0f4f9;
+  --link: #1f5fbf;
+  --ok: #1d7a46;
+  --bad: #c0252f;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono CJK TC", monospace;
+  --sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", system-ui, sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --desk: #0d1218; --sheet: #161d27; --ink: #e5ecf4; --muted: #93a3b8; --rule: #2b3646;
+    --red: #ff6b78; --hl: #6b5a10; --code-bg: #0f151d; --link: #7db2ff; --ok: #5fd18d; --bad: #ff7b84;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--desk); color: var(--ink); font-family: var(--sans); font-size: 16.5px; line-height: 1.85; }
+a { color: var(--link); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+
+.page { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; max-width: 1320px; margin: 0 auto; padding: 24px; }
+
+/* 目錄 */
+.toc { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow: auto; font-size: 14.5px; line-height: 1.5; }
+.toc h2 { margin: 0 0 8px; font-size: 15px; }
+.progress { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .3s; }
+.progress-text { margin: 4px 0 12px; font-size: 12.5px; color: var(--muted); }
+.toc ol { margin: 0; padding: 0; list-style: none; }
+.toc a { display: block; padding: 6px 10px; border-left: 3px solid transparent; color: var(--ink); text-decoration: none; }
+.toc a:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.toc a[aria-current] { border-left-color: var(--red); font-weight: 700; background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.toc li.done a::after { content: " ✓"; color: var(--ok); }
+
+/* 紙張 */
+.sheet { position: relative; background: var(--sheet); border-radius: 6px; box-shadow: 0 2px 14px rgba(10, 20, 40, .14); padding: 44px 48px 56px 76px; }
+.sheet::before { content: ""; position: absolute; top: 0; bottom: 0; left: 48px; width: 2px; background: var(--red); opacity: .35; }
+
+.cover { padding-bottom: 24px; margin-bottom: 36px; border-bottom: 4px double var(--ink); }
+.cover h1 { margin: 0 0 6px; font-size: clamp(30px, 5vw, 44px); line-height: 1.25; letter-spacing: .02em; }
+.cover .sub { margin: 0 0 20px; font-size: 19px; color: var(--muted); }
+.meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 18px; font-size: 15px; line-height: 1.6; }
+.meta dt { font-weight: 700; color: var(--red); }
+.meta dd { margin: 0; }
+
+mark { background: linear-gradient(transparent 55%, var(--hl) 55%); color: inherit; padding: 0 1px; }
+
+/* 章 */
+.chapter { display: grid; grid-template-columns: minmax(0, 1fr) 220px; column-gap: 32px; margin-bottom: 64px; }
+.chapter > * { grid-column: 1; min-width: 0; }
+.chapter > h2, .chapter > .pg { grid-column: 1 / -1; }
+.chapter > .side { grid-column: 2; }
+.chapter p, .chapter ul, .chapter ol { margin: 0 0 14px; }
+.chapter ul, .chapter ol { padding-left: 1.4em; }
+.chapter li { margin: 2px 0; }
+
+.chapter > h2 { margin: 0 0 18px; padding-bottom: 8px; border-bottom: 3px solid var(--ink); font-size: 29px; line-height: 1.35; }
+.ch-no { display: block; margin-bottom: 2px; color: var(--red); font-size: 15px; font-weight: 700; letter-spacing: .08em; }
+.chapter h3 { margin: 26px 0 10px; font-size: 19px; line-height: 1.5; }
+.chapter h3::before { content: ""; display: inline-block; width: 6px; height: 1em; margin-right: 9px; background: var(--red); vertical-align: -.14em; }
+
+/* 旁註 */
+.side { align-self: start; margin: 2px 0 14px; padding: 2px 0 2px 12px; border-left: 3px solid var(--red); font-size: 13.5px; line-height: 1.7; color: var(--muted); }
+.side strong { display: block; color: var(--ink); }
+.side code { font-size: 12.5px; }
+
+/* 程式碼 */
+code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+pre.code { position: relative; margin: 12px 0 16px; padding: 14px 16px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; overflow: auto; font: 13.5px/1.7 var(--mono); tab-size: 2; }
+pre.code code { padding: 0; background: none; font-size: inherit; }
+.copy { position: absolute; top: 6px; right: 6px; padding: 1px 9px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); color: var(--muted); font: 12px var(--sans); cursor: pointer; }
+.copy:hover { color: var(--ink); border-color: var(--muted); }
+
+table { width: 100%; margin: 12px 0 18px; border-collapse: collapse; font-size: 14.5px; line-height: 1.6; }
+th, td { padding: 7px 10px; border: 1px solid var(--rule); text-align: left; vertical-align: top; }
+th { background: var(--code-bg); }
+
+/* 流程圖 */
+.chapter .flow { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0 12px; padding: 0; list-style: none; }
+.chapter .flow li { position: relative; margin: 0; flex: 1 1 130px; margin: 0; padding: 10px 12px; border: 2px solid var(--ink); border-radius: 6px; font-size: 14px; line-height: 1.6; }
+.chapter .flow li:not(:last-child)::after { content: "→"; position: absolute; right: -16px; top: 50%; transform: translateY(-50%); color: var(--red); font-weight: 700; background: var(--sheet); }
+.flow b { display: block; }
+
+/* 試試看 */
+.pg { margin: 14px 0 22px; border: 2px solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--sheet); }
+.pg-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 12px; background: var(--ink); color: var(--sheet); font-size: 14px; }
+.pg-head button { padding: 1px 10px; border: 1px solid currentColor; border-radius: 4px; background: transparent; color: inherit; font: 13px var(--sans); cursor: pointer; }
+.pg-body { display: grid; grid-template-columns: 1fr 1fr; }
+.pg textarea { display: block; width: 100%; height: var(--h, 220px); margin: 0; padding: 12px; border: 0; border-right: 2px solid var(--ink); background: var(--code-bg); color: var(--ink); font: 13px/1.65 var(--mono); tab-size: 2; resize: none; }
+.pg iframe { display: block; width: 100%; height: var(--h, 220px); border: 0; background: #fff; }
+.pg-hint { margin: 0; padding: 4px 12px; border-top: 1px solid var(--rule); font-size: 12.5px; color: var(--muted); }
+
+/* 小測驗 */
+.quiz { margin: 18px 0; padding: 12px 16px 8px; border: 2px dashed var(--ink); border-radius: 8px; }
+.quiz .qt { margin: 0 0 4px; color: var(--red); font-weight: 700; font-size: 14px; }
+.quiz .q { margin: 0 0 6px; font-weight: 700; }
+.quiz button { display: block; width: 100%; margin: 6px 0; padding: 7px 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 15px/1.6 var(--sans); text-align: left; cursor: pointer; }
+.quiz button:hover { border-color: var(--muted); }
+.quiz button.right { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.quiz button.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 13%, transparent); }
+.quiz .fb { min-height: 1.6em; margin: 4px 0 6px; font-size: 14.5px; }
+.quiz .fb[data-state="ok"] { color: var(--ok); }
+.quiz .fb[data-state="no"] { color: var(--bad); }
+
+details.answer { margin: 10px 0 16px; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 6px; }
+details.answer summary { cursor: pointer; color: var(--red); font-weight: 700; }
+details.answer[open] summary { margin-bottom: 8px; }
+
+.done { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--rule); font-size: 14.5px; cursor: pointer; }
+.done input { width: 18px; height: 18px; accent-color: var(--ok); }
+
+.ex { margin: 18px 0 4px; font-weight: 700; }
+
+.end { text-align: center; color: var(--muted); font-size: 14px; }
+
+/* 語言切換 */
+html:not([data-lang]) .page[lang="en"],
+html[data-lang="zh"] .page[lang="en"],
+html[data-lang="en"] .page[lang="zh-Hant"] { display: none; }
+
+.lang-switch { position: fixed; top: 10px; right: 14px; z-index: 50; display: inline-flex; padding: 3px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); box-shadow: 0 2px 10px rgba(10, 20, 40, .18); }
+.lang-switch button { padding: 3px 14px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: 600 13.5px/1.6 var(--sans); cursor: pointer; }
+.lang-switch button:hover { color: var(--ink); }
+.lang-switch button[aria-pressed="true"] { background: var(--ink); color: var(--sheet); }
+
+/* 窄螢幕 */
+@media (max-width: 1040px) {
+  .page { grid-template-columns: 1fr; gap: 0; padding: 0; }
+  .toc { position: sticky; top: 0; z-index: 20; max-height: none; padding: 8px 170px 8px 12px; background: var(--sheet); border-bottom: 1px solid var(--rule); }
+  .toc h2, .progress, .progress-text { display: none; }
+  .toc ol { display: flex; gap: 4px; }
+  .toc a { white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; padding: 4px 10px; }
+  .toc a[aria-current] { border-bottom-color: var(--red); }
+  .sheet { border-radius: 0; padding: 28px 18px 40px 30px; box-shadow: none; }
+  .sheet::before { left: 14px; }
+  .chapter { grid-template-columns: minmax(0, 1fr); }
+  .chapter > .side { grid-column: 1; }
+}
+@media (max-width: 720px) {
+  .pg-body { grid-template-columns: 1fr; }
+  .pg textarea { border-right: 0; border-bottom: 2px solid var(--ink); }
+  .meta { grid-template-columns: 1fr; }
+  .chapter .flow li:not(:last-child)::after { display: none; }
+}
+
+@media print {
+  body { background: #fff; color: #000; font-size: 12pt; }
+  .page { display: block; padding: 0; }
+  .lang-switch, .toc, .copy, .pg-head button, .quiz, .done, .pg-hint { display: none; }
+  .sheet { box-shadow: none; padding: 0 0 0 20px; }
+  .sheet::before { left: 0; }
+  .pg-body { grid-template-columns: 1fr; }
+  .pg iframe { display: none; }
+  .pg textarea { height: auto; min-height: 140px; border: 0; }
+  .chapter { display: block; break-before: page; }
+  .chapter:first-of-type { break-before: auto; }
+  pre.code, .side, table { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="lang-switch" role="group" aria-label="語言 / Language">
+  <button type="button" data-set-lang="zh" lang="zh-Hant" aria-pressed="true">中文</button>
+  <button type="button" data-set-lang="en" lang="en" aria-pressed="false">English</button>
+</div>
+
+<div class="page" lang="zh-Hant">
+
+<nav class="toc" aria-label="目錄">
+  <h2>目錄</h2>
+  <div class="progress" role="progressbar" aria-label="完成進度" aria-valuemin="0" aria-valuemax="8" aria-valuenow="0"><i class="bar"></i></div>
+  <p class="progress-text"></p>
+  <ol>
+    <li data-ch="ch0"><a href="#ch0">0　先看全貌</a></li>
+    <li data-ch="ch1"><a href="#ch1">1　HTML</a></li>
+    <li data-ch="ch2"><a href="#ch2">2　CSS</a></li>
+    <li data-ch="ch3"><a href="#ch3">3　JavaScript 語言</a></li>
+    <li data-ch="ch4"><a href="#ch4">4　DOM 與事件</a></li>
+    <li data-ch="ch5"><a href="#ch5">5　非同步與瀏覽器 API</a></li>
+    <li data-ch="ch6"><a href="#ch6">6　實戰：拆解歷史資料庫</a></li>
+    <li data-ch="ch7"><a href="#ch7">7　小抄與延伸</a></li>
+  </ol>
+</nav>
+
+<main class="sheet">
+
+<header class="cover">
+  <h1>HTML / CSS / JavaScript 入門講義</h1>
+  <p class="sub">給後端工程師：從「看得懂」到「改得動」</p>
+  <dl class="meta">
+    <dt>適用對象</dt><dd>有 Java 後端經驗，前端剛起步，想看懂並修改自己的靜態網站</dd>
+    <dt>預估時間</dt><dd>約 3 小時，含練習</dd>
+    <dt>搭配專案</dt><dd>「全球歷史資料庫」（history-db），第 6 章會拆解它的原始碼</dd>
+  </dl>
+  <p><strong>怎麼讀這份講義</strong></p>
+  <ul>
+    <li><mark>螢光筆</mark>標起來的是關鍵詞。</li>
+    <li>右側旁註是 Java 對照或常見陷阱，手機上會移到段落下方。</li>
+    <li>「試試看」裡的程式碼可以直接編輯，右邊即時顯示結果，改壞了按「重設」。</li>
+    <li>每章結尾有小測驗；勾選「這章讀完了」會記在這個瀏覽器裡。列印時會自動展開所有答案。</li>
+  </ul>
+</header>
+
+<!-- ============ 第 0 章 ============ -->
+<section class="chapter" id="ch0" data-ch="ch0">
+  <h2><span class="ch-no">第 0 章</span>先看全貌：瀏覽器怎麼把檔案變成畫面</h2>
+
+  <p>你在後端熟悉的是「請求進來、程式處理、回傳結果」。前端少了伺服器那一半：瀏覽器拿到檔案後，<mark>自己</mark>把它們變成畫面，之後還會在你的電腦上執行 JavaScript。流程大致是：</p>
+  <ol class="flow">
+    <li><b>1. 解析 HTML</b>建出 DOM 樹</li>
+    <li><b>2. 套用 CSS</b>算出每個元素的樣式</li>
+    <li><b>3. 排版</b>算出位置與大小</li>
+    <li><b>4. 繪製</b>畫到螢幕上</li>
+  </ol>
+  <p>JavaScript 執行時可以修改 DOM 或樣式，瀏覽器就會重做第 3、4 步。</p>
+  <aside class="side">
+    <strong>Java 對照</strong>
+    瀏覽器可以想成一個會執行 JS 的 runtime，角色類似 JVM。差別是 JS 預設在單一執行緒上跑，靠事件迴圈處理等待（第 5 章）。
+  </aside>
+
+  <h3>三種語言的分工</h3>
+  <table>
+    <tr><th></th><th>HTML</th><th>CSS</th><th>JavaScript</th></tr>
+    <tr><td>負責</td><td>內容與結構</td><td>外觀與版面</td><td>行為與互動</td></tr>
+    <tr><td>一句話</td><td>頁面上有哪些東西</td><td>它們長什麼樣子</td><td>按了之後會發生什麼</td></tr>
+    <tr><td>是程式語言嗎</td><td>不是，沒有條件與迴圈</td><td>不是，是規則表</td><td>是</td></tr>
+  </table>
+
+  <h3>三個檔案怎麼接在一起</h3>
+  <pre class="code"><code>index.html       結構，瀏覽器先下載這個
+css/style.css    外觀，由 &lt;link&gt; 引入
+js/app.js        行為，由 &lt;script&gt; 引入</code></pre>
+  <pre class="code"><code>&lt;link rel="stylesheet" href="css/style.css"&gt;
+&lt;script defer src="js/app.js"&gt;&lt;/script&gt;</code></pre>
+  <aside class="side">
+    <strong>為什麼要 defer</strong>
+    沒加 <code>defer</code> 而 script 又放在 <code>&lt;head&gt;</code> 時，腳本執行時 DOM 還沒建好，<code>querySelector</code> 會回傳 <code>null</code>。<code>defer</code> 讓腳本等 HTML 解析完才依序執行。
+  </aside>
+
+  <label class="done"><input type="checkbox" data-done="ch0"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 1 章 ============ -->
+<section class="chapter" id="ch1" data-ch="ch1">
+  <h2><span class="ch-no">第 1 章</span>HTML：頁面的結構</h2>
+
+  <p>HTML 用<mark>標籤</mark>描述內容，瀏覽器把它解析成一棵 <mark>DOM 樹</mark>。一個最小的頁面長這樣：</p>
+  <pre class="code"><code>&lt;!doctype html&gt;
+&lt;html lang="zh-Hant"&gt;
+&lt;head&gt;
+  &lt;meta charset="utf-8"&gt;
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
+  &lt;title&gt;頁面標題&lt;/title&gt;
+  &lt;link rel="stylesheet" href="css/style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;標題&lt;/h1&gt;
+  &lt;p&gt;一段文字，裡面有&lt;a href="https://developer.mozilla.org/zh-TW/"&gt;連結&lt;/a&gt;。&lt;/p&gt;
+  &lt;script defer src="js/app.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+  <aside class="side">
+    <strong>Java 對照</strong>
+    Thymeleaf 或 JSP 最後吐給瀏覽器的就是這種文字。前端只是把它直接寫出來。
+  </aside>
+
+  <h3>常用標籤</h3>
+  <table>
+    <tr><th>用途</th><th>標籤</th></tr>
+    <tr><td>文字</td><td><code>h1</code> 到 <code>h6</code>、<code>p</code>、<code>strong</code>、<code>em</code>、<code>code</code></td></tr>
+    <tr><td>清單</td><td><code>ul</code>、<code>ol</code>、<code>li</code></td></tr>
+    <tr><td>連結與圖片</td><td><code>a href</code>、<code>img src alt</code></td></tr>
+    <tr><td>版面語意</td><td><code>header</code>、<code>nav</code>、<code>main</code>、<code>section</code>、<code>article</code>、<code>aside</code>、<code>footer</code></td></tr>
+    <tr><td>通用盒子</td><td><code>div</code>（區塊）、<code>span</code>（行內）</td></tr>
+    <tr><td>互動</td><td><code>button</code>、<code>input</code>、<code>label</code>、<code>select</code>、<code>textarea</code>、<code>details</code></td></tr>
+    <tr><td>表格</td><td><code>table</code>、<code>tr</code>、<code>th</code>、<code>td</code></td></tr>
+  </table>
+  <p><mark>區塊元素</mark>（<code>div</code>、<code>p</code>、<code>h1</code>）獨占一整行；<mark>行內元素</mark>（<code>span</code>、<code>a</code>、<code>strong</code>）跟著文字流動。</p>
+  <aside class="side">
+    <strong>語意比外觀重要</strong>
+    能用 <code>&lt;button&gt;</code> 就不要用 <code>&lt;div onclick&gt;</code>。按鈕天生可用鍵盤聚焦、按 Enter 觸發，螢幕閱讀器也認得它。
+  </aside>
+
+  <h3>屬性：id、class、data-*</h3>
+  <pre class="code"><code>&lt;article class="event major" id="tw-1895-cession" data-year="1895"&gt;</code></pre>
+  <ul>
+    <li><code>id</code>：整頁<mark>唯一</mark>，用來定位，也是網址 <code>#id</code> 錨點。</li>
+    <li><code>class</code>：可以有多個、可以重複，用來套樣式與選取元素。</li>
+    <li><code>data-*</code>：自訂資料，JS 用 <code>el.dataset.year</code> 讀取。</li>
+    <li><code>aria-*</code>：給輔助科技看的狀態，例如 <code>aria-pressed="true"</code>。</li>
+  </ul>
+  <aside class="side">
+    <strong>注意</strong>
+    重複的 id 不會報錯，但 <code>getElementById</code> 只會拿到第一個，很難除錯。
+  </aside>
+
+  <h3>表單</h3>
+  <p>用 <code>&lt;label&gt;</code> 把文字和輸入框綁在一起，點文字就會聚焦輸入框。<code>&lt;button&gt;</code> 在表單裡預設是送出，不想送出就寫 <code>type="button"</code>。</p>
+
+  <div class="pg" data-title="試試看：改改這個頁面" data-height="230">
+<textarea spellcheck="false">
+<h1>我的第一頁</h1>
+<p>把這行改成你的自我介紹。</p>
+<ul>
+  <li>HTML 負責結構</li>
+  <li>CSS 負責外觀</li>
+  <li>JS 負責行為</li>
+</ul>
+<label>暱稱 <input type="text" placeholder="輸入看看"></label>
+<button>送出</button>
+</textarea>
+  </div>
+  <p>試試看：新增一個 <code>&lt;li&gt;</code>，把 <code>&lt;ul&gt;</code> 改成 <code>&lt;ol&gt;</code>，再點一下「暱稱」兩個字。</p>
+
+  <div class="quiz" data-answer="1" data-hint="想想鍵盤操作與語意。" data-why="button 天生可聚焦、可用 Enter 或空白鍵觸發，也有正確的語意。">
+    <p class="qt">小測驗</p>
+    <p class="q">要做一個「按了會觸發動作」的元素，最合適的是？</p>
+    <button type="button">A. &lt;div&gt; 加上 onclick</button>
+    <button type="button">B. &lt;button&gt;</button>
+    <button type="button">C. &lt;span&gt; 加上顏色</button>
+    <button type="button">D. &lt;p&gt;</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+
+  <label class="done"><input type="checkbox" data-done="ch1"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 2 章 ============ -->
+<section class="chapter" id="ch2" data-ch="ch2">
+  <h2><span class="ch-no">第 2 章</span>CSS：外觀與版面</h2>
+
+  <p>CSS 是一張規則表，每條規則由<mark>選擇器</mark>和<mark>宣告</mark>組成：</p>
+  <pre class="code"><code>.event {            /* 選擇器：class 含 event 的元素 */
+  padding: 12px;    /* 屬性: 值; */
+  border: 1px solid #ccc;
+}</code></pre>
+  <p>引入方式有三種：外部檔案（<code>&lt;link&gt;</code>，建議）、<code>&lt;style&gt;</code> 區塊、元素上的 <code>style="..."</code>（只適合臨時除錯）。</p>
+
+  <h3>選擇器</h3>
+  <table>
+    <tr><th>寫法</th><th>意思</th></tr>
+    <tr><td><code>p</code></td><td>所有 p 標籤</td></tr>
+    <tr><td><code>.card</code></td><td>class 含 card</td></tr>
+    <tr><td><code>#top</code></td><td>id 為 top</td></tr>
+    <tr><td><code>.a .b</code></td><td>.a 底下任何層級的 .b（後代）</td></tr>
+    <tr><td><code>.a &gt; .b</code></td><td>.a 的直接子層 .b</td></tr>
+    <tr><td><code>.a, .b</code></td><td>兩者都套用</td></tr>
+    <tr><td><code>a:hover</code>、<code>button:focus-visible</code></td><td>偽類：特定狀態</td></tr>
+    <tr><td><code>input[type="search"]</code></td><td>屬性選擇器</td></tr>
+    <tr><td><code>.event::before</code></td><td>偽元素：在元素前面生出一個內容</td></tr>
+    <tr><td><code>.event.major</code></td><td>同時有 event 和 major 兩個 class</td></tr>
+  </table>
+
+  <h3>層疊與特異性：誰會贏</h3>
+  <p>同一個屬性被多條規則命中時，<mark>特異性</mark>高的贏：行內 style，大於 <code>#id</code>，大於 <code>.class</code>、屬性、偽類，大於標籤。同等級時，<mark>寫在後面的贏</mark>。<code>!important</code> 能蓋過一切，但會讓之後難以維護，盡量不用。</p>
+  <aside class="side">
+    <strong>Java 對照</strong>
+    有點像 Spring 的設定覆寫：application.yml 的值會被環境變數蓋掉，優先順序決定誰生效。
+  </aside>
+
+  <div class="pg" data-title="試試看：特異性" data-height="200">
+<textarea spellcheck="false">
+<style>
+  p { color: gray; }
+  .hint { color: green; }
+  #special { color: crimson; }
+</style>
+<p>只有標籤規則（灰）</p>
+<p class="hint">加上 class（綠）</p>
+<p class="hint" id="special">再加上 id（紅）</p>
+<p class="hint" id="special" style="color: royalblue">行內 style（藍）</p>
+</textarea>
+  </div>
+  <p>試試看：把 <code>#special</code> 那條規則刪掉，看第三行變成什麼顏色。</p>
+
+  <h3>盒模型</h3>
+  <p>每個元素都是一個盒子，由內而外是：<mark>content</mark>（內容）、<mark>padding</mark>（內距）、<mark>border</mark>（框線）、<mark>margin</mark>（外距）。預設 <code>width</code> 只算 content，加了 padding 和 border 會讓盒子變寬，很反直覺。所以幾乎每個專案第一條都是：</p>
+  <pre class="code"><code>*, *::before, *::after { box-sizing: border-box; }</code></pre>
+  <p>這樣 <code>width</code> 就包含 padding 與 border。</p>
+
+  <div class="pg" data-title="試試看：盒模型" data-height="210">
+<textarea spellcheck="false">
+<style>
+  .box { width: 200px; padding: 20px; border: 5px solid #1b2a41; margin: 12px 0; background: #dbeafe; }
+  .border-box { box-sizing: border-box; }
+</style>
+<div class="box">預設：寬 200 + 內距 40 + 框線 10 = 250px</div>
+<div class="box border-box">border-box：總寬就是 200px</div>
+</textarea>
+  </div>
+
+  <h3>常用單位</h3>
+  <ul>
+    <li><code>px</code>：固定像素。<code>rem</code>：相對根字級（預設 16px），適合字體與間距。</li>
+    <li><code>%</code>：相對父層。<code>vw</code> / <code>vh</code>：相對視窗寬高。<code>dvh</code>：手機網址列伸縮時會跟著變的視窗高度。</li>
+    <li><code>fr</code>：Grid 專用，剩餘空間的份數。</li>
+  </ul>
+
+  <h3>Flexbox：一維排列</h3>
+  <p>把容器設成 <code>display: flex</code>，子元素就沿著一個方向排列。兩個最常調的屬性：<code>justify-content</code> 管<mark>主軸</mark>（預設水平），<code>align-items</code> 管<mark>交叉軸</mark>（預設垂直）。</p>
+  <pre class="code"><code>.row {
+  display: flex;
+  gap: 12px;                       /* 子元素間距 */
+  justify-content: space-between;  /* 主軸分配 */
+  align-items: center;             /* 交叉軸對齊 */
+  flex-wrap: wrap;                 /* 放不下就換行 */
+}</code></pre>
+
+  <div class="pg" data-title="試試看：Flexbox" data-height="220">
+<textarea spellcheck="false">
+<style>
+  .row { display: flex; gap: 10px; justify-content: flex-start; align-items: flex-start; height: 130px; border: 2px dashed #888; padding: 8px; }
+  .item { padding: 10px 16px; background: #1b2a41; color: #fff; border-radius: 6px; }
+  .tall { padding-block: 30px; }
+</style>
+<div class="row">
+  <div class="item">A</div>
+  <div class="item tall">B</div>
+  <div class="item">C</div>
+</div>
+</textarea>
+  </div>
+  <p>試試看：把 <code>justify-content</code> 改成 <code>center</code>、<code>space-between</code>；把 <code>align-items</code> 改成 <code>center</code>、<code>stretch</code>；加上 <code>flex-direction: column</code>。</p>
+
+  <h3>Grid：二維排列</h3>
+  <p>要同時控制橫排與直排時用 Grid。歷史資料庫的時間軸就是一個 Grid：左邊一欄年份，右邊每個國家一欄。</p>
+  <pre class="code"><code>.grid {
+  display: grid;
+  grid-template-columns: 96px repeat(2, minmax(0, 1fr));  /* 年份欄 + 兩個國家欄 */
+  gap: 12px;
+}</code></pre>
+
+  <div class="pg" data-title="試試看：Grid 自動換欄" data-height="230">
+<textarea spellcheck="false">
+<style>
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+  .cell { padding: 14px; background: #dbeafe; border: 1px solid #1b2a41; border-radius: 6px; text-align: center; }
+</style>
+<div class="grid">
+  <div class="cell">1</div><div class="cell">2</div><div class="cell">3</div>
+  <div class="cell">4</div><div class="cell">5</div><div class="cell">6</div>
+  <div class="cell">7</div><div class="cell">8</div>
+</div>
+</textarea>
+  </div>
+  <p>這個預覽很窄，用 <code>auto-fill</code> 加 <code>minmax</code> 就能不寫 media query 而自動調整欄數。試試看：把 <code>110px</code> 改成 <code>60px</code>。</p>
+
+  <h3>position：定位</h3>
+  <table>
+    <tr><th>值</th><th>行為</th></tr>
+    <tr><td><code>static</code></td><td>預設，照正常流程排版</td></tr>
+    <tr><td><code>relative</code></td><td>以自己原本的位置為基準偏移；同時是子層 absolute 的參考點</td></tr>
+    <tr><td><code>absolute</code></td><td>脫離正常流程，相對「最近的有定位的祖先」</td></tr>
+    <tr><td><code>fixed</code></td><td>相對視窗，捲動時不動</td></tr>
+    <tr><td><code>sticky</code></td><td>平時正常，捲到門檻（如 <code>top: 0</code>）後黏住</td></tr>
+  </table>
+
+  <div class="pg" data-title="試試看：sticky" data-height="200">
+<textarea spellcheck="false">
+<style>
+  .scroll { height: 130px; overflow: auto; border: 2px solid #1b2a41; }
+  .head { position: sticky; top: 0; padding: 6px 10px; background: #1b2a41; color: #fff; }
+  .scroll p { margin: 0; padding: 10px; border-bottom: 1px solid #ccc; }
+</style>
+<div class="scroll">
+  <div class="head">我會黏在上面</div>
+  <p>內容 1</p><p>內容 2</p><p>內容 3</p><p>內容 4</p>
+  <p>內容 5</p><p>內容 6</p><p>內容 7</p><p>內容 8</p>
+</div>
+</textarea>
+  </div>
+  <p>試試看：把 <code>.scroll</code> 的 <code>overflow: auto</code> 刪掉，sticky 就失效了。</p>
+  <aside class="side">
+    <strong>歷史網站的關鍵</strong>
+    sticky 只在「會捲動的容器」裡有效。所以 <code>.scroller</code> 要設高度並 <code>overflow: auto</code>，表頭與年份欄才會固定。
+  </aside>
+
+  <h3>CSS 變數、深色模式與響應式</h3>
+  <pre class="code"><code>:root { --bg: #fff; --ink: #111; }
+
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111; --ink: #eee; }
+}
+
+body { background: var(--bg); color: var(--ink); }
+
+/* 行動版優先：先寫手機，再往大螢幕加 */
+.card { padding: 12px; }
+@media (min-width: 768px) { .card { padding: 24px; } }
+
+/* 字級在 16px 到 22px 之間隨視窗寬度縮放 */
+h1 { font-size: clamp(16px, 2.5vw, 22px); }</code></pre>
+  <p>所有顏色都放進變數，換主題或做深色模式時只要改變數。別忘了 HTML 的 <code>&lt;meta name="viewport"&gt;</code>，沒有它手機會把頁面縮成桌面版。</p>
+
+  <div class="quiz" data-answer="2" data-hint="特異性：id 比 class 高。" data-why="#id 的特異性高於 .class，所以顏色會是 #b 設定的。">
+    <p class="qt">小測驗</p>
+    <p class="q">同一個元素同時被 <code>.a { color: red }</code> 和 <code>#b { color: blue }</code> 命中，顏色是？</p>
+    <button type="button">A. 紅色，因為 class 比較常用</button>
+    <button type="button">B. 看哪一條先寫</button>
+    <button type="button">C. 藍色</button>
+    <button type="button">D. 會報錯</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <div class="quiz" data-answer="0" data-hint="主軸預設是水平方向。" data-why="justify-content 管主軸，預設是水平；align-items 才是垂直。">
+    <p class="qt">小測驗</p>
+    <p class="q">Flex 容器預設（橫向）要讓子元素水平置中，該設哪個屬性？</p>
+    <button type="button">A. justify-content: center</button>
+    <button type="button">B. align-items: center</button>
+    <button type="button">C. text-align: middle</button>
+    <button type="button">D. margin: center</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+
+  <label class="done"><input type="checkbox" data-done="ch2"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 3 章 ============ -->
+<section class="chapter" id="ch3" data-ch="ch3">
+  <h2><span class="ch-no">第 3 章</span>JavaScript 語言基礎</h2>
+
+  <p>JS 是動態型別、單執行緒、事件驅動的語言。想試任何一行，按 F12 開瀏覽器的 Console 直接貼上就能執行。</p>
+
+  <h3>變數與型別</h3>
+  <pre class="code"><code>const name = "Clark";   // 不會被重新指派，預設用這個
+let count = 0;          // 會改變才用 let
+count += 1;
+// 不要用 var
+
+typeof "a"        // "string"
+typeof 42         // "number"（整數和小數都是 number）
+typeof true       // "boolean"
+typeof undefined  // "undefined"
+typeof null       // "object"（歷史包袱）
+typeof [1, 2]     // "object"（判斷陣列要用 Array.isArray）</code></pre>
+  <aside class="side">
+    <strong>Java 對照</strong>
+    <code>const</code> 像 <code>final</code>：不能重新指派，但物件內容仍然可以改。
+  </aside>
+
+  <h3>比較與真假值</h3>
+  <pre class="code"><code>0 == "0"     // true，會偷偷轉型，別用
+0 === "0"    // false，永遠用 ===
+
+// falsy（當成 false）：false, 0, "", null, undefined, NaN
+if ("") { /* 不會進來 */ }</code></pre>
+  <p><code>??</code> 只在值是 <code>null</code> 或 <code>undefined</code> 時才用預設；<code>||</code> 連 <code>0</code> 和空字串都會被取代。<code>?.</code> 讓中途遇到 <code>null</code> 時不報錯。</p>
+  <pre class="code"><code>const era = event.era ?? "未分類";
+const first = country?.events?.[0]?.title;
+const msg = `共 ${total} 筆事件`;   // 模板字串，用反引號</code></pre>
+
+  <h3>函式</h3>
+  <pre class="code"><code>function add(a, b) { return a + b; }
+const add2 = (a, b) =&gt; a + b;                // 箭頭函式
+const greet = (name = "訪客") =&gt; `哈囉，${name}`; // 預設參數</code></pre>
+  <aside class="side">
+    <strong>Java 對照</strong>
+    箭頭函式就是 lambda。函式是一等公民，可以當參數傳、當值回傳，後面的 <code>map</code>、<code>filter</code>、事件監聽都靠這點。
+  </aside>
+
+  <h3>物件與陣列</h3>
+  <pre class="code"><code>const e = { year: 1895, title: "馬關條約", major: true };
+const { year, title } = e;            // 解構
+const copy = { ...e, major: false };  // 展開：複製並覆寫
+
+const years = [1624, 1662, 1683];
+const [first, ...rest] = years;       // first = 1624, rest = [1662, 1683]</code></pre>
+
+  <h3>陣列方法（對照 Stream）</h3>
+  <table>
+    <tr><th>JS</th><th>Java Stream</th><th>用途</th></tr>
+    <tr><td><code>map</code></td><td><code>map</code></td><td>一對一轉換</td></tr>
+    <tr><td><code>filter</code></td><td><code>filter</code></td><td>篩選</td></tr>
+    <tr><td><code>find</code></td><td><code>filter().findFirst()</code></td><td>找第一個符合的</td></tr>
+    <tr><td><code>some</code> / <code>every</code></td><td><code>anyMatch</code> / <code>allMatch</code></td><td>是否有 / 是否全部</td></tr>
+    <tr><td><code>reduce</code></td><td><code>reduce</code></td><td>聚合成一個值</td></tr>
+    <tr><td><code>sort</code></td><td><code>sorted</code></td><td>排序，<mark>會改動原陣列</mark></td></tr>
+  </table>
+  <aside class="side">
+    <strong>兩個經典陷阱</strong>
+    <code>sort()</code> 沒給比較函式時，會把元素轉成字串再比，所以 <code>[10, 9, 1]</code> 會變 <code>[1, 10, 9]</code>。另外它直接改原陣列，所以先用 <code>[...arr]</code> 複製。下面的範例會示範。
+  </aside>
+
+  <div class="pg" data-title="試試看：陣列方法" data-height="330">
+<textarea spellcheck="false">
+<script>
+const events = [
+  { year: 1895, title: "馬關條約", major: true },
+  { year: 1624, title: "荷蘭據點", major: true },
+  { year: 1947, title: "二二八事件", major: false },
+  { year: 1987, title: "解除戒嚴", major: true },
+];
+
+const sorted = [...events].sort((a, b) => a.year - b.year);
+console.log("依年份:", sorted.map(e => e.year));
+
+const majors = events.filter(e => e.major).map(e => e.title);
+console.log("重大事件:", majors);
+
+console.log("1900 年後第一件:", sorted.find(e => e.year > 1900).title);
+
+console.log("[10, 9, 1].sort() =", [10, 9, 1].sort());
+console.log("給比較函式才對:", [10, 9, 1].sort((a, b) => a - b));
+</script>
+</textarea>
+  </div>
+  <h3>JSON</h3>
+  <pre class="code"><code>const text = JSON.stringify({ year: 1895 });  // '{"year":1895}'
+const obj  = JSON.parse(text);                // { year: 1895 }</code></pre>
+  <p>JS 物件字面量和 JSON 長得很像，但 JSON 的 key 一定要雙引號、不能有註解與結尾逗號。</p>
+
+  <h3>檔案怎麼拆：本專案不用 ES module</h3>
+  <p>現代 JS 可以用 <code>import</code> / <code>export</code> 拆檔，但 <code>&lt;script type="module"&gt;</code> 在雙擊開啟（<code>file://</code>）時會被瀏覽器擋下。所以歷史資料庫用一般 <code>&lt;script&gt;</code>，每支檔案包在 <mark>IIFE</mark>（立即執行函式）裡，避免變數洩漏到全域：</p>
+  <pre class="code"><code>(function () {
+  "use strict";
+  const secret = 1;   // 外面看不到
+})();</code></pre>
+
+  <div class="quiz" data-answer="1" data-hint="sort 沒給比較函式時會轉成字串。" data-why="預設以字串順序比較，'10' 排在 '9' 前面，所以是 [1, 10, 9]。">
+    <p class="qt">小測驗</p>
+    <p class="q"><code>[10, 9, 1].sort()</code> 的結果是？</p>
+    <button type="button">A. [1, 9, 10]</button>
+    <button type="button">B. [1, 10, 9]</button>
+    <button type="button">C. [10, 9, 1]</button>
+    <button type="button">D. 丟出錯誤</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <div class="quiz" data-answer="2" data-hint="?? 只看 null 和 undefined。" data-why="0 不是 null 或 undefined，所以 0 ?? 5 是 0；而 0 || 5 會因為 0 是 falsy 而得到 5。">
+    <p class="qt">小測驗</p>
+    <p class="q"><code>0 ?? 5</code> 的結果是？</p>
+    <button type="button">A. 5</button>
+    <button type="button">B. null</button>
+    <button type="button">C. 0</button>
+    <button type="button">D. undefined</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+
+  <label class="done"><input type="checkbox" data-done="ch3"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 4 章 ============ -->
+<section class="chapter" id="ch4" data-ch="ch4">
+  <h2><span class="ch-no">第 4 章</span>DOM 與事件：讓頁面動起來</h2>
+
+  <p><mark>DOM</mark> 是瀏覽器把 HTML 轉成的物件樹，JS 透過全域的 <code>document</code> 讀寫它。</p>
+  <pre class="code"><code>const el = document.querySelector("#stats");        // 第一個符合的元素，沒有就是 null
+const cards = document.querySelectorAll(".event");  // 全部符合的
+
+el.textContent = "共 55 筆事件";        // 當純文字寫入
+el.classList.add("active");             // 增減 class
+el.dataset.year;                        // 讀 data-year
+el.setAttribute("aria-pressed", "true");
+
+const li = document.createElement("li");
+li.textContent = "新項目";
+document.querySelector("ul").append(li);</code></pre>
+  <aside class="side">
+    <strong>安全</strong>
+    <code>innerHTML</code> 會把字串當 HTML 解析，字串若含使用者輸入就是 XSS 漏洞。優先用 <code>textContent</code> 與 <code>createElement</code>。
+  </aside>
+
+  <h3>事件</h3>
+  <pre class="code"><code>button.addEventListener("click", (event) =&gt; {
+  console.log("被點了", event.target);
+});</code></pre>
+  <p>常用事件：<code>click</code>、<code>input</code>（輸入框每次變動）、<code>change</code>、<code>submit</code>、<code>keydown</code>、<code>scroll</code>、<code>hashchange</code>。<code>event.preventDefault()</code> 能擋掉預設行為，例如連結跳轉或表單送出。</p>
+
+  <h3>事件委派</h3>
+  <p>不要替每個按鈕各綁一個監聽器，而是綁在<mark>父層</mark>一次，再用 <code>event.target.closest(選擇器)</code> 找出實際被點的元素。好處是動態新增的元素不用重新綁定。歷史資料庫的事件標題連結就是這樣處理：</p>
+  <pre class="code"><code>grid.addEventListener("click", (ev) =&gt; {
+  const a = ev.target.closest("a.anchor");
+  if (!a) return;           // 點到別的地方就忽略
+  ev.preventDefault();
+  // ...
+});</code></pre>
+
+  <h3>狀態 → 重繪</h3>
+  <p>最容易維護的寫法是：資料放在 <code>state</code>，改了資料就呼叫 <code>render()</code> 整個重畫，不要東改一點西改一點。這正是 React 之類框架的核心想法，只是它們幫你把「重畫」做得更有效率。</p>
+
+  <div class="pg" data-title="試試看：待辦清單" data-height="330">
+<textarea spellcheck="false">
+<input id="in" placeholder="新增待辦"> <button id="add">新增</button>
+<ul id="list"></ul>
+<script>
+const state = { items: ["讀 HTML", "讀 CSS"] };
+const list = document.querySelector("#list");
+
+function render() {
+  list.replaceChildren(...state.items.map((text, i) => {
+    const li = document.createElement("li");
+    li.textContent = text + " ";
+    const del = document.createElement("button");
+    del.textContent = "刪除";
+    del.dataset.index = i;
+    li.append(del);
+    return li;
+  }));
+}
+
+document.querySelector("#add").addEventListener("click", () => {
+  const input = document.querySelector("#in");
+  if (!input.value.trim()) return;
+  state.items.push(input.value.trim());
+  input.value = "";
+  render();
+});
+
+// 事件委派：只在 ul 綁一次
+list.addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  state.items.splice(Number(btn.dataset.index), 1);
+  render();
+});
+
+render();
+</script>
+</textarea>
+  </div>
+  <p>試試看：把 <code>li.textContent</code> 那行改成 <code>li.innerHTML = text + " "</code>，再新增一筆內容為 <code>&lt;b&gt;粗體&lt;/b&gt;</code> 的待辦，觀察差別。這就是 XSS 的原理。</p>
+
+  <div class="quiz" data-answer="0" data-hint="想想「之後才新增」的元素。" data-why="監聽器綁在父層一次，之後動態新增的子元素也會被涵蓋，不用重新綁定。">
+    <p class="qt">小測驗</p>
+    <p class="q">為什麼動態產生的按鈕適合用事件委派？</p>
+    <button type="button">A. 之後新增的按鈕不用重新綁定監聽器</button>
+    <button type="button">B. 因為 click 事件只能綁在 ul 上</button>
+    <button type="button">C. 這樣可以不用寫 JS</button>
+    <button type="button">D. 這樣不會有 XSS</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+
+  <label class="done"><input type="checkbox" data-done="ch4"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 5 章 ============ -->
+<section class="chapter" id="ch5" data-ch="ch5">
+  <h2><span class="ch-no">第 5 章</span>非同步與瀏覽器 API</h2>
+
+  <p>JS 在單一執行緒上跑，遇到網路請求、計時器這類要等的事，會交給瀏覽器處理，完成後再把<mark>回呼</mark>排進佇列，等目前的程式跑完才輪到它。所以等待時畫面不會卡住，但「誰先執行」要特別注意。</p>
+  <aside class="side">
+    <strong>Java 對照</strong>
+    沒有多執行緒與鎖的問題，但有執行順序的問題。<code>Promise</code> 類似 <code>CompletableFuture</code>，<code>fetch</code> 類似 <code>HttpClient</code>。
+  </aside>
+
+  <div class="pg" data-title="試試看：執行順序" data-height="200">
+<textarea spellcheck="false">
+<script>
+console.log("開始");
+setTimeout(() => console.log("setTimeout 0 毫秒"), 0);
+Promise.resolve().then(() => console.log("Promise.then"));
+console.log("同步程式結束");
+</script>
+</textarea>
+  </div>
+  <p>順序是：同步程式先全部跑完，接著 <mark>Promise 的回呼</mark>（微任務），最後才是 <code>setTimeout</code>（即使是 0 毫秒也要排隊）。</p>
+
+  <h3>Promise 與 async / await</h3>
+  <pre class="code"><code>async function loadJson(url) {
+  const res = await fetch(url);                       // 等網路，但不卡畫面
+  if (!res.ok) throw new Error("HTTP " + res.status); // fetch 遇到 404 不會自己丟錯
+  return res.json();                                  // 也是 Promise
+}
+
+async function main() {
+  try {
+    const data = await loadJson("/data/taiwan.json");
+    console.log(data.events.length);
+  } catch (err) {
+    console.error("載入失敗", err);
+  }
+}
+main();</code></pre>
+  <aside class="side">
+    <strong>注意</strong>
+    <code>await</code> 只能在 <code>async</code> 函式裡用（ES module 的最上層除外）。<code>fetch</code> 對 404、500 不會丟例外，要自己檢查 <code>res.ok</code>。
+  </aside>
+
+  <div class="pg" data-title="試試看：模擬 API" data-height="230">
+<textarea spellcheck="false">
+<script>
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fakeApi() {
+  console.log("送出請求…");
+  await wait(800);
+  return { ok: true, items: 3 };
+}
+
+async function main() {
+  const t0 = performance.now();
+  const result = await fakeApi();
+  console.log("收到回應", result, Math.round(performance.now() - t0) + " ms");
+}
+
+main();
+console.log("main() 之後的程式不會被等待");
+</script>
+</textarea>
+  </div>
+
+  <h3>後端工程師一定會遇到：CORS 與 file://</h3>
+  <p><mark>CORS</mark>：網頁向「不同來源」（網域、埠號不同）發請求時，瀏覽器會檢查回應有沒有 <code>Access-Control-Allow-Origin</code> 標頭，沒有就擋下。擋的是瀏覽器，curl 和 Postman 不受影響。在 Spring Boot 用 <code>@CrossOrigin</code> 或 CORS 設定來放行。</p>
+  <p><mark>file://</mark>：直接雙擊開啟 HTML 時，瀏覽器會擋 <code>fetch</code> 讀本機檔案。這就是歷史資料庫把資料寫在 <code>.js</code> 用 <code>&lt;script&gt;</code> 載入，而不是用 JSON 加 <code>fetch</code> 的原因。想改用 JSON，就要先用 <code>python3 -m http.server</code> 之類的方式開本機伺服器。</p>
+
+  <h3>localStorage</h3>
+  <pre class="code"><code>try {
+  localStorage.setItem("theme", "dark");
+  const theme = localStorage.getItem("theme");   // 沒有就是 null
+} catch (e) {
+  // 私密模式或被停用時會丟例外，要能照常運作
+}</code></pre>
+  <p>只能存字串，物件要先 <code>JSON.stringify</code>。它在同網站同瀏覽器內持久，但不是安全儲存，別放密碼或 token。</p>
+
+  <div class="quiz" data-answer="3" data-hint="同步程式一定先跑完。" data-why="同步的 log(&quot;S&quot;) 最先；接著是 Promise 的 P，最後才是 setTimeout 的 T。">
+    <p class="qt">小測驗</p>
+    <p class="q">下面四個輸出，最先印出的是哪一個？<br><code>setTimeout(() =&gt; log("T"), 0); Promise.resolve().then(() =&gt; log("P")); log("S");</code></p>
+    <button type="button">A. T</button>
+    <button type="button">B. P</button>
+    <button type="button">C. 三個同時</button>
+    <button type="button">D. S</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+
+  <label class="done"><input type="checkbox" data-done="ch5"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 6 章 ============ -->
+<section class="chapter" id="ch6" data-ch="ch6">
+  <h2><span class="ch-no">第 6 章</span>實戰：拆解「全球歷史資料庫」</h2>
+
+  <p>前面學的東西，在歷史資料庫裡都出現過。資料流只有三步：</p>
+  <ol class="flow">
+    <li><b>registry.js</b>建立全域的 <code>HistoryDB</code> 註冊表</li>
+    <li><b>data/taiwan.js</b>呼叫 <code>register()</code> 交出資料</li>
+    <li><b>app.js</b>讀註冊表，渲染成時間軸</li>
+  </ol>
+
+  <h3>讀碼導覽</h3>
+  <table>
+    <tr><th>位置</th><th>對應章節</th><th>看什麼</th></tr>
+    <tr><td><code>index.html</code> 的 script</td><td>0、1</td><td><code>defer</code> 保證載入順序：registry、資料、app</td></tr>
+    <tr><td><code>js/registry.js</code></td><td>3</td><td>IIFE 與全域物件</td></tr>
+    <tr><td><code>data/taiwan.js</code></td><td>3</td><td>物件與陣列字面量，資料與程式分離</td></tr>
+    <tr><td><code>app.js</code> 的 <code>h()</code></td><td>3、4</td><td>剩餘參數與 <code>createElement</code>，不用 innerHTML 建 DOM</td></tr>
+    <tr><td><code>app.js</code> 的 <code>visibleEvents</code></td><td>3</td><td><code>filter</code> 加 <code>sort</code>，對照 Stream</td></tr>
+    <tr><td><code>app.js</code> 的 <code>render()</code></td><td>4</td><td>狀態改變就整個重畫；用 <code>Map</code> 依年份分組</td></tr>
+    <tr><td><code>app.js</code> 的 grid click</td><td>4</td><td>事件委派與 <code>closest</code></td></tr>
+    <tr><td><code>app.js</code> 的 scroll 監聽</td><td>5</td><td><code>requestAnimationFrame</code> 節流</td></tr>
+    <tr><td><code>style.css</code> 的 <code>.grid</code>、<code>.year</code></td><td>2</td><td>Grid 加 sticky</td></tr>
+    <tr><td><code>style.css</code> 的 <code>:root</code></td><td>2</td><td>CSS 變數與深色模式</td></tr>
+  </table>
+
+  <h3>精讀一段</h3>
+  <pre class="code"><code>function visibleEvents(country) {
+  const q = state.query.trim().toLowerCase();
+  return country.events
+    .filter((e) =&gt; {                       // 1. 篩選：只看重大 / 關鍵字
+      if (state.majorOnly &amp;&amp; !e.major) return false;
+      if (q &amp;&amp; !(e.title + e.summary).toLowerCase().includes(q)) return false;
+      return true;
+    })
+    .sort((a, b) =&gt; a.year - b.year);      // 2. 依年份排序</code></pre>
+  <aside class="side">
+    <strong>Java 對照</strong>
+    約等於 <code>events.stream().filter(...).sorted(Comparator.comparingInt(Event::year)).toList()</code>。這裡的 <code>sort</code> 不會弄亂原資料，因為 <code>filter</code> 已經先產生了新陣列。
+  </aside>
+
+  <h3>練習</h3>
+  <p class="ex">練習 1：新增一筆事件</p>
+  <p>在 <code>data/taiwan.js</code> 加入「1661 鄭成功自鹿耳門登陸」，era 用 <code>zheng</code>。存檔重新整理，看它出現在哪裡；再執行 <code>node scripts/validate.mjs</code>。</p>
+  <details class="answer"><summary>看提示與答案</summary>
+    <p>1661 早於 1662，所以要插在 1652 之後、1662 之前；<code>id</code> 要全站唯一，例如 <code>tw-1661-zheng-landing</code>。注意 1661 的 era 是 <code>zheng</code>，但 <code>eras</code> 裡明鄭起始是 1662，驗證不會報錯，只是時代標籤會跟著第一個事件出現。</p>
+<pre class="code"><code>{
+  id: "tw-1661-zheng-landing", year: 1661, era: "zheng",
+  title: "鄭成功自鹿耳門登陸",
+  summary: "率軍登陸台南，開始圍攻荷蘭人的熱蘭遮城。",
+  wiki: "鄭成功",
+},</code></pre>
+  </details>
+
+  <p class="ex">練習 2：換主題色</p>
+  <p>改 <code>style.css</code> 裡的 <code>--brass</code>，再改 <code>data/taiwan.js</code> 的 <code>color</code>，看哪些地方變色。</p>
+  <details class="answer"><summary>看提示與答案</summary>
+    <p><code>--brass</code> 控制重大年份的刻度與年份文字；<code>color</code> 控制國家欄的線、圓點、表頭底線與時代標籤。同一個設計變數，用在多處，這就是用 CSS 變數的好處。</p>
+  </details>
+
+  <p class="ex">練習 3：新增「只看約略年份」按鈕</p>
+  <p>仿照「只看重大事件」，新增一個按鈕，只顯示 <code>precision</code> 為 <code>approx</code> 的事件。</p>
+  <details class="answer"><summary>看提示與答案</summary>
+    <p>提示：需要改三個地方，<code>index.html</code> 加按鈕、<code>state</code> 加旗標、<code>visibleEvents</code> 加一行篩選，再仿照 <code>majorBtn</code> 綁 click。</p>
+<pre class="code"><code>&lt;!-- index.html：放在 majorBtn 旁邊 --&gt;
+&lt;button type="button" class="pill" id="approxBtn" aria-pressed="false"&gt;只看約略年份&lt;/button&gt;
+
+// app.js：state 加一個欄位
+approxOnly: false,
+
+// visibleEvents 的 filter 裡加一行
+if (state.approxOnly &amp;&amp; e.precision !== "approx") return false;
+
+// 綁定事件（照 majorBtn 的寫法）
+const approxBtn = $("#approxBtn");
+approxBtn.addEventListener("click", () =&gt; {
+  state.approxOnly = !state.approxOnly;
+  approxBtn.setAttribute("aria-pressed", String(state.approxOnly));
+  render(true);
+});</code></pre>
+  </details>
+
+  <p class="ex">練習 4：新增第二個國家</p>
+  <p>建立 <code>data/japan.js</code>，放三筆事件（1603 江戶幕府成立、1868 明治維新、1945 戰敗），並在 <code>index.html</code> 載入。看表頭多出一欄、頂部出現國家篩選按鈕。</p>
+  <details class="answer"><summary>看提示與答案</summary>
+<pre class="code"><code>// data/japan.js
+HistoryDB.register({
+  id: "japan", name: "日本", nameEn: "Japan", color: "#b4492f",
+  eras: [
+    { id: "edo",    name: "江戶時代", start: 1603, end: 1868 },
+    { id: "modern", name: "近現代",   start: 1868, end: null },
+  ],
+  events: [
+    { id: "jp-1603-edo-shogunate", year: 1603, era: "edo", major: true,
+      title: "江戶幕府成立", summary: "德川家康就任征夷大將軍，開啟約兩百六十年的統治。", wiki: "江戶幕府" },
+    { id: "jp-1868-meiji", year: 1868, era: "modern", major: true,
+      title: "明治維新", summary: "幕府結束，政權交還天皇，日本走向近代化。", wiki: "明治維新" },
+    { id: "jp-1945-surrender", year: 1945, era: "modern",
+      title: "戰敗投降", summary: "第二次世界大戰結束，日本進入戰後時期。", wiki: "日本投降" },
+  ],
+});
+
+&lt;!-- index.html：放在 taiwan.js 那行下面 --&gt;
+&lt;script defer src="data/japan.js"&gt;&lt;/script&gt;</code></pre>
+    <p>1603、1945 這兩年台灣也有事件，所以同一年會對齊在同一橫列，這就是縱軸是年份的用意。</p>
+  </details>
+
+  <label class="done"><input type="checkbox" data-done="ch6"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 7 章 ============ -->
+<section class="chapter" id="ch7" data-ch="ch7">
+  <h2><span class="ch-no">第 7 章</span>小抄與延伸</h2>
+
+  <h3>除錯：F12 開發者工具</h3>
+  <table>
+    <tr><th>分頁</th><th>用途</th></tr>
+    <tr><td>Elements</td><td>看 DOM，直接改 HTML 與 CSS 立即預覽；Computed 能看哪條規則生效</td></tr>
+    <tr><td>Console</td><td>看錯誤訊息、直接執行 JS、<code>console.log</code></td></tr>
+    <tr><td>Network</td><td>看每個請求的狀態碼、標頭、回應；CORS 問題在這裡看</td></tr>
+    <tr><td>Sources</td><td>下中斷點逐行除錯，或在程式裡寫 <code>debugger</code></td></tr>
+  </table>
+
+  <h3>常見錯誤</h3>
+  <ul>
+    <li>Console 出現 <code>Cannot read properties of null</code>：<code>querySelector</code> 沒找到元素，檢查選擇器，並確認 script 有 <code>defer</code>。</li>
+    <li>改了 CSS 沒變化：先 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> 強制重新整理，再看 Elements 的 Computed 是不是被別條規則蓋過。</li>
+    <li><code>sort()</code> 排序怪怪的：數字要給比較函式。</li>
+    <li>比較結果怪怪的：把 <code>==</code> 換成 <code>===</code>。</li>
+    <li>sticky 沒作用：祖先有沒有 <code>overflow</code>、有沒有設定 <code>top</code>。</li>
+    <li><code>fetch</code> 在本機失敗：用本機伺服器開，不要用 <code>file://</code>。</li>
+  </ul>
+
+  <h3>速查</h3>
+  <table>
+    <tr><th>Flexbox 屬性</th><th>說明</th></tr>
+    <tr><td><code>flex-direction</code></td><td>主軸方向：<code>row</code>、<code>column</code></td></tr>
+    <tr><td><code>justify-content</code></td><td>主軸分配：<code>flex-start</code>、<code>center</code>、<code>space-between</code></td></tr>
+    <tr><td><code>align-items</code></td><td>交叉軸對齊：<code>stretch</code>、<code>center</code>、<code>flex-start</code></td></tr>
+    <tr><td><code>gap</code>、<code>flex-wrap</code></td><td>間距、是否換行</td></tr>
+    <tr><td><code>flex: 1</code>（子層）</td><td>平分剩餘空間</td></tr>
+  </table>
+  <table>
+    <tr><th>DOM</th><th>說明</th></tr>
+    <tr><td><code>querySelector(All)</code></td><td>用 CSS 選擇器找元素</td></tr>
+    <tr><td><code>createElement</code>、<code>append</code>、<code>replaceChildren</code></td><td>建立、加入、整批替換子元素</td></tr>
+    <tr><td><code>textContent</code></td><td>安全地設定文字</td></tr>
+    <tr><td><code>classList.add / remove / toggle</code></td><td>操作 class</td></tr>
+    <tr><td><code>dataset</code>、<code>setAttribute</code></td><td>操作屬性</td></tr>
+    <tr><td><code>addEventListener</code></td><td>綁定事件</td></tr>
+  </table>
+
+  <h3>延伸資源</h3>
+  <ul>
+    <li><a href="https://developer.mozilla.org/zh-TW/" target="_blank" rel="noopener noreferrer">MDN Web Docs（繁體中文）</a>：最完整的查詢手冊。</li>
+    <li><a href="https://javascript.info/" target="_blank" rel="noopener noreferrer">javascript.info</a>：循序漸進的 JS 教學。</li>
+    <li><a href="https://web.dev/learn/css" target="_blank" rel="noopener noreferrer">web.dev Learn CSS</a>：系統化的 CSS 課程。</li>
+    <li><a href="https://flexboxfroggy.com/" target="_blank" rel="noopener noreferrer">Flexbox Froggy</a> 與 <a href="https://cssgridgarden.com/" target="_blank" rel="noopener noreferrer">Grid Garden</a>：用遊戲練 Flex 和 Grid。</li>
+  </ul>
+
+  <h3>下一步</h3>
+  <p>學完這份，建議照這個順序往下走：先用 <code>fetch</code> 串自己用 Spring Boot 寫的 API，再學 ES module 與 Vite 打包，接著 TypeScript，最後才是 React 或 Vue。框架是在解決「頁面大了之後，狀態與重繪很難管」的問題，先把原生 DOM 和事件摸熟，學框架會快很多。</p>
+
+  <label class="done"><input type="checkbox" data-done="ch7"> 這章讀完了</label>
+</section>
+
+<p class="end">講義結束。</p>
+</main>
+</div>
+
+<div class="page" lang="en">
+
+<nav class="toc" aria-label="Table of contents">
+  <h2>Contents</h2>
+  <div class="progress" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="8" aria-valuenow="0"><i class="bar"></i></div>
+  <p class="progress-text"></p>
+  <ol>
+    <li data-ch="ch0"><a href="#en-ch0">0　Big picture</a></li>
+    <li data-ch="ch1"><a href="#en-ch1">1　HTML</a></li>
+    <li data-ch="ch2"><a href="#en-ch2">2　CSS</a></li>
+    <li data-ch="ch3"><a href="#en-ch3">3　JavaScript basics</a></li>
+    <li data-ch="ch4"><a href="#en-ch4">4　DOM and events</a></li>
+    <li data-ch="ch5"><a href="#en-ch5">5　Async and browser APIs</a></li>
+    <li data-ch="ch6"><a href="#en-ch6">6　Hands-on: the history site</a></li>
+    <li data-ch="ch7"><a href="#en-ch7">7　Cheat sheet and next steps</a></li>
+  </ol>
+</nav>
+
+<main class="sheet">
+
+<header class="cover">
+  <h1>HTML / CSS / JavaScript Handout</h1>
+  <p class="sub">For backend engineers: from "I can read it" to "I can change it"</p>
+  <dl class="meta">
+    <dt>Audience</dt><dd>Java backend developers who are new to the frontend and want to understand and modify their own static site</dd>
+    <dt>Time</dt><dd>About 3 hours, exercises included</dd>
+    <dt>Companion project</dt><dd>"Global History Database" (history-db). Chapter 6 walks through its source code</dd>
+  </dl>
+  <p><strong>How to use this handout</strong></p>
+  <ul>
+    <li>Text under a <mark>highlighter</mark> marks a key term.</li>
+    <li>Side notes on the right are Java comparisons or common pitfalls. On a phone they move below the paragraph.</li>
+    <li>The code in each "Try it" box is editable and the result updates on the right. If you break it, press "Reset".</li>
+    <li>Each chapter ends with a short quiz. Ticking "I finished this chapter" is remembered in this browser. Printing expands every answer automatically.</li>
+  </ul>
+</header>
+
+<!-- ============ Chapter 0 ============ -->
+<section class="chapter" id="en-ch0" data-ch="ch0">
+  <h2><span class="ch-no">Chapter 0</span>The big picture: how a browser turns files into a screen</h2>
+
+  <p>On the backend you are used to "a request comes in, the program handles it, a response goes out". The frontend lacks the server half: the browser takes the files and turns them into a screen <mark>by itself</mark>, then keeps running JavaScript on the user's machine. Roughly:</p>
+  <ol class="flow">
+    <li><b>1. Parse HTML</b>build the DOM tree</li>
+    <li><b>2. Apply CSS</b>work out each element's style</li>
+    <li><b>3. Layout</b>work out position and size</li>
+    <li><b>4. Paint</b>draw to the screen</li>
+  </ol>
+  <p>When JavaScript changes the DOM or a style, the browser repeats steps 3 and 4.</p>
+  <aside class="side">
+    <strong>Java comparison</strong>
+    Think of the browser as a runtime that executes JS, a role similar to the JVM. The difference is that JS runs on a single thread by default and handles waiting with an event loop (chapter 5).
+  </aside>
+
+  <h3>How the three languages divide the work</h3>
+  <table>
+    <tr><th></th><th>HTML</th><th>CSS</th><th>JavaScript</th></tr>
+    <tr><td>Responsible for</td><td>Content and structure</td><td>Appearance and layout</td><td>Behavior and interaction</td></tr>
+    <tr><td>In one sentence</td><td>What is on the page</td><td>What it looks like</td><td>What happens when you click</td></tr>
+    <tr><td>A programming language?</td><td>No: no conditions or loops</td><td>No: it is a rule sheet</td><td>Yes</td></tr>
+  </table>
+
+  <h3>How the three files connect</h3>
+  <pre class="code"><code>index.html       structure; the browser downloads this first
+css/style.css    appearance; pulled in by &lt;link&gt;
+js/app.js        behavior; pulled in by &lt;script&gt;</code></pre>
+  <pre class="code"><code>&lt;link rel="stylesheet" href="css/style.css"&gt;
+&lt;script defer src="js/app.js"&gt;&lt;/script&gt;</code></pre>
+  <aside class="side">
+    <strong>Why defer</strong>
+    Without <code>defer</code>, a script in <code>&lt;head&gt;</code> runs before the DOM exists, so <code>querySelector</code> returns <code>null</code>. <code>defer</code> makes the script wait until the HTML is parsed and then run in order.
+  </aside>
+
+  <label class="done"><input type="checkbox" data-done="ch0"> I finished this chapter</label>
+</section>
+
+<!-- ============ Chapter 1 ============ -->
+<section class="chapter" id="en-ch1" data-ch="ch1">
+  <h2><span class="ch-no">Chapter 1</span>HTML: the structure of a page</h2>
+
+  <p>HTML describes content with <mark>tags</mark>, and the browser parses it into a <mark>DOM tree</mark>. A minimal page looks like this:</p>
+  <pre class="code"><code>&lt;!doctype html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="utf-8"&gt;
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
+  &lt;title&gt;Page title&lt;/title&gt;
+  &lt;link rel="stylesheet" href="css/style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;Heading&lt;/h1&gt;
+  &lt;p&gt;A paragraph with a &lt;a href="https://developer.mozilla.org/en-US/"&gt;link&lt;/a&gt;.&lt;/p&gt;
+  &lt;script defer src="js/app.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+  <aside class="side">
+    <strong>Java comparison</strong>
+    What Thymeleaf or JSP eventually sends to the browser is this kind of text. On the frontend you simply write it directly.
+  </aside>
+
+  <h3>Common tags</h3>
+  <table>
+    <tr><th>Purpose</th><th>Tags</th></tr>
+    <tr><td>Text</td><td><code>h1</code> to <code>h6</code>, <code>p</code>, <code>strong</code>, <code>em</code>, <code>code</code></td></tr>
+    <tr><td>Lists</td><td><code>ul</code>, <code>ol</code>, <code>li</code></td></tr>
+    <tr><td>Links and images</td><td><code>a href</code>, <code>img src alt</code></td></tr>
+    <tr><td>Semantic layout</td><td><code>header</code>, <code>nav</code>, <code>main</code>, <code>section</code>, <code>article</code>, <code>aside</code>, <code>footer</code></td></tr>
+    <tr><td>Generic boxes</td><td><code>div</code> (block), <code>span</code> (inline)</td></tr>
+    <tr><td>Interaction</td><td><code>button</code>, <code>input</code>, <code>label</code>, <code>select</code>, <code>textarea</code>, <code>details</code></td></tr>
+    <tr><td>Tables</td><td><code>table</code>, <code>tr</code>, <code>th</code>, <code>td</code></td></tr>
+  </table>
+  <p><mark>Block elements</mark> (<code>div</code>, <code>p</code>, <code>h1</code>) take a whole line. <mark>Inline elements</mark> (<code>span</code>, <code>a</code>, <code>strong</code>) flow along with the text.</p>
+  <aside class="side">
+    <strong>Meaning beats looks</strong>
+    If you can use <code>&lt;button&gt;</code>, do not use <code>&lt;div onclick&gt;</code>. A button can take keyboard focus and respond to Enter out of the box, and screen readers recognize it.
+  </aside>
+
+  <h3>Attributes: id, class, data-*</h3>
+  <pre class="code"><code>&lt;article class="event major" id="tw-1895-cession" data-year="1895"&gt;</code></pre>
+  <ul>
+    <li><code>id</code>: <mark>unique</mark> on the page. Used to locate an element, and the target of a <code>#id</code> anchor in the URL.</li>
+    <li><code>class</code>: can be multiple and can repeat. Used for styling and for selecting elements.</li>
+    <li><code>data-*</code>: custom data. JS reads it with <code>el.dataset.year</code>.</li>
+    <li><code>aria-*</code>: state for assistive technology, for example <code>aria-pressed="true"</code>.</li>
+  </ul>
+  <aside class="side">
+    <strong>Watch out</strong>
+    A duplicate id does not raise an error, but <code>getElementById</code> only returns the first one, which is hard to debug.
+  </aside>
+
+  <h3>Forms</h3>
+  <p>Use <code>&lt;label&gt;</code> to tie the text to the input, so clicking the text focuses the input. Inside a form, <code>&lt;button&gt;</code> submits by default. If you do not want that, write <code>type="button"</code>.</p>
+
+  <div class="pg" data-title="Try it: change this page" data-height="230">
+<textarea spellcheck="false">
+<h1>My first page</h1>
+<p>Change this line into a short intro about yourself.</p>
+<ul>
+  <li>HTML handles structure</li>
+  <li>CSS handles appearance</li>
+  <li>JS handles behavior</li>
+</ul>
+<label>Nickname <input type="text" placeholder="Type here"></label>
+<button>Submit</button>
+</textarea>
+  </div>
+  <p>Try it: add another <code>&lt;li&gt;</code>, change <code>&lt;ul&gt;</code> into <code>&lt;ol&gt;</code>, then click the word "Nickname".</p>
+
+  <div class="quiz" data-answer="1" data-hint="Think about keyboard use and semantics." data-why="A button is focusable by default, responds to Enter and Space, and carries the right meaning.">
+    <p class="qt">Quick quiz</p>
+    <p class="q">Which element is the best choice for something that triggers an action when clicked?</p>
+    <button type="button">A. &lt;div&gt; with onclick</button>
+    <button type="button">B. &lt;button&gt;</button>
+    <button type="button">C. &lt;span&gt; with a color</button>
+    <button type="button">D. &lt;p&gt;</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+
+  <label class="done"><input type="checkbox" data-done="ch1"> I finished this chapter</label>
+</section>
+
+<!-- ============ Chapter 2 ============ -->
+<section class="chapter" id="en-ch2" data-ch="ch2">
+  <h2><span class="ch-no">Chapter 2</span>CSS: appearance and layout</h2>
+
+  <p>CSS is a sheet of rules. Each rule is made of a <mark>selector</mark> and <mark>declarations</mark>:</p>
+  <pre class="code"><code>.event {            /* selector: elements whose class contains event */
+  padding: 12px;    /* property: value; */
+  border: 1px solid #ccc;
+}</code></pre>
+  <p>There are three ways to include it: an external file (<code>&lt;link&gt;</code>, recommended), a <code>&lt;style&gt;</code> block, or <code>style="..."</code> on an element (only for quick debugging).</p>
+
+  <h3>Selectors</h3>
+  <table>
+    <tr><th>Syntax</th><th>Meaning</th></tr>
+    <tr><td><code>p</code></td><td>All p tags</td></tr>
+    <tr><td><code>.card</code></td><td>Class contains card</td></tr>
+    <tr><td><code>#top</code></td><td>id is top</td></tr>
+    <tr><td><code>.a .b</code></td><td>A .b at any depth inside .a (descendant)</td></tr>
+    <tr><td><code>.a &gt; .b</code></td><td>A .b that is a direct child of .a</td></tr>
+    <tr><td><code>.a, .b</code></td><td>Apply to both</td></tr>
+    <tr><td><code>a:hover</code>, <code>button:focus-visible</code></td><td>Pseudo-class: a particular state</td></tr>
+    <tr><td><code>input[type="search"]</code></td><td>Attribute selector</td></tr>
+    <tr><td><code>.event::before</code></td><td>Pseudo-element: generates content before the element</td></tr>
+    <tr><td><code>.event.major</code></td><td>Has both the event and major classes</td></tr>
+  </table>
+
+  <h3>The cascade and specificity: who wins</h3>
+  <p>When several rules hit the same property, the one with higher <mark>specificity</mark> wins: inline style beats <code>#id</code>, which beats <code>.class</code>, attribute and pseudo-class, which beats a tag. At equal level, <mark>the later rule wins</mark>. <code>!important</code> beats everything, but it makes things hard to maintain later, so avoid it.</p>
+  <aside class="side">
+    <strong>Java comparison</strong>
+    A bit like Spring configuration overrides: a value in application.yml gets overridden by an environment variable. The priority order decides which one takes effect.
+  </aside>
+
+  <div class="pg" data-title="Try it: specificity" data-height="200">
+<textarea spellcheck="false">
+<style>
+  p { color: gray; }
+  .hint { color: green; }
+  #special { color: crimson; }
+</style>
+<p>Tag rule only (gray)</p>
+<p class="hint">With a class (green)</p>
+<p class="hint" id="special">Plus an id (red)</p>
+<p class="hint" id="special" style="color: royalblue">Inline style (blue)</p>
+</textarea>
+  </div>
+  <p>Try it: delete the <code>#special</code> rule and see what color the third line becomes.</p>
+
+  <h3>The box model</h3>
+  <p>Every element is a box. From the inside out: <mark>content</mark>, <mark>padding</mark>, <mark>border</mark> and <mark>margin</mark>. By default <code>width</code> only counts the content, so adding padding and border makes the box wider, which is counterintuitive. That is why almost every project starts with:</p>
+  <pre class="code"><code>*, *::before, *::after { box-sizing: border-box; }</code></pre>
+  <p>With that, <code>width</code> includes padding and border.</p>
+
+  <div class="pg" data-title="Try it: the box model" data-height="210">
+<textarea spellcheck="false">
+<style>
+  .box { width: 200px; padding: 20px; border: 5px solid #1b2a41; margin: 12px 0; background: #dbeafe; }
+  .border-box { box-sizing: border-box; }
+</style>
+<div class="box">Default: 200 width + 40 padding + 10 border = 250px</div>
+<div class="box border-box">border-box: the total width is 200px</div>
+</textarea>
+  </div>
+
+  <h3>Common units</h3>
+  <ul>
+    <li><code>px</code>: fixed pixels. <code>rem</code>: relative to the root font size (16px by default), good for fonts and spacing.</li>
+    <li><code>%</code>: relative to the parent. <code>vw</code> / <code>vh</code>: relative to the viewport width and height. <code>dvh</code>: a viewport height that follows the mobile address bar as it shows and hides.</li>
+    <li><code>fr</code>: Grid only, a share of the remaining space.</li>
+  </ul>
+
+  <h3>Flexbox: one-dimensional layout</h3>
+  <p>Set a container to <code>display: flex</code> and its children line up along one direction. The two properties you will adjust most: <code>justify-content</code> controls the <mark>main axis</mark> (horizontal by default) and <code>align-items</code> controls the <mark>cross axis</mark> (vertical by default).</p>
+  <pre class="code"><code>.row {
+  display: flex;
+  gap: 12px;                       /* space between children */
+  justify-content: space-between;  /* distribute along the main axis */
+  align-items: center;             /* align on the cross axis */
+  flex-wrap: wrap;                 /* wrap when there is no room */
+}</code></pre>
+
+  <div class="pg" data-title="Try it: Flexbox" data-height="220">
+<textarea spellcheck="false">
+<style>
+  .row { display: flex; gap: 10px; justify-content: flex-start; align-items: flex-start; height: 130px; border: 2px dashed #888; padding: 8px; }
+  .item { padding: 10px 16px; background: #1b2a41; color: #fff; border-radius: 6px; }
+  .tall { padding-block: 30px; }
+</style>
+<div class="row">
+  <div class="item">A</div>
+  <div class="item tall">B</div>
+  <div class="item">C</div>
+</div>
+</textarea>
+  </div>
+  <p>Try it: change <code>justify-content</code> to <code>center</code> or <code>space-between</code>; change <code>align-items</code> to <code>center</code> or <code>stretch</code>; add <code>flex-direction: column</code>.</p>
+
+  <h3>Grid: two-dimensional layout</h3>
+  <p>Use Grid when you need to control rows and columns at the same time. The timeline of the history site is a Grid: one column for years on the left, then one column per country.</p>
+  <pre class="code"><code>.grid {
+  display: grid;
+  grid-template-columns: 96px repeat(2, minmax(0, 1fr));  /* year column + two country columns */
+  gap: 12px;
+}</code></pre>
+
+  <div class="pg" data-title="Try it: Grid auto columns" data-height="230">
+<textarea spellcheck="false">
+<style>
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+  .cell { padding: 14px; background: #dbeafe; border: 1px solid #1b2a41; border-radius: 6px; text-align: center; }
+</style>
+<div class="grid">
+  <div class="cell">1</div><div class="cell">2</div><div class="cell">3</div>
+  <div class="cell">4</div><div class="cell">5</div><div class="cell">6</div>
+  <div class="cell">7</div><div class="cell">8</div>
+</div>
+</textarea>
+  </div>
+  <p>This preview is narrow. <code>auto-fill</code> with <code>minmax</code> adjusts the number of columns without any media query. Try it: change <code>110px</code> to <code>60px</code>.</p>
+
+  <h3>position: positioning</h3>
+  <table>
+    <tr><th>Value</th><th>Behavior</th></tr>
+    <tr><td><code>static</code></td><td>Default; normal flow</td></tr>
+    <tr><td><code>relative</code></td><td>Offsets from its own normal position; also the reference point for an absolute child</td></tr>
+    <tr><td><code>absolute</code></td><td>Leaves the normal flow, relative to the nearest positioned ancestor</td></tr>
+    <tr><td><code>fixed</code></td><td>Relative to the viewport; does not move when scrolling</td></tr>
+    <tr><td><code>sticky</code></td><td>Normal until it reaches a threshold (such as <code>top: 0</code>), then sticks</td></tr>
+  </table>
+
+  <div class="pg" data-title="Try it: sticky" data-height="200">
+<textarea spellcheck="false">
+<style>
+  .scroll { height: 130px; overflow: auto; border: 2px solid #1b2a41; }
+  .head { position: sticky; top: 0; padding: 6px 10px; background: #1b2a41; color: #fff; }
+  .scroll p { margin: 0; padding: 10px; border-bottom: 1px solid #ccc; }
+</style>
+<div class="scroll">
+  <div class="head">I stay stuck at the top</div>
+  <p>Item 1</p><p>Item 2</p><p>Item 3</p><p>Item 4</p>
+  <p>Item 5</p><p>Item 6</p><p>Item 7</p><p>Item 8</p>
+</div>
+</textarea>
+  </div>
+  <p>Try it: delete <code>overflow: auto</code> from <code>.scroll</code> and sticky stops working.</p>
+  <aside class="side">
+    <strong>The key to the history site</strong>
+    Sticky only works inside a container that scrolls. That is why <code>.scroller</code> has a fixed height and <code>overflow: auto</code>: it lets the header and the year column stay fixed.
+  </aside>
+
+  <h3>CSS variables, dark mode and responsive design</h3>
+  <pre class="code"><code>:root { --bg: #fff; --ink: #111; }
+
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111; --ink: #eee; }
+}
+
+body { background: var(--bg); color: var(--ink); }
+
+/* Mobile first: write the phone layout, then add for bigger screens */
+.card { padding: 12px; }
+@media (min-width: 768px) { .card { padding: 24px; } }
+
+/* Font size scales with the viewport between 16px and 22px */
+h1 { font-size: clamp(16px, 2.5vw, 22px); }</code></pre>
+  <p>Put every color into a variable, so changing the theme or adding dark mode only means changing the variables. Do not forget the <code>&lt;meta name="viewport"&gt;</code> tag in your HTML: without it a phone shrinks the page into a desktop layout.</p>
+
+  <div class="quiz" data-answer="2" data-hint="Specificity: an id is stronger than a class." data-why="The specificity of #id is higher than .class, so the color comes from #b.">
+    <p class="qt">Quick quiz</p>
+    <p class="q">An element is matched by both <code>.a { color: red }</code> and <code>#b { color: blue }</code>. What color is it?</p>
+    <button type="button">A. Red, because classes are more common</button>
+    <button type="button">B. It depends on which one is written first</button>
+    <button type="button">C. Blue</button>
+    <button type="button">D. It raises an error</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <div class="quiz" data-answer="0" data-hint="The main axis is horizontal by default." data-why="justify-content controls the main axis, which is horizontal by default. align-items is the vertical one.">
+    <p class="qt">Quick quiz</p>
+    <p class="q">In a default (row) flex container, which property centers the children horizontally?</p>
+    <button type="button">A. justify-content: center</button>
+    <button type="button">B. align-items: center</button>
+    <button type="button">C. text-align: middle</button>
+    <button type="button">D. margin: center</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+
+  <label class="done"><input type="checkbox" data-done="ch2"> I finished this chapter</label>
+</section>
+
+<!-- ============ Chapter 3 ============ -->
+<section class="chapter" id="en-ch3" data-ch="ch3">
+  <h2><span class="ch-no">Chapter 3</span>JavaScript language basics</h2>
+
+  <p>JS is a dynamically typed, single-threaded, event-driven language. To try any line, press F12 to open the browser Console and paste it in.</p>
+
+  <h3>Variables and types</h3>
+  <pre class="code"><code>const name = "Clark";   // cannot be reassigned; use this by default
+let count = 0;          // use let only when the value changes
+count += 1;
+// do not use var
+
+typeof "a"        // "string"
+typeof 42         // "number" (integers and decimals are both number)
+typeof true       // "boolean"
+typeof undefined  // "undefined"
+typeof null       // "object" (a historical quirk)
+typeof [1, 2]     // "object" (use Array.isArray to detect arrays)</code></pre>
+  <aside class="side">
+    <strong>Java comparison</strong>
+    <code>const</code> is like <code>final</code>: you cannot reassign it, but the contents of an object can still change.
+  </aside>
+
+  <h3>Comparison and truthiness</h3>
+  <pre class="code"><code>0 == "0"     // true; it converts types behind your back, avoid it
+0 === "0"    // false; always use ===
+
+// falsy (treated as false): false, 0, "", null, undefined, NaN
+if ("") { /* never enters */ }</code></pre>
+  <p><code>??</code> only falls back to the default when the value is <code>null</code> or <code>undefined</code>; <code>||</code> also replaces <code>0</code> and the empty string. <code>?.</code> stops without an error when something in the chain is <code>null</code>.</p>
+  <pre class="code"><code>const era = event.era ?? "uncategorized";
+const first = country?.events?.[0]?.title;
+const msg = `${total} events in total`;   // template string, uses backticks</code></pre>
+
+  <h3>Functions</h3>
+  <pre class="code"><code>function add(a, b) { return a + b; }
+const add2 = (a, b) =&gt; a + b;                    // arrow function
+const greet = (name = "guest") =&gt; `Hello, ${name}`; // default parameter</code></pre>
+  <aside class="side">
+    <strong>Java comparison</strong>
+    An arrow function is a lambda. Functions are first-class values: you can pass them as arguments and return them. <code>map</code>, <code>filter</code> and event listeners below all rely on that.
+  </aside>
+
+  <h3>Objects and arrays</h3>
+  <pre class="code"><code>const e = { year: 1895, title: "Treaty of Shimonoseki", major: true };
+const { year, title } = e;            // destructuring
+const copy = { ...e, major: false };  // spread: copy and override
+
+const years = [1624, 1662, 1683];
+const [first, ...rest] = years;       // first = 1624, rest = [1662, 1683]</code></pre>
+
+  <h3>Array methods (compared with Stream)</h3>
+  <table>
+    <tr><th>JS</th><th>Java Stream</th><th>Purpose</th></tr>
+    <tr><td><code>map</code></td><td><code>map</code></td><td>One-to-one transform</td></tr>
+    <tr><td><code>filter</code></td><td><code>filter</code></td><td>Filter</td></tr>
+    <tr><td><code>find</code></td><td><code>filter().findFirst()</code></td><td>Find the first match</td></tr>
+    <tr><td><code>some</code> / <code>every</code></td><td><code>anyMatch</code> / <code>allMatch</code></td><td>Any / all</td></tr>
+    <tr><td><code>reduce</code></td><td><code>reduce</code></td><td>Fold into one value</td></tr>
+    <tr><td><code>sort</code></td><td><code>sorted</code></td><td>Sort; it <mark>mutates the original array</mark></td></tr>
+  </table>
+  <aside class="side">
+    <strong>Two classic traps</strong>
+    Without a comparator, <code>sort()</code> converts elements to strings and compares those, so <code>[10, 9, 1]</code> becomes <code>[1, 10, 9]</code>. It also changes the original array, so copy first with <code>[...arr]</code>. The demo below shows both.
+  </aside>
+
+  <div class="pg" data-title="Try it: array methods" data-height="330">
+<textarea spellcheck="false">
+<script>
+const events = [
+  { year: 1895, title: "Treaty of Shimonoseki", major: true },
+  { year: 1624, title: "Dutch base", major: true },
+  { year: 1947, title: "228 Incident", major: false },
+  { year: 1987, title: "Martial law lifted", major: true },
+];
+
+const sorted = [...events].sort((a, b) => a.year - b.year);
+console.log("By year:", sorted.map(e => e.year));
+
+const majors = events.filter(e => e.major).map(e => e.title);
+console.log("Major events:", majors);
+
+console.log("First after 1900:", sorted.find(e => e.year > 1900).title);
+
+console.log("[10, 9, 1].sort() =", [10, 9, 1].sort());
+console.log("With a comparator:", [10, 9, 1].sort((a, b) => a - b));
+</script>
+</textarea>
+  </div>
+
+  <h3>JSON</h3>
+  <pre class="code"><code>const text = JSON.stringify({ year: 1895 });  // '{"year":1895}'
+const obj  = JSON.parse(text);                // { year: 1895 }</code></pre>
+  <p>A JS object literal looks a lot like JSON, but JSON keys must use double quotes, and it allows no comments or trailing commas.</p>
+
+  <h3>Splitting files: this project does not use ES modules</h3>
+  <p>Modern JS can split files with <code>import</code> / <code>export</code>, but <code>&lt;script type="module"&gt;</code> is blocked by the browser when you open the page by double-clicking (<code>file://</code>). So the history site uses plain <code>&lt;script&gt;</code> tags, and each file is wrapped in an <mark>IIFE</mark> (immediately invoked function expression) to keep variables from leaking into the global scope:</p>
+  <pre class="code"><code>(function () {
+  "use strict";
+  const secret = 1;   // not visible outside
+})();</code></pre>
+
+  <div class="quiz" data-answer="1" data-hint="Without a comparator, sort converts to strings." data-why="The default compares strings, so '10' sorts before '9', giving [1, 10, 9].">
+    <p class="qt">Quick quiz</p>
+    <p class="q">What is the result of <code>[10, 9, 1].sort()</code>?</p>
+    <button type="button">A. [1, 9, 10]</button>
+    <button type="button">B. [1, 10, 9]</button>
+    <button type="button">C. [10, 9, 1]</button>
+    <button type="button">D. It throws an error</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <div class="quiz" data-answer="2" data-hint="?? only looks at null and undefined." data-why="0 is neither null nor undefined, so 0 ?? 5 is 0. 0 || 5 would give 5 because 0 is falsy.">
+    <p class="qt">Quick quiz</p>
+    <p class="q">What is the result of <code>0 ?? 5</code>?</p>
+    <button type="button">A. 5</button>
+    <button type="button">B. null</button>
+    <button type="button">C. 0</button>
+    <button type="button">D. undefined</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+
+  <label class="done"><input type="checkbox" data-done="ch3"> I finished this chapter</label>
+</section>
+
+<!-- ============ Chapter 4 ============ -->
+<section class="chapter" id="en-ch4" data-ch="ch4">
+  <h2><span class="ch-no">Chapter 4</span>DOM and events: making the page move</h2>
+
+  <p>The <mark>DOM</mark> is the object tree the browser builds from HTML. JS reads and writes it through the global <code>document</code>.</p>
+  <pre class="code"><code>const el = document.querySelector("#stats");        // first match, or null if none
+const cards = document.querySelectorAll(".event");  // all matches
+
+el.textContent = "55 events in total";  // write as plain text
+el.classList.add("active");             // add or remove a class
+el.dataset.year;                        // read data-year
+el.setAttribute("aria-pressed", "true");
+
+const li = document.createElement("li");
+li.textContent = "New item";
+document.querySelector("ul").append(li);</code></pre>
+  <aside class="side">
+    <strong>Security</strong>
+    <code>innerHTML</code> parses a string as HTML. If that string contains user input, you have an XSS hole. Prefer <code>textContent</code> and <code>createElement</code>.
+  </aside>
+
+  <h3>Events</h3>
+  <pre class="code"><code>button.addEventListener("click", (event) =&gt; {
+  console.log("clicked", event.target);
+});</code></pre>
+  <p>Common events: <code>click</code>, <code>input</code> (every change in a text box), <code>change</code>, <code>submit</code>, <code>keydown</code>, <code>scroll</code>, <code>hashchange</code>. <code>event.preventDefault()</code> blocks the default behavior, such as following a link or submitting a form.</p>
+
+  <h3>Event delegation</h3>
+  <p>Do not attach a listener to every button. Attach one to the <mark>parent</mark> and use <code>event.target.closest(selector)</code> to find the element that was actually clicked. The benefit is that elements added later need no new listener. The event title links in the history site work this way:</p>
+  <pre class="code"><code>grid.addEventListener("click", (ev) =&gt; {
+  const a = ev.target.closest("a.anchor");
+  if (!a) return;           // clicked somewhere else, ignore
+  ev.preventDefault();
+  // ...
+});</code></pre>
+
+  <h3>State, then redraw</h3>
+  <p>The easiest style to maintain is: keep data in a <code>state</code> object, and whenever it changes call <code>render()</code> to redraw everything, instead of patching the page a bit here and a bit there. This is the core idea of frameworks such as React, which just make the redrawing more efficient.</p>
+
+  <div class="pg" data-title="Try it: a to-do list" data-height="330">
+<textarea spellcheck="false">
+<input id="in" placeholder="Add a to-do"> <button id="add">Add</button>
+<ul id="list"></ul>
+<script>
+const state = { items: ["Read HTML", "Read CSS"] };
+const list = document.querySelector("#list");
+
+function render() {
+  list.replaceChildren(...state.items.map((text, i) => {
+    const li = document.createElement("li");
+    li.textContent = text + " ";
+    const del = document.createElement("button");
+    del.textContent = "Delete";
+    del.dataset.index = i;
+    li.append(del);
+    return li;
+  }));
+}
+
+document.querySelector("#add").addEventListener("click", () => {
+  const input = document.querySelector("#in");
+  if (!input.value.trim()) return;
+  state.items.push(input.value.trim());
+  input.value = "";
+  render();
+});
+
+// Event delegation: attach once, on the ul
+list.addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  state.items.splice(Number(btn.dataset.index), 1);
+  render();
+});
+
+render();
+</script>
+</textarea>
+  </div>
+  <p>Try it: change the <code>li.textContent</code> line to <code>li.innerHTML = text + " "</code>, then add a to-do whose text is <code>&lt;b&gt;bold&lt;/b&gt;</code> and look at the difference. That is how XSS works.</p>
+
+  <div class="quiz" data-answer="0" data-hint="Think about elements that are added later." data-why="The listener is attached once on the parent, and children added later are covered too, so there is no need to rebind.">
+    <p class="qt">Quick quiz</p>
+    <p class="q">Why is event delegation a good fit for dynamically created buttons?</p>
+    <button type="button">A. Buttons added later need no new listener</button>
+    <button type="button">B. Because click events can only be attached to a ul</button>
+    <button type="button">C. Because it means you do not have to write JS</button>
+    <button type="button">D. Because it prevents XSS</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+
+  <label class="done"><input type="checkbox" data-done="ch4"> I finished this chapter</label>
+</section>
+
+<!-- ============ Chapter 5 ============ -->
+<section class="chapter" id="en-ch5" data-ch="ch5">
+  <h2><span class="ch-no">Chapter 5</span>Async and browser APIs</h2>
+
+  <p>JS runs on a single thread. When it hits something that has to wait, such as a network request or a timer, it hands the work to the browser, and the <mark>callback</mark> is queued for later. It only runs after the current code finishes. So the screen does not freeze while waiting, but you have to pay attention to "what runs first".</p>
+  <aside class="side">
+    <strong>Java comparison</strong>
+    There are no multithreading or lock problems, but there are ordering problems. A <code>Promise</code> is similar to <code>CompletableFuture</code>, and <code>fetch</code> is similar to <code>HttpClient</code>.
+  </aside>
+
+  <div class="pg" data-title="Try it: execution order" data-height="200">
+<textarea spellcheck="false">
+<script>
+console.log("start");
+setTimeout(() => console.log("setTimeout 0 ms"), 0);
+Promise.resolve().then(() => console.log("Promise.then"));
+console.log("sync code finished");
+</script>
+</textarea>
+  </div>
+  <p>The order is: all synchronous code first, then <mark>Promise callbacks</mark> (microtasks), and <code>setTimeout</code> last (even 0 ms has to queue).</p>
+
+  <h3>Promise and async / await</h3>
+  <pre class="code"><code>async function loadJson(url) {
+  const res = await fetch(url);                       // wait for the network without freezing the page
+  if (!res.ok) throw new Error("HTTP " + res.status); // fetch does not throw on 404 by itself
+  return res.json();                                  // also a Promise
+}
+
+async function main() {
+  try {
+    const data = await loadJson("/data/taiwan.json");
+    console.log(data.events.length);
+  } catch (err) {
+    console.error("Load failed", err);
+  }
+}
+main();</code></pre>
+  <aside class="side">
+    <strong>Watch out</strong>
+    <code>await</code> can only be used inside an <code>async</code> function (except at the top level of an ES module). <code>fetch</code> does not throw on 404 or 500, so check <code>res.ok</code> yourself.
+  </aside>
+
+  <div class="pg" data-title="Try it: a fake API" data-height="230">
+<textarea spellcheck="false">
+<script>
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fakeApi() {
+  console.log("Sending request…");
+  await wait(800);
+  return { ok: true, items: 3 };
+}
+
+async function main() {
+  const t0 = performance.now();
+  const result = await fakeApi();
+  console.log("Response received", result, Math.round(performance.now() - t0) + " ms");
+}
+
+main();
+console.log("Code after main() is not awaited");
+</script>
+</textarea>
+  </div>
+
+  <h3>Something every backend engineer runs into: CORS and file://</h3>
+  <p><mark>CORS</mark>: when a page sends a request to a different origin (different domain or port), the browser checks whether the response carries an <code>Access-Control-Allow-Origin</code> header, and blocks it if not. It is the browser that blocks it; curl and Postman are not affected. In Spring Boot, allow it with <code>@CrossOrigin</code> or a CORS configuration.</p>
+  <p><mark>file://</mark>: when you open an HTML file by double-clicking, the browser blocks <code>fetch</code> from reading local files. That is why the history site puts its data in a <code>.js</code> file loaded with <code>&lt;script&gt;</code> instead of using JSON with <code>fetch</code>. To switch to JSON, first start a local server, for example with <code>python3 -m http.server</code>.</p>
+
+  <h3>localStorage</h3>
+  <pre class="code"><code>try {
+  localStorage.setItem("theme", "dark");
+  const theme = localStorage.getItem("theme");   // null if missing
+} catch (e) {
+  // private mode or disabled storage throws; the page must still work
+}</code></pre>
+  <p>It only stores strings; run objects through <code>JSON.stringify</code> first. It persists within the same site and the same browser, but it is not secure storage, so never put passwords or tokens in it.</p>
+
+  <div class="quiz" data-answer="3" data-hint="Synchronous code always finishes first." data-why="The synchronous log(&quot;S&quot;) comes first; then the Promise's P; setTimeout's T comes last.">
+    <p class="qt">Quick quiz</p>
+    <p class="q">Which of the three outputs is printed first?<br><code>setTimeout(() =&gt; log("T"), 0); Promise.resolve().then(() =&gt; log("P")); log("S");</code></p>
+    <button type="button">A. T</button>
+    <button type="button">B. P</button>
+    <button type="button">C. All three at once</button>
+    <button type="button">D. S</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+
+  <label class="done"><input type="checkbox" data-done="ch5"> I finished this chapter</label>
+</section>
+
+<!-- ============ Chapter 6 ============ -->
+<section class="chapter" id="en-ch6" data-ch="ch6">
+  <h2><span class="ch-no">Chapter 6</span>Hands-on: taking apart the "Global History Database"</h2>
+
+  <p>Everything you have learned appears in the history site. The data flow has only three steps:</p>
+  <ol class="flow">
+    <li><b>registry.js</b>creates the global <code>HistoryDB</code> registry</li>
+    <li><b>data/taiwan.js</b>hands over its data by calling <code>register()</code></li>
+    <li><b>app.js</b>reads the registry and renders the timeline</li>
+  </ol>
+
+  <h3>Code reading guide</h3>
+  <table>
+    <tr><th>Where</th><th>Chapter</th><th>What to look at</th></tr>
+    <tr><td>The scripts in <code>index.html</code></td><td>0, 1</td><td><code>defer</code> guarantees the load order: registry, data, app</td></tr>
+    <tr><td><code>js/registry.js</code></td><td>3</td><td>IIFE and a global object</td></tr>
+    <tr><td><code>data/taiwan.js</code></td><td>3</td><td>Object and array literals; data separated from code</td></tr>
+    <tr><td><code>h()</code> in <code>app.js</code></td><td>3, 4</td><td>Rest parameters and <code>createElement</code>; building DOM without innerHTML</td></tr>
+    <tr><td><code>visibleEvents</code> in <code>app.js</code></td><td>3</td><td><code>filter</code> plus <code>sort</code>, compared with Stream</td></tr>
+    <tr><td><code>render()</code> in <code>app.js</code></td><td>4</td><td>Redraw everything when state changes; grouping by year with <code>Map</code></td></tr>
+    <tr><td>The grid click handler in <code>app.js</code></td><td>4</td><td>Event delegation and <code>closest</code></td></tr>
+    <tr><td>The scroll listener in <code>app.js</code></td><td>5</td><td>Throttling with <code>requestAnimationFrame</code></td></tr>
+    <tr><td><code>.grid</code> and <code>.year</code> in <code>style.css</code></td><td>2</td><td>Grid plus sticky</td></tr>
+    <tr><td><code>:root</code> in <code>style.css</code></td><td>2</td><td>CSS variables and dark mode</td></tr>
+  </table>
+
+  <h3>A close reading</h3>
+  <pre class="code"><code>function visibleEvents(country) {
+  const q = state.query.trim().toLowerCase();
+  return country.events
+    .filter((e) =&gt; {                       // 1. filter: major only / keyword
+      if (state.majorOnly &amp;&amp; !e.major) return false;
+      if (q &amp;&amp; !(e.title + e.summary).toLowerCase().includes(q)) return false;
+      return true;
+    })
+    .sort((a, b) =&gt; a.year - b.year);      // 2. sort by year</code></pre>
+  <aside class="side">
+    <strong>Java comparison</strong>
+    Roughly <code>events.stream().filter(...).sorted(Comparator.comparingInt(Event::year)).toList()</code>. The <code>sort</code> here does not disturb the original data, because <code>filter</code> already produced a new array.
+  </aside>
+
+  <h3>Exercises</h3>
+  <p>The site's content is in Traditional Chinese, so the data and button text in the exercise code below stay in Chinese. Only the explanations are in English.</p>
+  <p class="ex">Exercise 1: add an event</p>
+  <p>In <code>data/taiwan.js</code>, add "1661: Koxinga lands at Luermen" with era <code>zheng</code>. Save, refresh, and see where it appears. Then run <code>node scripts/validate.mjs</code>.</p>
+  <details class="answer"><summary>Show hint and answer</summary>
+    <p>1661 comes before 1662, so insert it after 1652 and before 1662. The <code>id</code> must be unique across the whole site, for example <code>tw-1661-zheng-landing</code>. The era is <code>zheng</code>, but the <code>eras</code> list says that era starts in 1662. Validation does not complain; the era label simply appears with the first event of that era.</p>
+<pre class="code"><code>{
+  id: "tw-1661-zheng-landing", year: 1661, era: "zheng",
+  title: "鄭成功自鹿耳門登陸",
+  summary: "率軍登陸台南，開始圍攻荷蘭人的熱蘭遮城。",
+  wiki: "鄭成功",
+},</code></pre>
+  </details>
+
+  <p class="ex">Exercise 2: change the theme color</p>
+  <p>Change <code>--brass</code> in <code>style.css</code>, then change <code>color</code> in <code>data/taiwan.js</code>, and see what changes color.</p>
+  <details class="answer"><summary>Show hint and answer</summary>
+    <p><code>--brass</code> controls the ruler ticks and the year text of major years. <code>color</code> controls the line, dots, header underline and era labels in the country column. One design variable used in many places: that is the benefit of CSS variables.</p>
+  </details>
+
+  <p class="ex">Exercise 3: add an "approximate years only" button</p>
+  <p>Following the "major events only" button, add a button that shows only events whose <code>precision</code> is <code>approx</code>.</p>
+  <details class="answer"><summary>Show hint and answer</summary>
+    <p>Hint: three places change. Add the button in <code>index.html</code>, add a flag to <code>state</code>, add one filter line to <code>visibleEvents</code>, and then bind a click handler the same way <code>majorBtn</code> does.</p>
+<pre class="code"><code>&lt;!-- index.html: next to majorBtn --&gt;
+&lt;button type="button" class="pill" id="approxBtn" aria-pressed="false"&gt;只看約略年份&lt;/button&gt;
+
+// app.js: add a field to state
+approxOnly: false,
+
+// add one line inside the filter in visibleEvents
+if (state.approxOnly &amp;&amp; e.precision !== "approx") return false;
+
+// bind the event (same pattern as majorBtn)
+const approxBtn = $("#approxBtn");
+approxBtn.addEventListener("click", () =&gt; {
+  state.approxOnly = !state.approxOnly;
+  approxBtn.setAttribute("aria-pressed", String(state.approxOnly));
+  render(true);
+});</code></pre>
+  </details>
+
+  <p class="ex">Exercise 4: add a second country</p>
+  <p>Create <code>data/japan.js</code> with three events (1603 Edo shogunate founded, 1868 Meiji Restoration, 1945 surrender) and load it in <code>index.html</code>. Watch a new column appear in the header and the country filter buttons show up at the top.</p>
+  <details class="answer"><summary>Show hint and answer</summary>
+<pre class="code"><code>// data/japan.js
+HistoryDB.register({
+  id: "japan", name: "日本", nameEn: "Japan", color: "#b4492f",
+  eras: [
+    { id: "edo",    name: "江戶時代", start: 1603, end: 1868 },
+    { id: "modern", name: "近現代",   start: 1868, end: null },
+  ],
+  events: [
+    { id: "jp-1603-edo-shogunate", year: 1603, era: "edo", major: true,
+      title: "江戶幕府成立", summary: "德川家康就任征夷大將軍，開啟約兩百六十年的統治。", wiki: "江戶幕府" },
+    { id: "jp-1868-meiji", year: 1868, era: "modern", major: true,
+      title: "明治維新", summary: "幕府結束，政權交還天皇，日本走向近代化。", wiki: "明治維新" },
+    { id: "jp-1945-surrender", year: 1945, era: "modern",
+      title: "戰敗投降", summary: "第二次世界大戰結束，日本進入戰後時期。", wiki: "日本投降" },
+  ],
+});
+
+&lt;!-- index.html: below the taiwan.js line --&gt;
+&lt;script defer src="data/japan.js"&gt;&lt;/script&gt;</code></pre>
+    <p>Taiwan also has events in 1603 and 1945, so those years line up on the same row. That is the point of putting years on the vertical axis.</p>
+  </details>
+
+  <label class="done"><input type="checkbox" data-done="ch6"> I finished this chapter</label>
+</section>
+
+<!-- ============ Chapter 7 ============ -->
+<section class="chapter" id="en-ch7" data-ch="ch7">
+  <h2><span class="ch-no">Chapter 7</span>Cheat sheet and next steps</h2>
+
+  <h3>Debugging: the F12 developer tools</h3>
+  <table>
+    <tr><th>Tab</th><th>Use</th></tr>
+    <tr><td>Elements</td><td>Inspect the DOM; edit HTML and CSS live to preview. Computed shows which rule won</td></tr>
+    <tr><td>Console</td><td>Read error messages, run JS directly, <code>console.log</code></td></tr>
+    <tr><td>Network</td><td>See each request's status code, headers and response; this is where you see CORS problems</td></tr>
+    <tr><td>Sources</td><td>Set breakpoints and step through, or write <code>debugger</code> in your code</td></tr>
+  </table>
+
+  <h3>Common mistakes</h3>
+  <ul>
+    <li>Console shows <code>Cannot read properties of null</code>: <code>querySelector</code> found nothing. Check the selector, and make sure the script has <code>defer</code>.</li>
+    <li>CSS change has no effect: hard refresh with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>, then check Computed in Elements to see whether another rule overrides it.</li>
+    <li><code>sort()</code> gives odd order: numbers need a comparator.</li>
+    <li>Comparison gives odd results: change <code>==</code> to <code>===</code>.</li>
+    <li>sticky does nothing: check whether an ancestor has <code>overflow</code> and whether you set <code>top</code>.</li>
+    <li><code>fetch</code> fails locally: open the page through a local server, not <code>file://</code>.</li>
+  </ul>
+
+  <h3>Quick reference</h3>
+  <table>
+    <tr><th>Flexbox property</th><th>Description</th></tr>
+    <tr><td><code>flex-direction</code></td><td>Main axis direction: <code>row</code>, <code>column</code></td></tr>
+    <tr><td><code>justify-content</code></td><td>Main axis distribution: <code>flex-start</code>, <code>center</code>, <code>space-between</code></td></tr>
+    <tr><td><code>align-items</code></td><td>Cross axis alignment: <code>stretch</code>, <code>center</code>, <code>flex-start</code></td></tr>
+    <tr><td><code>gap</code>, <code>flex-wrap</code></td><td>Spacing, and whether to wrap</td></tr>
+    <tr><td><code>flex: 1</code> (on a child)</td><td>Share the remaining space equally</td></tr>
+  </table>
+  <table>
+    <tr><th>DOM</th><th>Description</th></tr>
+    <tr><td><code>querySelector(All)</code></td><td>Find elements with a CSS selector</td></tr>
+    <tr><td><code>createElement</code>, <code>append</code>, <code>replaceChildren</code></td><td>Create, add, and replace children in one go</td></tr>
+    <tr><td><code>textContent</code></td><td>Set text safely</td></tr>
+    <tr><td><code>classList.add / remove / toggle</code></td><td>Work with classes</td></tr>
+    <tr><td><code>dataset</code>, <code>setAttribute</code></td><td>Work with attributes</td></tr>
+    <tr><td><code>addEventListener</code></td><td>Attach an event</td></tr>
+  </table>
+
+  <h3>Further resources</h3>
+  <ul>
+    <li><a href="https://developer.mozilla.org/en-US/" target="_blank" rel="noopener noreferrer">MDN Web Docs</a>: the most complete reference.</li>
+    <li><a href="https://javascript.info/" target="_blank" rel="noopener noreferrer">javascript.info</a>: a step-by-step JS tutorial.</li>
+    <li><a href="https://web.dev/learn/css" target="_blank" rel="noopener noreferrer">web.dev Learn CSS</a>: a structured CSS course.</li>
+    <li><a href="https://flexboxfroggy.com/" target="_blank" rel="noopener noreferrer">Flexbox Froggy</a> and <a href="https://cssgridgarden.com/" target="_blank" rel="noopener noreferrer">Grid Garden</a>: practice Flex and Grid with games.</li>
+  </ul>
+
+  <h3>Next steps</h3>
+  <p>After this handout, a good order is: first use <code>fetch</code> to call your own Spring Boot API, then learn ES modules and bundling with Vite, then TypeScript, and only then React or Vue. Frameworks solve the problem that "state and redrawing become hard to manage once the page gets big". If you are comfortable with the native DOM and events first, frameworks are much quicker to learn.</p>
+
+  <label class="done"><input type="checkbox" data-done="ch7"> I finished this chapter</label>
+</section>
+
+<p class="end">End of handout.</p>
+</main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const root = document.documentElement;
+  const LANG_KEY = "html-css-js-handout:lang";
+  const DONE_KEY = "html-css-js-handout:done";
+
+  /* ───── 介面文字（講義內容本身已分成中、英兩份） ───── */
+  const STR = {
+    zh: {
+      title: "HTML / CSS / JavaScript 入門講義",
+      copy: "複製", copied: "已複製", selected: "已選取，請按 Ctrl+C",
+      reset: "重設", tryIt: "試試看",
+      hint: "Tab 會縮排；要離開輸入框，先按 Esc 再按 Tab。",
+      preview: "：預覽結果", editable: "：程式碼，可編輯",
+      ok: "答對了。", no: "再想想看。",
+      progress: (n, t) => "已完成 " + n + " / " + t + " 章",
+    },
+    en: {
+      title: "HTML / CSS / JavaScript Handout",
+      copy: "Copy", copied: "Copied", selected: "Selected. Press Ctrl+C",
+      reset: "Reset", tryIt: "Try it",
+      hint: "Tab indents. To leave the editor, press Esc, then Tab.",
+      preview: ": preview", editable: ": code (editable)",
+      ok: "Correct. ", no: "Not quite. ",
+      progress: (n, t) => "Completed " + n + " of " + t + " chapters",
+    },
+  };
+  const langOf = (el) => (el.closest(".page") || root).lang === "en" ? "en" : "zh";
+
+  /* ───── 複製按鈕 ───── */
+  $$("pre.code").forEach((pre) => {
+    const s = STR[langOf(pre)];
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "copy";
+    b.textContent = s.copy;
+    b.addEventListener("click", async () => {
+      const code = $("code", pre);
+      try {
+        await navigator.clipboard.writeText(code.textContent);
+        b.textContent = s.copied;
+      } catch (e) {
+        const range = document.createRange();
+        range.selectNodeContents(code);
+        const sel = getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        b.textContent = s.selected;
+      }
+      setTimeout(() => (b.textContent = s.copy), 1800);
+    });
+    pre.append(b);
+  });
+
+  /* ───── 試試看：可編輯的即時預覽 ───── */
+  const BASE =
+    '<style>html{background:#fff}body{font:15px/1.6 system-ui,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;margin:12px;color:#111}</style>';
+  const SHIM = [
+    "<script>(function(){",
+    "var pre;",
+    "function ensure(){if(!pre){pre=document.createElement('pre');",
+    "pre.style.cssText='margin:12px 0 0;padding:8px 10px;background:#0f172a;color:#e2e8f0;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;border-radius:6px';",
+    "document.body.appendChild(pre);}return pre;}",
+    "function fmt(v){if(typeof v==='string')return v;try{return JSON.stringify(v);}catch(e){return String(v);}}",
+    "['log','warn','error'].forEach(function(k){var o=console[k];console[k]=function(){",
+    "ensure().textContent+=[].map.call(arguments,fmt).join(' ')+'\\n';o.apply(console,arguments);};});",
+    "window.addEventListener('error',function(e){ensure().textContent+='Error: '+e.message+'\\n';});",
+    "})();<\/script>",
+  ].join("");
+  const srcdoc = (code, lang) =>
+    '<!doctype html><html lang="' + (lang === "en" ? "en" : "zh-Hant") + '"><head><meta charset="utf-8">' +
+    BASE + SHIM + "</head><body>" + code + "</body></html>";
+
+  $$(".pg").forEach((pg) => {
+    const lang = langOf(pg);
+    const s = STR[lang];
+    const name = pg.dataset.title || s.tryIt;
+    const ta = $("textarea", pg);
+    const initial = ta.value.replace(/^\n/, "");
+    ta.value = initial;
+    pg.style.setProperty("--h", (pg.dataset.height || 220) + "px");
+
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.textContent = s.reset;
+    const head = document.createElement("div");
+    head.className = "pg-head";
+    const title = document.createElement("strong");
+    title.textContent = name;
+    head.append(title, reset);
+
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-scripts");
+    frame.title = name + s.preview;
+
+    const body = document.createElement("div");
+    body.className = "pg-body";
+    ta.setAttribute("aria-label", name + s.editable);
+    body.append(ta, frame);
+
+    const hint = document.createElement("p");
+    hint.className = "pg-hint";
+    hint.textContent = s.hint;
+
+    pg.replaceChildren(head, body, hint);
+
+    // 隱藏的語言版本先不載入預覽，切換過去時才執行
+    const run = () => { pg.__ran = true; frame.srcdoc = srcdoc(ta.value, lang); };
+    pg.__run = run;
+    let timer;
+    const later = () => { clearTimeout(timer); timer = setTimeout(run, 350); };
+    ta.addEventListener("input", later);
+    reset.addEventListener("click", () => { ta.value = initial; run(); });
+
+    let trap = true;
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { trap = false; return; }
+      if (e.key === "Tab" && trap && !e.shiftKey) {
+        e.preventDefault();
+        ta.setRangeText("  ", ta.selectionStart, ta.selectionEnd, "end");
+        later();
+      }
+    });
+    ta.addEventListener("blur", () => { trap = true; });
+  });
+
+  /* ───── 小測驗 ───── */
+  $$(".quiz").forEach((q) => {
+    const s = STR[langOf(q)];
+    const answer = Number(q.dataset.answer);
+    const buttons = $$("button", q);
+    const fb = $(".fb", q);
+    buttons.forEach((btn, i) => {
+      btn.addEventListener("click", () => {
+        buttons.forEach((b) => b.classList.remove("right", "wrong"));
+        if (i === answer) {
+          btn.classList.add("right");
+          fb.textContent = s.ok + (q.dataset.why || "");
+          fb.dataset.state = "ok";
+        } else {
+          btn.classList.add("wrong");
+          fb.textContent = s.no + (q.dataset.hint || "");
+          fb.dataset.state = "no";
+        }
+      });
+    });
+  });
+
+  /* ───── 完成進度（兩個語言版本共用） ───── */
+  const chapters = $$("section.chapter");
+  const totalChapters = new Set(chapters.map((c) => c.dataset.ch)).size;
+  let done = new Set();
+  try { done = new Set(JSON.parse(localStorage.getItem(DONE_KEY) || "[]")); } catch (e) { /* 忽略 */ }
+
+  function refreshProgress() {
+    $$("input[data-done]").forEach((cb) => { cb.checked = done.has(cb.dataset.done); });
+    $$(".toc li").forEach((li) => li.classList.toggle("done", done.has(li.dataset.ch)));
+    const n = done.size;
+    $$(".page").forEach((pane) => {
+      $(".bar", pane).style.width = (n / totalChapters) * 100 + "%";
+      $(".progress", pane).setAttribute("aria-valuenow", String(n));
+      $(".progress-text", pane).textContent = STR[langOf(pane)].progress(n, totalChapters);
+    });
+  }
+  $$("input[data-done]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) done.add(cb.dataset.done); else done.delete(cb.dataset.done);
+      try { localStorage.setItem(DONE_KEY, JSON.stringify([...done])); } catch (e) { /* 忽略 */ }
+      refreshProgress();
+    });
+  });
+  refreshProgress();
+
+  /* ───── 目錄：目前章節 ───── */
+  let currentCh = null;
+  if ("IntersectionObserver" in window) {
+    const spy = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (!en.isIntersecting) return;
+        const pane = en.target.closest(".page");
+        currentCh = en.target.dataset.ch;
+        $$(".toc li", pane).forEach((li) => {
+          const a = $("a", li);
+          if (li.dataset.ch === currentCh) a.setAttribute("aria-current", "location");
+          else a.removeAttribute("aria-current");
+        });
+      });
+    }, { rootMargin: "-15% 0px -75% 0px" });
+    chapters.forEach((c) => spy.observe(c));
+  }
+
+  /* ───── 語言切換 ───── */
+  function setLang(lang, keepPosition) {
+    const prev = root.dataset.lang;
+    root.dataset.lang = lang;
+    root.lang = lang === "en" ? "en" : "zh-Hant";
+    document.title = STR[lang].title;
+    $$("[data-set-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setLang === lang)));
+    try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* 忽略 */ }
+
+    const pane = $('.page[lang="' + (lang === "en" ? "en" : "zh-Hant") + '"]');
+    $$(".pg", pane).forEach((p) => { if (!p.__ran && p.__run) p.__run(); });
+
+    if (keepPosition && prev && prev !== lang) {
+      const target = currentCh && window.scrollY > 120
+        ? document.getElementById((lang === "en" ? "en-" : "") + currentCh)
+        : null;
+      if (target) target.scrollIntoView({ block: "start", behavior: "instant" });
+      else window.scrollTo({ top: 0, behavior: "instant" });
+    }
+  }
+  $$("[data-set-lang]").forEach((b) => {
+    b.addEventListener("click", () => setLang(b.dataset.setLang, true));
+  });
+  setLang(root.dataset.lang === "en" ? "en" : "zh", false);
+
+  /* ───── 列印前展開所有答案 ───── */
+  window.addEventListener("beforeprint", () => { $$("details").forEach((d) => (d.open = true)); });
+})();
+</script>
+</body>
+</html>
