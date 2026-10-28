@@ -1,0 +1,1373 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vue 3 / Vite / Pinia / Nuxt 3 實戰講義</title>
+<meta name="description" content="給 3～4 年經驗軟體工程師的 Vue 3 講義：Vite、Composition API、響應式原理、Pinia、Nuxt 3（SSR、Nitro、useFetch），附小測驗、練習題與面試題。">
+<style>
+:root {
+  --desk: #e4ebe8;
+  --sheet: #ffffff;
+  --ink: #1c2b2a;
+  --muted: #55696a;
+  --rule: #d2dedb;
+  --accent: #1f9d6b;
+  --hl: #fff1a6;
+  --code-bg: #f0f5f3;
+  --link: #1f5fbf;
+  --ok: #1d7a46;
+  --bad: #c0252f;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono CJK TC", monospace;
+  --sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", system-ui, sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --desk: #0c1413; --sheet: #151f1e; --ink: #e3eeeb; --muted: #92a8a6; --rule: #2a3a38;
+    --accent: #42d392; --hl: #6b5a10; --code-bg: #0e1716; --link: #7db2ff; --ok: #5fd18d; --bad: #ff7b84;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--desk); color: var(--ink); font-family: var(--sans); font-size: 16.5px; line-height: 1.85; }
+a { color: var(--link); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+
+.page { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 24px; max-width: 1340px; margin: 0 auto; padding: 24px; }
+
+/* 目錄 */
+.toc { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow: auto; font-size: 14.5px; line-height: 1.5; }
+.toc h2 { margin: 0 0 8px; font-size: 15px; }
+.progress { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .3s; }
+.progress-text { margin: 4px 0 12px; font-size: 12.5px; color: var(--muted); }
+.toc ol { margin: 0; padding: 0; list-style: none; }
+.toc a { display: block; padding: 6px 10px; border-left: 3px solid transparent; color: var(--ink); text-decoration: none; }
+.toc a:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.toc a[aria-current] { border-left-color: var(--accent); font-weight: 700; background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.toc li.done a::after { content: " ✓"; color: var(--ok); }
+
+/* 紙張 */
+.sheet { position: relative; background: var(--sheet); border-radius: 6px; box-shadow: 0 2px 14px rgba(10, 30, 25, .14); padding: 44px 48px 56px 76px; }
+.sheet::before { content: ""; position: absolute; top: 0; bottom: 0; left: 48px; width: 2px; background: var(--accent); opacity: .4; }
+
+.cover { padding-bottom: 24px; margin-bottom: 36px; border-bottom: 4px double var(--ink); }
+.cover h1 { margin: 0 0 6px; font-size: clamp(28px, 5vw, 42px); line-height: 1.25; letter-spacing: .02em; }
+.cover .sub { margin: 0 0 20px; font-size: 19px; color: var(--muted); }
+.meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 18px; font-size: 15px; line-height: 1.6; }
+.meta dt { font-weight: 700; color: var(--accent); }
+.meta dd { margin: 0; }
+
+mark { background: linear-gradient(transparent 55%, var(--hl) 55%); color: inherit; padding: 0 1px; }
+
+/* 章 */
+.chapter { display: grid; grid-template-columns: minmax(0, 1fr) 230px; column-gap: 32px; margin-bottom: 64px; }
+.chapter > * { grid-column: 1; min-width: 0; }
+.chapter > h2 { grid-column: 1 / -1; }
+.chapter > .side { grid-column: 2; }
+.chapter p, .chapter ul, .chapter ol { margin: 0 0 14px; }
+.chapter ul, .chapter ol { padding-left: 1.4em; }
+.chapter li { margin: 2px 0; }
+
+.chapter > h2 { margin: 0 0 18px; padding-bottom: 8px; border-bottom: 3px solid var(--ink); font-size: 29px; line-height: 1.35; }
+.ch-no { display: block; margin-bottom: 2px; color: var(--accent); font-size: 15px; font-weight: 700; letter-spacing: .08em; }
+.chapter h3 { margin: 26px 0 10px; font-size: 19px; line-height: 1.5; }
+.chapter h3::before { content: ""; display: inline-block; width: 6px; height: 1em; margin-right: 9px; background: var(--accent); vertical-align: -.14em; }
+
+/* 旁註 */
+.side { align-self: start; margin: 2px 0 14px; padding: 2px 0 2px 12px; border-left: 3px solid var(--accent); font-size: 13.5px; line-height: 1.7; color: var(--muted); }
+.side strong { display: block; color: var(--ink); }
+.side code { font-size: 12.5px; }
+
+/* 程式碼 */
+code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+pre.code { position: relative; margin: 12px 0 16px; padding: 14px 16px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; overflow: auto; font: 13.5px/1.7 var(--mono); tab-size: 2; }
+pre.code[data-file]::before { content: attr(data-file); display: block; margin: -4px 0 8px; color: var(--muted); font-size: 12px; }
+pre.code code { padding: 0; background: none; font-size: inherit; }
+.copy { position: absolute; top: 6px; right: 6px; padding: 1px 9px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); color: var(--muted); font: 12px var(--sans); cursor: pointer; }
+.copy:hover { color: var(--ink); border-color: var(--muted); }
+
+table { width: 100%; margin: 12px 0 18px; border-collapse: collapse; font-size: 14.5px; line-height: 1.6; }
+th, td { padding: 7px 10px; border: 1px solid var(--rule); text-align: left; vertical-align: top; }
+th { background: var(--code-bg); }
+
+/* 流程圖 */
+.chapter .flow { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0 12px; padding: 0; list-style: none; }
+.chapter .flow li { position: relative; flex: 1 1 130px; margin: 0; padding: 10px 12px; border: 2px solid var(--ink); border-radius: 6px; font-size: 14px; line-height: 1.6; }
+.chapter .flow li:not(:last-child)::after { content: "→"; position: absolute; right: -16px; top: 50%; transform: translateY(-50%); color: var(--accent); font-weight: 700; background: var(--sheet); }
+.flow b { display: block; }
+
+/* 提示框 */
+.warn { margin: 14px 0; padding: 10px 14px; border-left: 4px solid var(--bad); background: color-mix(in srgb, var(--bad) 8%, transparent); border-radius: 0 6px 6px 0; font-size: 15px; line-height: 1.7; }
+.warn > :last-child { margin-bottom: 0; }
+.warn b:first-child { color: var(--bad); }
+
+/* 小測驗 */
+.quiz { margin: 18px 0; padding: 12px 16px 8px; border: 2px dashed var(--ink); border-radius: 8px; }
+.quiz .qt { margin: 0 0 4px; color: var(--accent); font-weight: 700; font-size: 14px; }
+.quiz .q { margin: 0 0 6px; font-weight: 700; }
+.quiz button { display: block; width: 100%; margin: 6px 0; padding: 7px 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 15px/1.6 var(--sans); text-align: left; cursor: pointer; }
+.quiz button:hover { border-color: var(--muted); }
+.quiz button.right { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.quiz button.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 13%, transparent); }
+.quiz .fb { min-height: 1.6em; margin: 4px 0 6px; font-size: 14.5px; }
+.quiz .fb[data-state="ok"] { color: var(--ok); }
+.quiz .fb[data-state="no"] { color: var(--bad); }
+
+details.answer { margin: 10px 0 16px; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 6px; }
+details.answer summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+details.answer[open] summary { margin-bottom: 8px; }
+
+.done { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--rule); font-size: 14.5px; cursor: pointer; }
+.done input { width: 18px; height: 18px; accent-color: var(--ok); }
+
+.ex { margin: 18px 0 4px; font-weight: 700; }
+.end { text-align: center; color: var(--muted); font-size: 14px; }
+
+/* 窄螢幕 */
+@media (max-width: 1040px) {
+  .page { grid-template-columns: 1fr; gap: 0; padding: 0; }
+  .toc { position: sticky; top: 0; z-index: 20; max-height: none; padding: 8px 12px; background: var(--sheet); border-bottom: 1px solid var(--rule); }
+  .toc h2, .progress, .progress-text { display: none; }
+  .toc ol { display: flex; gap: 4px; overflow-x: auto; }
+  .toc a { white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; padding: 4px 10px; }
+  .toc a[aria-current] { border-bottom-color: var(--accent); }
+  .sheet { border-radius: 0; padding: 28px 18px 40px 30px; box-shadow: none; }
+  .sheet::before { left: 14px; }
+  .chapter { grid-template-columns: minmax(0, 1fr); }
+  .chapter > .side { grid-column: 1; }
+}
+@media (max-width: 720px) {
+  .meta { grid-template-columns: 1fr; }
+  .chapter .flow li:not(:last-child)::after { display: none; }
+}
+
+@media print {
+  body { background: #fff; color: #000; font-size: 12pt; }
+  .page { display: block; padding: 0; }
+  .toc, .copy, .quiz, .done { display: none; }
+  .sheet { box-shadow: none; padding: 0 0 0 20px; }
+  .sheet::before { left: 0; }
+  .chapter { display: block; break-before: page; }
+  .chapter:first-of-type { break-before: auto; }
+  pre.code, .side, table { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<nav class="toc" aria-label="目錄">
+  <h2>目錄</h2>
+  <div class="progress" role="progressbar" aria-label="完成進度" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0"><i class="bar"></i></div>
+  <p class="progress-text"></p>
+  <ol>
+    <li data-ch="ch0"><a href="#ch0">0　先看全貌</a></li>
+    <li data-ch="ch1"><a href="#ch1">1　Vite</a></li>
+    <li data-ch="ch2"><a href="#ch2">2　SFC 與模板</a></li>
+    <li data-ch="ch3"><a href="#ch3">3　響應式系統</a></li>
+    <li data-ch="ch4"><a href="#ch4">4　元件設計</a></li>
+    <li data-ch="ch5"><a href="#ch5">5　Composable 與 Router</a></li>
+    <li data-ch="ch6"><a href="#ch6">6　Pinia</a></li>
+    <li data-ch="ch7"><a href="#ch7">7　Nuxt 3</a></li>
+    <li data-ch="ch8"><a href="#ch8">8　測試、效能、陷阱</a></li>
+    <li data-ch="ch9"><a href="#ch9">9　面試題與小抄</a></li>
+  </ol>
+</nav>
+
+<main class="sheet">
+
+<header class="cover">
+  <h1>Vue 3 / Vite / Pinia / Nuxt 3 實戰講義</h1>
+  <p class="sub">給 3～4 年經驗的工程師：不只會用，還要說得出為什麼</p>
+  <dl class="meta">
+    <dt>適用對象</dt><dd>已有 3～4 年開發經驗（後端或其他前端框架皆可），熟悉 JavaScript / TypeScript 基礎，想系統化掌握 Vue 3 生態系</dd>
+    <dt>預估時間</dt><dd>約 8～10 小時，含練習</dd>
+    <dt>版本基準</dt><dd>Vue 3.5、Vite 5 以上、Pinia 2 以上、Nuxt 3（章末附 Nuxt 4 差異）。Node.js 需 18 以上，建議 20 LTS</dd>
+    <dt>不包含</dt><dd>Vue 2 / Options API 的完整教學、Vuex、UI 元件庫（Element Plus、Vuetify 等）</dd>
+  </dl>
+  <p><strong>怎麼讀這份講義</strong></p>
+  <ul>
+    <li><mark>螢光筆</mark>標起來的是關鍵詞；紅色框是常見的踩雷點。</li>
+    <li>右側旁註是設計取捨、與其他框架或後端概念的對照，手機上會移到段落下方。</li>
+    <li>範例都用 <code>&lt;script setup lang="ts"&gt;</code>。講義是靜態檔案，沒有內建執行環境；想動手跑，請在本機 <code>npm create vue@latest</code>，或到 StackBlitz / Vue SFC Playground 貼上程式碼。</li>
+    <li>每章結尾有小測驗；勾選「這章讀完了」會記在這個瀏覽器裡。列印時會自動展開所有答案。</li>
+  </ul>
+</header>
+
+<!-- ============ 第 0 章 ============ -->
+<section class="chapter" id="ch0" data-ch="ch0">
+  <h2><span class="ch-no">第 0 章</span>先看全貌：這四個東西各管什麼</h2>
+
+  <p>Vue、Vite、Pinia、Nuxt 常被一起提起，但它們是不同層級的東西。先分清楚，後面才不會混。</p>
+  <table>
+    <tr><th>名稱</th><th>角色</th><th>一句話</th></tr>
+    <tr><td><b>Vue 3</b></td><td>UI 框架（核心）</td><td>用響應式資料驅動畫面：資料變，畫面自動更新</td></tr>
+    <tr><td><b>Vite</b></td><td>開發伺服器 + 建置工具</td><td>開發時用瀏覽器原生 ES Module，秒開、熱更新；正式建置時打包</td></tr>
+    <tr><td><b>Vue Router</b></td><td>官方路由</td><td>網址對應到元件，SPA 必備</td></tr>
+    <tr><td><b>Pinia</b></td><td>官方狀態管理</td><td>跨元件共享狀態，取代 Vuex</td></tr>
+    <tr><td><b>Nuxt 3</b></td><td>全端 meta-framework</td><td>Vue + Vite + Router + Nitro 伺服器 + 檔案式路由 + SSR，全部預先組好</td></tr>
+  </table>
+  <aside class="side">
+    <strong>類比</strong>
+    Vue 之於 Nuxt，像 React 之於 Next.js，也像 Spring Framework 之於 Spring Boot：前者是核心，後者替你做好整合與慣例。
+  </aside>
+
+  <h3>渲染模式：為什麼需要 Nuxt</h3>
+  <table>
+    <tr><th>模式</th><th>HTML 在哪裡產生</th><th>優點</th><th>缺點</th></tr>
+    <tr><td>CSR / SPA</td><td>瀏覽器，執行 JS 後才有內容</td><td>部署簡單（純靜態檔）、頁面切換順</td><td>首屏慢、SEO 與社群預覽差</td></tr>
+    <tr><td>SSR</td><td>每次請求，在伺服器上</td><td>首屏快、SEO 好、資料新</td><td>需要 Node 伺服器、有 hydration 的坑</td></tr>
+    <tr><td>SSG / Prerender</td><td>建置時一次產好</td><td>最快、可丟 CDN</td><td>內容更新要重新建置</td></tr>
+    <tr><td>Hybrid（ISR / SWR）</td><td>依路由混用</td><td>不同頁面選最合適的</td><td>快取策略要想清楚</td></tr>
+  </table>
+  <p>純 Vue + Vite 專案預設是 CSR。需要 SEO、首屏效能或同時寫 API 時，就會換成 Nuxt。本講義的主線：先把 Vue 3 核心學紮實（第 2～5 章），再看狀態管理（第 6 章），最後才是 Nuxt（第 7 章）。因為 Nuxt 裡 90% 的程式碼仍然是 Vue。</p>
+
+  <h3>最小可跑的 Vue 3 專案</h3>
+<pre class="code" data-file="終端機"><code>npm create vue@latest my-app      # 勾選 TypeScript、Router、Pinia、Vitest、ESLint
+cd my-app
+npm install
+npm run dev                       # http://localhost:5173</code></pre>
+<pre class="code" data-file="src/main.ts"><code>import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import App from './App.vue'
+import router from './router'
+
+createApp(App)
+  .use(createPinia())
+  .use(router)
+  .mount('#app')</code></pre>
+  <p>Vue 3 的應用是「建立 app 實例、安裝外掛、掛載」。Vue 2 的全域 <code>Vue.use</code>、<code>Vue.component</code> 改成綁在 app 實例上，所以同一頁面可以有多個互不干擾的 Vue app。</p>
+
+  <div class="quiz" data-answer="2" data-why="Nuxt 把 Vue、Vite、Router、Nitro 伺服器與 SSR 整合起來，Pinia 是另外的狀態管理套件（Nuxt 提供官方模組）。" data-hint="再想想：Nuxt 是框架，不是狀態管理或建置工具。">
+    <p class="qt">小測驗</p>
+    <p class="q">下列關於 Vue、Vite、Nuxt 的描述，哪個正確？</p>
+    <button type="button">Vite 是 Vue 的狀態管理，Pinia 是建置工具</button>
+    <button type="button">Nuxt 取代 Vue，用了 Nuxt 就不需要寫 Vue 語法</button>
+    <button type="button">Nuxt 建立在 Vue 與 Vite 之上，並加入 SSR、檔案式路由與伺服器層</button>
+    <button type="button">純 Vue + Vite 專案預設就是 SSR</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch0"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 1 章 ============ -->
+<section class="chapter" id="ch1" data-ch="ch1">
+  <h2><span class="ch-no">第 1 章</span>Vite：為什麼快，以及你會碰到的設定</h2>
+
+  <h3>開發與建置是兩套機制</h3>
+  <ul>
+    <li><mark>開發時</mark>：不先打包。瀏覽器請求哪個模組，Vite 就即時轉換（TS、<code>.vue</code>、JSX）並回傳，利用瀏覽器原生 <code>&lt;script type="module"&gt;</code>。第三方套件用 esbuild 預先打包一次（pre-bundling），因為很多套件是 CJS，或由上百個小檔案組成，直接丟給瀏覽器會很慢。</li>
+    <li><mark>熱更新（HMR）</mark>：改一個檔案，只替換該模組，並保留其餘狀態。<code>.vue</code> 檔的 HMR 由外掛處理。</li>
+    <li><mark>正式建置</mark>：<code>vite build</code> 用 Rollup（新版本在逐步換成 Rolldown，用法不變）打包，做 tree-shaking、程式碼分割、雜湊檔名。</li>
+  </ul>
+  <aside class="side">
+    <strong>推論</strong>
+    開發環境和正式環境不是同一套引擎，所以偶爾會出現「dev 正常、build 後壞掉」。上線前請務必跑過 <code>npm run build &amp;&amp; npm run preview</code>。
+  </aside>
+
+  <h3>常用設定：vite.config.ts</h3>
+<pre class="code" data-file="vite.config.ts"><code>import { fileURLToPath, URL } from 'node:url'
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+
+export default defineConfig({
+  plugins: [vue()],
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
+  server: {
+    port: 5173,
+    proxy: {
+      // 開發時把 /api 轉給後端，避免 CORS
+      '/api': { target: 'http://localhost:8080', changeOrigin: true },
+    },
+  },
+  build: {
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: { vendor: ['vue', 'vue-router', 'pinia'] },
+      },
+    },
+  },
+})</code></pre>
+  <p><code>server.proxy</code> 只在 dev 有效。正式環境請在 Nginx / API Gateway 做反向代理，或讓後端開 CORS，這是新手最常忽略的落差。</p>
+
+  <h3>環境變數</h3>
+<pre class="code" data-file=".env.development / .env.production"><code># 只有 VITE_ 開頭的才會暴露給前端程式碼
+VITE_API_BASE=/api
+VITE_APP_TITLE=My App</code></pre>
+<pre class="code"><code>const base = import.meta.env.VITE_API_BASE   // 建置時被「直接替換」成字串
+import.meta.env.MODE        // 'development' | 'production' | 自訂 mode
+import.meta.env.DEV         // boolean
+import.meta.env.BASE_URL    // vite.config 的 base</code></pre>
+  <div class="warn">
+    <p><b>注意：</b>前端的環境變數是在<b>建置時</b>寫死進 bundle，任何人都能在瀏覽器看到。API 金鑰、資料庫密碼絕對不能放 <code>VITE_</code> 變數。需要機密就放在伺服器端（Nuxt 的 server routes，或你的後端）。</p>
+  </div>
+  <p>也因此：同一份建置結果想部署到不同環境（測試 / 正式），要嘛每個環境各建置一次，要嘛執行時才去載入一個 <code>config.json</code>。Nuxt 的 <code>runtimeConfig</code>（第 7 章）解決的正是這件事。</p>
+
+  <h3>程式碼分割與子路徑部署</h3>
+<pre class="code"><code>// 動態 import：Vite 會自動切成獨立的 chunk，用到時才下載
+const AdminPage = () =&gt; import('@/views/AdminPage.vue')
+
+// 部署在 https://example.com/app/ 時
+// vite.config.ts → base: '/app/'</code></pre>
+  <p>使用 history 模式的 Vue Router 時，伺服器必須把所有未知路徑回傳 <code>index.html</code>（Nginx 的 <code>try_files $uri /index.html</code>），否則重新整理深層網址會 404。</p>
+
+  <div class="quiz" data-answer="1" data-why="VITE_ 變數會在建置時被替換進 bundle，等於公開。機密只能放伺服器端。" data-hint="想想看：前端 bundle 下載到使用者的瀏覽器後，內容誰都看得到。">
+    <p class="qt">小測驗</p>
+    <p class="q">要把第三方付費 API 的 secret key 給前端使用，下面哪個做法正確？</p>
+    <button type="button">放 <code>.env</code>，取名 <code>VITE_SECRET_KEY</code></button>
+    <button type="button">不要放前端；改由自己的伺服器端呼叫第三方 API，前端只呼叫自己的 API</button>
+    <button type="button">用 <code>vite.config.ts</code> 的 <code>define</code> 寫死在程式碼裡</button>
+    <button type="button">用 base64 編碼後放在 <code>VITE_</code> 變數</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch1"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 2 章 ============ -->
+<section class="chapter" id="ch2" data-ch="ch2">
+  <h2><span class="ch-no">第 2 章</span>單檔元件（SFC）與模板語法</h2>
+
+  <p>一個 <code>.vue</code> 檔把一個元件的模板、邏輯、樣式放在一起。現在的標準寫法是 <mark><code>&lt;script setup&gt;</code></mark>：頂層宣告的變數與函式會自動暴露給模板，不用再 <code>return</code>。</p>
+<pre class="code" data-file="src/components/Counter.vue"><code>&lt;script setup lang="ts"&gt;
+import { ref } from 'vue'
+
+const count = ref(0)
+function inc() { count.value++ }
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;button class="btn" @click="inc"&gt;點了 {{ count }} 次&lt;/button&gt;
+&lt;/template&gt;
+
+&lt;style scoped&gt;
+.btn { padding: 4px 12px; }
+&lt;/style&gt;</code></pre>
+  <aside class="side">
+    <strong>scoped 的原理</strong>
+    編譯時替元素加上 <code>data-v-xxxx</code> 屬性，選擇器也被改寫成帶屬性的形式。想穿透到子元件內部，用 <code>:deep(.cls)</code>。
+  </aside>
+
+  <h3>模板指令速查</h3>
+  <table>
+    <tr><th>語法</th><th>用途</th><th>備註</th></tr>
+    <tr><td><code>{{ expr }}</code></td><td>文字插值</td><td>只能放<b>單一表達式</b>，不能放陳述式（if、for）</td></tr>
+    <tr><td><code>:attr="expr"</code></td><td>綁定屬性（v-bind）</td><td>屬性名與變數同名時可寫 <code>:id</code>（3.4+）</td></tr>
+    <tr><td><code>@click="fn"</code></td><td>監聽事件（v-on）</td><td>修飾符 <code>.prevent</code> <code>.stop</code> <code>.once</code> <code>.enter</code></td></tr>
+    <tr><td><code>v-if / v-else-if / v-else</code></td><td>條件渲染</td><td>真的建立 / 銷毀 DOM 與子元件</td></tr>
+    <tr><td><code>v-show</code></td><td>切換 <code>display</code></td><td>元素一直存在；切換頻繁用它</td></tr>
+    <tr><td><code>v-for="item in list" :key="item.id"</code></td><td>列表渲染</td><td><code>key</code> 要用穩定且唯一的值</td></tr>
+    <tr><td><code>v-model</code></td><td>雙向綁定</td><td>是 <code>:value</code> + <code>@input</code> 的語法糖；<code>.trim</code> <code>.number</code> <code>.lazy</code></td></tr>
+  </table>
+
+  <div class="warn">
+    <p><b>v-if 與 v-for 不要放在同一個元素上。</b>Vue 3 中 <code>v-if</code> 優先於 <code>v-for</code>（Vue 2 相反），此時 <code>v-if</code> 取不到迴圈變數。要過濾列表，請用 <code>computed</code> 先算好過濾後的陣列，或把 <code>v-if</code> 放到外層 <code>&lt;template&gt;</code>。</p>
+  </div>
+
+  <h3>class 與 style 綁定</h3>
+<pre class="code"><code>&lt;div :class="['card', { active: isActive, 'is-error': hasError }]"
+     :style="{ color: textColor, fontSize: size + 'px' }"&gt;&lt;/div&gt;</code></pre>
+
+  <h3>為什麼 key 很重要</h3>
+  <p>Vue 更新列表時，用 key 判斷「哪個節點是原來那個」。沒有 key 或用 index 當 key，在列表會插入、刪除、排序時，Vue 會就地重用 DOM，造成輸入框的內容、元件內部狀態錯位到別的資料列上。</p>
+<pre class="code"><code>&lt;!-- 錯：刪除第一筆後，第二筆資料會「繼承」第一筆的輸入框內容 --&gt;
+&lt;li v-for="(todo, i) in todos" :key="i"&gt;&lt;input v-model="draft[i]" /&gt;&lt;/li&gt;
+
+&lt;!-- 對：使用資料本身的唯一 id --&gt;
+&lt;li v-for="todo in todos" :key="todo.id"&gt;...&lt;/li&gt;</code></pre>
+
+  <h3>Vue 3 相對於 Vue 2 的幾個結構性改變</h3>
+  <ul>
+    <li>模板可以有<b>多個根節點</b>（fragment）。注意此時屬性繼承（<code>class</code> 等）不會自動套用，要自己用 <code>v-bind="$attrs"</code> 指定。</li>
+    <li><code>v-model</code> 在元件上改為 <code>modelValue</code> + <code>update:modelValue</code>，並可多個 <code>v-model:title</code>。</li>
+    <li>移除 <code>$on / $off / $once</code>、filters；<code>.sync</code> 併入 <code>v-model</code>。</li>
+    <li>響應式從 <code>Object.defineProperty</code> 換成 <code>Proxy</code>（下一章）。</li>
+  </ul>
+
+  <div class="quiz" data-answer="0" data-why="key 讓 Vue 能正確對應新舊節點；用 index 會在增刪排序時造成狀態錯位。" data-hint="key 的目的是辨識「同一筆資料」，index 在資料增刪後會指向不同的資料。">
+    <p class="qt">小測驗</p>
+    <p class="q">待辦清單可以刪除、排序，每筆都有輸入框。<code>v-for</code> 的 <code>key</code> 該用什麼？</p>
+    <button type="button">每筆資料的唯一 id</button>
+    <button type="button">陣列的 index</button>
+    <button type="button">Math.random()</button>
+    <button type="button">不用 key，Vue 會自己處理</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch2"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 3 章 ============ -->
+<section class="chapter" id="ch3" data-ch="ch3">
+  <h2><span class="ch-no">第 3 章</span>響應式系統：Vue 3 的核心</h2>
+
+  <h3>原理一分鐘版</h3>
+  <p>Vue 用 <code>Proxy</code> 包住物件。<mark>讀取</mark>屬性時，記錄「目前正在執行的 effect（渲染函式、computed、watch）依賴這個屬性」（track）；<mark>寫入</mark>屬性時，找出依賴它的 effect 重新執行（trigger）。這就是「資料變、畫面自動更新」的全部秘密。</p>
+<pre class="code"><code>// 極簡示意：不是 Vue 的實際原始碼
+let activeEffect = null
+const deps = new WeakMap()               // target → key → Set&lt;effect&gt;
+
+function reactive(target) {
+  return new Proxy(target, {
+    get(t, key, r) { track(t, key); return Reflect.get(t, key, r) },
+    set(t, key, v, r) { const ok = Reflect.set(t, key, v, r); trigger(t, key); return ok },
+  })
+}
+function effect(fn) { activeEffect = fn; fn(); activeEffect = null }</code></pre>
+  <aside class="side">
+    <strong>Vue 2 的限制</strong>
+    <code>Object.defineProperty</code> 偵測不到新增屬性與陣列索引賦值，所以才有 <code>Vue.set</code>。Proxy 沒有這個問題。
+  </aside>
+
+  <h3>ref 與 reactive</h3>
+<pre class="code"><code>import { ref, reactive } from 'vue'
+
+const count = ref(0)               // 任何型別；腳本中要用 .value
+count.value++
+
+const state = reactive({ user: { name: 'A' }, list: [] })   // 只能是物件 / 陣列
+state.user.name = 'B'              // 深層響應</code></pre>
+  <table>
+    <tr><th></th><th>ref</th><th>reactive</th></tr>
+    <tr><td>適用</td><td>基本型別、物件皆可</td><td>只能物件 / 陣列 / Map / Set</td></tr>
+    <tr><td>取值</td><td>腳本 <code>.value</code>；模板自動解包</td><td>直接存取屬性</td></tr>
+    <tr><td>整個替換</td><td>可以：<code>x.value = newObj</code></td><td><b>不行</b>：重新賦值會斷掉響應連結</td></tr>
+    <tr><td>解構</td><td>ref 本身可以傳遞</td><td>解構後變普通值，失去響應性</td></tr>
+  </table>
+  <p>實務建議：<mark>一律用 ref</mark>（Vue 官方文件也這樣建議），因為行為一致，不必煩惱型別與替換問題。<code>reactive</code> 留給確定不會被整個換掉的表單物件。</p>
+
+  <div class="warn">
+    <p><b>最常見的三個失去響應性：</b></p>
+<pre class="code"><code>const state = reactive({ count: 0 })
+
+let { count } = state          // ① 解構：count 只是一個數字
+const n = state.count          // ② 取出基本型別：同上
+state = reactive({ count: 1 })  // ③ 重新賦值（const 也會報錯，用 let 則連結斷掉）
+
+// 修正：保持引用，或用 toRefs / toRef
+const { count: countRef } = toRefs(state)   // countRef 是 ref，與 state.count 連動</code></pre>
+  </div>
+
+  <h3>computed：有快取的衍生值</h3>
+<pre class="code"><code>const price = ref(100)
+const qty = ref(3)
+const total = computed(() =&gt; price.value * qty.value)   // 只有依賴變動才重算
+
+// 可寫的 computed（少用）
+const full = computed({
+  get: () =&gt; first.value + ' ' + last.value,
+  set: (v) =&gt; { [first.value, last.value] = v.split(' ') },
+})</code></pre>
+  <p><code>computed</code> 的 getter 必須是<b>純函式</b>：不要在裡面發 API、改別的狀態、操作 DOM。這些副作用該放在 <code>watch</code> 或事件處理器。</p>
+
+  <h3>watch 與 watchEffect</h3>
+<pre class="code"><code>// watch：明確指定來源，拿得到新舊值，預設「惰性」（不會馬上執行）
+watch(keyword, (newV, oldV, onCleanup) =&gt; {
+  const ctrl = new AbortController()
+  onCleanup(() =&gt; ctrl.abort())            // 下一次觸發前先取消上一次請求
+  fetch(`/api/search?q=${newV}`, { signal: ctrl.signal })
+}, { immediate: false })
+
+// 監聽 reactive 物件的屬性要用 getter
+watch(() =&gt; state.user.name, (v) =&gt; { /* ... */ })
+
+// 監聽多個來源
+watch([a, b], ([newA, newB]) =&gt; { /* ... */ })
+
+// watchEffect：自動收集依賴，馬上執行一次
+watchEffect(() =&gt; { document.title = `${count.value} 筆` })</code></pre>
+  <table>
+    <tr><th>選項</th><th>說明</th></tr>
+    <tr><td><code>immediate</code></td><td>建立時立刻執行一次</td></tr>
+    <tr><td><code>deep</code></td><td>深層監聽（成本高，能避免就避免）；對 reactive 物件預設就是深層</td></tr>
+    <tr><td><code>flush: 'post'</code></td><td>等 DOM 更新後才執行回呼（需要讀取更新後的 DOM 時用）</td></tr>
+    <tr><td><code>once: true</code></td><td>只觸發一次（3.4+）</td></tr>
+  </table>
+  <aside class="side">
+    <strong>怎麼選</strong>
+    要「算出一個值」→ <code>computed</code>。要「值變了就做某件事（發請求、寫 localStorage）」→ <code>watch</code>。依賴很多、不在乎舊值 → <code>watchEffect</code>。
+  </aside>
+
+  <h3>更新是非同步批次的：nextTick</h3>
+<pre class="code"><code>count.value++
+console.log(el.value.textContent)   // 還是舊的！DOM 尚未更新
+await nextTick()
+console.log(el.value.textContent)   // 新的</code></pre>
+  <p>同一個 tick 內多次修改狀態，只會重新渲染一次。這是 Vue 效能的基礎，也是「改了資料立刻讀 DOM 讀到舊值」的原因。</p>
+
+  <h3>大型資料與不需深層響應的情況</h3>
+  <ul>
+    <li><code>shallowRef</code> / <code>shallowReactive</code>：只追蹤第一層（<code>.value</code> 被替換才觸發）。適合上萬筆的大陣列、第三方實例（地圖、圖表物件）。</li>
+    <li><code>markRaw(obj)</code>：標記此物件永遠不要被代理。</li>
+    <li><code>toRaw(proxy)</code>：取回原始物件，常用在要結構化複製或交給第三方函式庫時。</li>
+  </ul>
+
+  <h3>Props 解構（3.5+）</h3>
+<pre class="code"><code>&lt;script setup lang="ts"&gt;
+// 3.5 起，解構 props 由編譯器轉換，仍保有響應性；也可以直接寫預設值
+const { title, size = 16 } = defineProps&lt;{ title: string; size?: number }&gt;()
+// 但傳給 watch 時要包成 getter：watch(() =&gt; title, ...)
+&lt;/script&gt;</code></pre>
+
+  <p class="ex">練習 3-1：防抖搜尋</p>
+  <p>寫一個 <code>&lt;input v-model="keyword"&gt;</code>，使用者停止輸入 300ms 後才呼叫 <code>search(keyword)</code>；新輸入進來時，要取消上一次尚未完成的請求。</p>
+  <details class="answer">
+    <summary>看參考答案</summary>
+<pre class="code"><code>&lt;script setup lang="ts"&gt;
+import { ref, watch } from 'vue'
+
+const keyword = ref('')
+const results = ref&lt;string[]&gt;([])
+
+watch(keyword, (q, _old, onCleanup) =&gt; {
+  if (!q.trim()) { results.value = []; return }
+  const ctrl = new AbortController()
+  const timer = setTimeout(async () =&gt; {
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
+      results.value = await res.json()
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') throw e
+    }
+  }, 300)
+  onCleanup(() =&gt; { clearTimeout(timer); ctrl.abort() })   // 防抖 + 取消過期請求
+})
+&lt;/script&gt;</code></pre>
+    <p>重點：<code>onCleanup</code> 在下一次回呼觸發前（或元件卸載時）執行，一次解決 debounce 與 race condition。</p>
+  </details>
+
+  <div class="quiz" data-answer="3" data-why="解構 reactive 物件的基本型別屬性，得到的是一次性的快照。用 toRefs 或直接使用 state.count 才能保持響應。" data-hint="解構取出的是「當下的值」，不是與 state 連動的引用。">
+    <p class="qt">小測驗</p>
+    <p class="q">下列程式碼：<code>const state = reactive({ count: 0 }); const { count } = state; count++</code>，畫面會？</p>
+    <button type="button">更新，因為 count 是響應式的</button>
+    <button type="button">更新，因為 reactive 是深層的</button>
+    <button type="button">拋出錯誤</button>
+    <button type="button">不會更新（而且 <code>count++</code> 也改不到 state）：解構後 count 只是普通數字</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch3"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 4 章 ============ -->
+<section class="chapter" id="ch4" data-ch="ch4">
+  <h2><span class="ch-no">第 4 章</span>元件設計：props、事件、插槽</h2>
+
+  <h3>單向資料流</h3>
+  <p>父元件透過 <mark>props 往下傳</mark>，子元件透過<mark>事件往上通知</mark>。子元件不要直接修改 props（Vue 會警告）。需要「雙向」時，用 <code>v-model</code> 這個約定。</p>
+<pre class="code" data-file="UserCard.vue"><code>&lt;script setup lang="ts"&gt;
+interface User { id: number; name: string }
+
+const props = withDefaults(defineProps&lt;{
+  user: User
+  editable?: boolean
+}&gt;(), { editable: false })
+
+const emit = defineEmits&lt;{
+  (e: 'select', id: number): void
+  (e: 'rename', id: number, name: string): void
+}&gt;()
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;div @click="emit('select', props.user.id)"&gt;
+    {{ props.user.name }}
+  &lt;/div&gt;
+&lt;/template&gt;</code></pre>
+  <pre class="code" data-file="父元件"><code>&lt;UserCard :user="u" editable @select="onSelect" /&gt;</code></pre>
+
+  <h3>defineModel：把 v-model 寫成一行（3.4+）</h3>
+<pre class="code" data-file="SearchBox.vue"><code>&lt;script setup lang="ts"&gt;
+const keyword = defineModel&lt;string&gt;({ default: '' })           // v-model
+const page = defineModel&lt;number&gt;('page', { default: 1 })       // v-model:page
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;input v-model="keyword" /&gt;
+&lt;/template&gt;
+
+&lt;!-- 使用：&lt;SearchBox v-model="q" v-model:page="p" /&gt; --&gt;</code></pre>
+  <p><code>defineModel</code> 回傳的是一個可讀寫的 ref：讀取來自父元件的 prop，寫入時自動 emit <code>update:xxx</code>。</p>
+
+  <h3>插槽（slot）</h3>
+<pre class="code" data-file="DataTable.vue"><code>&lt;template&gt;
+  &lt;table&gt;
+    &lt;thead&gt;&lt;slot name="header" /&gt;&lt;/thead&gt;
+    &lt;tbody&gt;
+      &lt;tr v-for="row in rows" :key="row.id"&gt;
+        &lt;!-- 作用域插槽：把資料交給使用者決定怎麼畫 --&gt;
+        &lt;slot name="row" :row="row" :index="row.id"&gt;{{ row }}&lt;/slot&gt;
+      &lt;/tr&gt;
+    &lt;/tbody&gt;
+  &lt;/table&gt;
+&lt;/template&gt;</code></pre>
+<pre class="code" data-file="使用端"><code>&lt;DataTable :rows="users"&gt;
+  &lt;template #header&gt;&lt;th&gt;姓名&lt;/th&gt;&lt;/template&gt;
+  &lt;template #row="{ row }"&gt;&lt;td&gt;{{ row.name }}&lt;/td&gt;&lt;/template&gt;
+&lt;/DataTable&gt;</code></pre>
+  <aside class="side">
+    <strong>設計準則</strong>
+    元件要「長得不同」→ 用 slot；要「行為不同」→ 用 props / 事件。一個元件開了十幾個 boolean props 時，通常該改用 slot 或拆成多個元件。
+  </aside>
+
+  <h3>provide / inject：跨層傳遞</h3>
+<pre class="code"><code>// 祖先
+const theme = ref('dark')
+provide('theme', theme)               // 傳 ref，後代才拿得到響應性
+
+// 後代（任意層）
+const theme = inject&lt;Ref&lt;string&gt;&gt;('theme', ref('light'))</code></pre>
+  <p>適合元件庫內部（Tabs 與 TabPanel）。應用層級的共享狀態請用 Pinia，不要把 provide 當全域變數。TypeScript 下建議用 <code>InjectionKey&lt;T&gt;</code> 取代字串。</p>
+
+  <h3>生命週期</h3>
+  <table>
+    <tr><th>Hook</th><th>時機</th><th>常見用途</th></tr>
+    <tr><td><code>onMounted</code></td><td>DOM 已掛載</td><td>操作 DOM、初始化第三方圖表、讀取 <code>window</code></td></tr>
+    <tr><td><code>onUpdated</code></td><td>DOM 已更新</td><td>很少用，優先用 <code>watch</code> + <code>flush: 'post'</code></td></tr>
+    <tr><td><code>onBeforeUnmount</code> / <code>onUnmounted</code></td><td>卸載前 / 後</td><td>清除計時器、事件監聽、WebSocket</td></tr>
+    <tr><td><code>onActivated</code> / <code>onDeactivated</code></td><td>被 <code>&lt;KeepAlive&gt;</code> 快取的元件進出</td><td>回到頁面時重新整理資料</td></tr>
+  </table>
+  <p><code>&lt;script setup&gt;</code> 本身就相當於 Options API 的 <code>created</code>，所以沒有 <code>onCreated</code>。需要在 SSR 中只在瀏覽器端執行的邏輯，一定要放 <code>onMounted</code>（第 7 章）。</p>
+
+  <h3>模板 ref（取得 DOM 或子元件）</h3>
+<pre class="code"><code>&lt;script setup lang="ts"&gt;
+import { useTemplateRef, onMounted } from 'vue'
+
+const input = useTemplateRef&lt;HTMLInputElement&gt;('input')   // 3.5+
+onMounted(() =&gt; input.value?.focus())
+&lt;/script&gt;
+
+&lt;template&gt;&lt;input ref="input" /&gt;&lt;/template&gt;</code></pre>
+  <p>子元件預設是封閉的，父元件拿不到內部變數，必須用 <code>defineExpose({ focus })</code> 明確公開。這是刻意的封裝設計。</p>
+
+  <h3>其他內建元件</h3>
+  <ul>
+    <li><code>&lt;Teleport to="body"&gt;</code>：把內容渲染到別處，Modal、Toast 必備。</li>
+    <li><code>&lt;KeepAlive&gt;</code>：快取切換出去的元件實例，保留表單與捲動狀態。</li>
+    <li><code>&lt;Transition&gt;</code> / <code>&lt;TransitionGroup&gt;</code>：進出場動畫。</li>
+    <li><code>&lt;Suspense&gt;</code>：等待非同步子元件（仍標示為實驗性；Nuxt 內部有使用）。</li>
+  </ul>
+
+  <div class="quiz" data-answer="1" data-why="props 是單向的，子元件應 emit 事件（或用 defineModel）讓父元件修改自己的資料。" data-hint="Vue 的核心約定：資料往下流，事件往上傳。">
+    <p class="qt">小測驗</p>
+    <p class="q">子元件需要修改父元件傳來的資料，正確做法是？</p>
+    <button type="button">直接 <code>props.user.name = 'x'</code></button>
+    <button type="button">emit 事件通知父元件，或用 <code>defineModel</code> 實作 v-model</button>
+    <button type="button">用 <code>$parent</code> 直接取得父元件並修改</button>
+    <button type="button">把資料存在 <code>window</code> 上</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch4"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 5 章 ============ -->
+<section class="chapter" id="ch5" data-ch="ch5">
+  <h2><span class="ch-no">第 5 章</span>Composable 與 Vue Router</h2>
+
+  <h3>Composable：用函式重用「有狀態的邏輯」</h3>
+  <p>Composable 是以 <code>use</code> 開頭、內部使用 Vue 響應式 API 的函式。它取代了 Vue 2 的 mixin，解決 mixin 的三個老問題：來源不明（this 上的東西是誰給的？）、命名衝突、隱式依賴。</p>
+<pre class="code" data-file="src/composables/useFetch.ts"><code>import { ref, toValue, watchEffect, type MaybeRefOrGetter } from 'vue'
+
+export function useFetch&lt;T&gt;(url: MaybeRefOrGetter&lt;string&gt;) {
+  const data = ref&lt;T | null&gt;(null)
+  const error = ref&lt;Error | null&gt;(null)
+  const loading = ref(false)
+
+  watchEffect(async (onCleanup) =&gt; {
+    const ctrl = new AbortController()
+    onCleanup(() =&gt; ctrl.abort())
+    loading.value = true
+    error.value = null
+    try {
+      const res = await fetch(toValue(url), { signal: ctrl.signal })   // url 可為 ref / getter / 字串
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      data.value = await res.json()
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') error.value = e as Error
+    } finally {
+      loading.value = false
+    }
+  })
+
+  return { data, error, loading }
+}</code></pre>
+<pre class="code" data-file="使用"><code>const id = ref(1)
+const { data: user, loading } = useFetch&lt;User&gt;(() =&gt; `/api/users/${id.value}`)   // id 改變自動重抓</code></pre>
+  <h4 style="margin:12px 0 4px">寫 composable 的慣例</h4>
+  <ul>
+    <li>參數接受 <code>MaybeRefOrGetter</code>，內部用 <code>toValue()</code> 統一處理，呼叫端可以傳值、ref 或 getter。</li>
+    <li>回傳「<b>一個物件包著多個 ref</b>」，使用者解構後仍保有響應性。</li>
+    <li>要清理的副作用（計時器、事件）務必在 <code>onScopeDispose</code> / <code>onUnmounted</code> 清除。</li>
+    <li>只在 <code>setup</code> 同步階段（或另一個 composable 內）呼叫，因為它依賴「目前的元件實例」。</li>
+  </ul>
+  <aside class="side">
+    <strong>現成的工具箱</strong>
+    <a href="https://vueuse.org/" target="_blank" rel="noopener">VueUse</a> 收錄了上百個 composable（<code>useLocalStorage</code>、<code>useDebounceFn</code>、<code>useIntersectionObserver</code>…），先找有沒有再自己寫。
+  </aside>
+
+  <h3>Vue Router 4</h3>
+<pre class="code" data-file="src/router/index.ts"><code>import { createRouter, createWebHistory } from 'vue-router'
+
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes: [
+    { path: '/', name: 'home', component: () =&gt; import('@/views/HomeView.vue') },     // 懶載入
+    {
+      path: '/users/:id',
+      name: 'user',
+      component: () =&gt; import('@/views/UserView.vue'),
+      props: true,                         // 把 :id 當成 props 傳入，元件不用依賴 route
+      meta: { requiresAuth: true },
+    },
+    { path: '/:pathMatch(.*)*', component: () =&gt; import('@/views/NotFound.vue') },
+  ],
+})
+
+router.beforeEach((to) =&gt; {
+  const auth = useAuthStore()                // 必須在函式內呼叫，不能放模組頂層
+  if (to.meta.requiresAuth &amp;&amp; !auth.loggedIn) return { name: 'login', query: { redirect: to.fullPath } }
+})
+export default router</code></pre>
+<pre class="code"><code>const route = useRoute()      // 目前路由（響應式）：route.params.id、route.query
+const router = useRouter()    // 導航：router.push({ name: 'user', params: { id: 1 } })</code></pre>
+
+  <div class="warn">
+    <p><b>同一個路由元件，參數變了不會重建。</b>從 <code>/users/1</code> 切到 <code>/users/2</code> 時，Vue Router 會<b>重用</b>同一個元件實例，<code>onMounted</code> 不會再執行。要在參數變動時重新抓資料，請 <code>watch(() =&gt; route.params.id, load, { immediate: true })</code>，或在 <code>&lt;RouterView :key="route.fullPath"&gt;</code> 加 key 強制重建（成本較高）。</p>
+  </div>
+
+  <h3>導航守衛執行順序（簡化）</h3>
+  <ol class="flow">
+    <li><b>beforeEach</b>全域前置</li>
+    <li><b>beforeEnter</b>路由設定內</li>
+    <li><b>元件載入</b>解析非同步元件</li>
+    <li><b>beforeResolve</b>全域解析</li>
+    <li><b>afterEach</b>導航完成</li>
+  </ol>
+  <p>守衛回傳 <code>false</code> 取消、回傳路由物件重新導向、不回傳（或 <code>true</code>）放行。Vue Router 4 不再需要呼叫 <code>next()</code>（仍相容，但容易忘記而卡住，不建議）。</p>
+
+  <div class="quiz" data-answer="2" data-why="路由參數改變時元件被重用，onMounted 不會重跑，需要 watch route.params 或給 RouterView 加 key。" data-hint="元件被重用而不是重建，所以只執行一次的 hook 不會再觸發。">
+    <p class="qt">小測驗</p>
+    <p class="q">使用者從 <code>/users/1</code> 點連結到 <code>/users/2</code>，畫面顯示的還是使用者 1，最可能的原因是？</p>
+    <button type="button">Vue Router 快取了舊頁面，必須清除瀏覽器快取</button>
+    <button type="button">API 回傳錯誤</button>
+    <button type="button">資料是在 <code>onMounted</code> 抓的，但同一個元件實例被重用，onMounted 沒再執行</button>
+    <button type="button">需要在 <code>router.push</code> 後再呼叫 <code>location.reload()</code></button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch5"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 6 章 ============ -->
+<section class="chapter" id="ch6" data-ch="ch6">
+  <h2><span class="ch-no">第 6 章</span>Pinia：狀態管理</h2>
+
+  <h3>什麼時候需要 store</h3>
+  <table>
+    <tr><th>狀態的性質</th><th>放哪裡</th></tr>
+    <tr><td>只有一個元件用</td><td>元件內的 <code>ref</code></td></tr>
+    <tr><td>父子之間</td><td>props / emit / <code>defineModel</code></td></tr>
+    <tr><td>一組相關元件共用（Tabs）</td><td>provide / inject</td></tr>
+    <tr><td>邏輯可重用，但每次呼叫各自獨立</td><td>composable</td></tr>
+    <tr><td><b>跨頁面、全應用單例</b>（登入者、購物車、權限、偏好設定）</td><td><b>Pinia store</b></td></tr>
+    <tr><td>伺服器資料（列表、詳情）</td><td>優先考慮 <code>useFetch</code> / TanStack Query 這類資料快取層，而非手動放進 store</td></tr>
+  </table>
+  <p>常見的過度設計：把所有 API 回應都塞進 store，再自己處理 loading、過期、重新整理。這些伺服器狀態有專門的工具。Store 留給真正的「用戶端狀態」。</p>
+
+  <h3>兩種寫法</h3>
+<pre class="code" data-file="stores/cart.ts（Setup Store，推薦）"><code>import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
+
+export const useCartStore = defineStore('cart', () =&gt; {
+  // state = ref；getters = computed；actions = function
+  const items = ref&lt;{ id: number; price: number; qty: number }[]&gt;([])
+
+  const total = computed(() =&gt; items.value.reduce((s, i) =&gt; s + i.price * i.qty, 0))
+
+  function add(id: number, price: number) {
+    const hit = items.value.find((i) =&gt; i.id === id)
+    if (hit) hit.qty++
+    else items.value.push({ id, price, qty: 1 })
+  }
+
+  async function checkout() {
+    await fetch('/api/orders', { method: 'POST', body: JSON.stringify(items.value) })
+    items.value = []
+  }
+
+  return { items, total, add, checkout }       // 沒 return 的就是私有
+})</code></pre>
+<pre class="code" data-file="stores/counter.ts（Option Store）"><code>export const useCounterStore = defineStore('counter', {
+  state: () =&gt; ({ count: 0 }),
+  getters: { double: (s) =&gt; s.count * 2 },
+  actions: { inc() { this.count++ } },
+})</code></pre>
+  <aside class="side">
+    <strong>注意：Setup Store 的 state 一定要 return</strong>
+    沒有 return 的 ref 不會被當成 state，SSR 序列化、devtools 和 <code>$patch</code> 都看不到它。Setup Store 也沒有內建 <code>$reset()</code>，要自己寫。
+  </aside>
+
+  <h3>在元件中使用</h3>
+<pre class="code"><code>&lt;script setup lang="ts"&gt;
+import { storeToRefs } from 'pinia'
+const cart = useCartStore()
+
+// ✗ 解構會失去響應性
+// const { items, total } = cart
+
+// ✓ state 與 getters 用 storeToRefs；actions 可以直接解構
+const { items, total } = storeToRefs(cart)
+const { add } = cart
+&lt;/script&gt;</code></pre>
+
+  <h3>修改狀態的方式</h3>
+<pre class="code"><code>cart.add(1, 99)                       // ① 呼叫 action（首選：邏輯集中，可被追蹤）
+cart.items.push({ ... })              // ② 直接改（可以，但分散在各處不易維護）
+cart.$patch({ items: [] })            // ③ 批次修改，一次通知
+cart.$patch((s) =&gt; { s.items.length = 0 })
+cart.$subscribe((mutation, state) =&gt; localStorage.setItem('cart', JSON.stringify(state)))</code></pre>
+
+  <h3>Store 之間的互相使用</h3>
+<pre class="code"><code>export const useOrderStore = defineStore('order', () =&gt; {
+  const cart = useCartStore()          // 在 store 內呼叫另一個 store
+  const summary = computed(() =&gt; `共 ${cart.items.length} 項，合計 ${cart.total}`)
+  return { summary }
+})</code></pre>
+  <p>避免兩個 store 在<b>頂層</b>互相呼叫（循環依賴）。在 getter / action 內才呼叫對方就沒問題。</p>
+
+  <div class="warn">
+    <p><b>在 Pinia 安裝之前使用 store 會報錯。</b>像 <code>router.beforeEach</code> 的守衛、axios interceptor 這類在模組頂層建立的東西，要在<b>函式內部</b>才呼叫 <code>useXxxStore()</code>，否則 <code>app.use(pinia)</code> 還沒執行就會拋 "getActivePinia() was called but there was no active Pinia"。</p>
+  </div>
+
+  <h3>持久化與外掛</h3>
+<pre class="code"><code>// 官方外掛機制：每個 store 建立時都會呼叫
+pinia.use(({ store }) =&gt; {
+  const saved = localStorage.getItem(store.$id)
+  if (saved) store.$patch(JSON.parse(saved))
+  store.$subscribe((_, state) =&gt; localStorage.setItem(store.$id, JSON.stringify(state)))
+})
+// 現成方案：pinia-plugin-persistedstate（Nuxt 版本：@pinia-plugin-persistedstate/nuxt）</code></pre>
+  <p>持久化的 state 不要放敏感資料（token 建議使用 httpOnly cookie，由伺服器管理）。SSR 下 <code>localStorage</code> 不存在，要特別處理（第 7 章）。</p>
+
+  <h3>測試 store</h3>
+<pre class="code"><code>import { setActivePinia, createPinia } from 'pinia'
+import { beforeEach, expect, it } from 'vitest'
+
+beforeEach(() =&gt; setActivePinia(createPinia()))     // 每個測試一個乾淨的 pinia
+
+it('add 會累加數量', () =&gt; {
+  const cart = useCartStore()
+  cart.add(1, 100); cart.add(1, 100)
+  expect(cart.total).toBe(200)
+})</code></pre>
+
+  <p class="ex">練習 6-1：購物車 store</p>
+  <p>在上面的 cart store 加入：<code>remove(id)</code>、<code>setQty(id, qty)</code>（qty ≤ 0 時移除該項目）、以及一個 getter <code>count</code> 回傳總件數。並寫 Vitest 測試涵蓋「重複加入」與「數量歸零」。</p>
+  <details class="answer">
+    <summary>看參考答案</summary>
+<pre class="code"><code>function remove(id: number) {
+  items.value = items.value.filter((i) =&gt; i.id !== id)
+}
+function setQty(id: number, qty: number) {
+  if (qty &lt;= 0) return remove(id)
+  const hit = items.value.find((i) =&gt; i.id === id)
+  if (hit) hit.qty = qty
+}
+const count = computed(() =&gt; items.value.reduce((s, i) =&gt; s + i.qty, 0))
+return { items, total, count, add, remove, setQty, checkout }
+
+// 測試
+it('數量設為 0 會移除項目', () =&gt; {
+  const cart = useCartStore()
+  cart.add(1, 100)
+  cart.setQty(1, 0)
+  expect(cart.items).toHaveLength(0)
+})</code></pre>
+  </details>
+
+  <div class="quiz" data-answer="0" data-why="storeToRefs 會把 state 與 getters 轉成 ref，保持響應性；actions 是普通函式，可直接解構。" data-hint="直接解構 store 會得到快照值，失去響應性。">
+    <p class="qt">小測驗</p>
+    <p class="q">要在元件中解構 Pinia store 的 state 並保持響應性，應使用？</p>
+    <button type="button"><code>storeToRefs(store)</code></button>
+    <button type="button"><code>const { items } = store</code>（直接解構）</button>
+    <button type="button"><code>reactive(store)</code></button>
+    <button type="button"><code>JSON.parse(JSON.stringify(store))</code></button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch6"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 7 章 ============ -->
+<section class="chapter" id="ch7" data-ch="ch7">
+  <h2><span class="ch-no">第 7 章</span>Nuxt 3：SSR、檔案式路由與全端能力</h2>
+
+  <h3>建立與目錄結構</h3>
+<pre class="code" data-file="終端機"><code>npx nuxi@latest init my-nuxt
+cd my-nuxt &amp;&amp; npm install
+npm run dev          # http://localhost:3000</code></pre>
+<pre class="code"><code>my-nuxt/
+├─ app.vue                 根元件（可用 &lt;NuxtLayout&gt; + &lt;NuxtPage&gt;）
+├─ nuxt.config.ts          設定檔
+├─ pages/                  檔案即路由
+│   ├─ index.vue               →  /
+│   ├─ about.vue               →  /about
+│   ├─ users/[id].vue          →  /users/:id
+│   └─ docs/[...slug].vue      →  /docs/任意/深度
+├─ components/             自動註冊，不用 import
+├─ composables/            自動匯入（use 開頭的函式）
+├─ layouts/                版型（default.vue…）
+├─ middleware/             路由中介層（auth.ts）
+├─ plugins/                啟動時執行（註冊全域功能）
+├─ stores/                 Pinia stores（搭配 @pinia/nuxt）
+├─ server/
+│   ├─ api/                    →  /api/xxx  後端 API
+│   ├─ routes/                 →  /xxx      任意路徑
+│   └─ middleware/             伺服器中介層
+├─ public/                 原樣提供的靜態檔
+└─ assets/                 會被 Vite 處理的資源</code></pre>
+  <aside class="side">
+    <strong>Nuxt 4 差異</strong>
+    Nuxt 4 把前端程式碼預設放進 <code>app/</code> 子資料夾（<code>app/pages</code>、<code>app/components</code>…），<code>server/</code> 與 <code>nuxt.config.ts</code> 仍在根目錄。概念與 API 基本相同，從 3 升級的成本不高。
+  </aside>
+
+  <h3>自動匯入（Auto-imports）</h3>
+  <p>Vue 的 API（<code>ref</code>、<code>computed</code>、<code>watch</code>）、Nuxt 的 composable（<code>useFetch</code>、<code>useRoute</code>）、<code>components/</code> 與 <code>composables/</code> 底下的東西都不需要 import。方便，但也讓「這個函式從哪來」變得不明顯；IDE 的型別提示（<code>.nuxt/</code> 自動產生）可以彌補。</p>
+
+  <h3>檔案式路由與版型</h3>
+<pre class="code" data-file="pages/users/[id].vue"><code>&lt;script setup lang="ts"&gt;
+definePageMeta({ layout: 'default', middleware: 'auth' })
+const route = useRoute()
+const { data: user, status } = await useFetch(`/api/users/${route.params.id}`)
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;div v-if="status === 'pending'"&gt;載入中…&lt;/div&gt;
+  &lt;h1 v-else&gt;{{ user?.name }}&lt;/h1&gt;
+&lt;/template&gt;</code></pre>
+  <p>巢狀路由：<code>pages/users.vue</code> 加上 <code>pages/users/</code> 資料夾，父層用 <code>&lt;NuxtPage /&gt;</code> 渲染子頁。導覽用 <code>&lt;NuxtLink to="/about"&gt;</code>（會預先載入進入視窗的連結）。</p>
+
+  <h3>資料抓取：useFetch / useAsyncData / $fetch</h3>
+  <table>
+    <tr><th>API</th><th>用途</th><th>SSR 行為</th></tr>
+    <tr><td><code>useFetch(url)</code></td><td>頁面載入時取資料（最常用）</td><td>伺服器抓一次，結果放進 payload，瀏覽器 hydration 時<b>不再重複請求</b></td></tr>
+    <tr><td><code>useAsyncData(key, fn)</code></td><td>取資料的函式不是單純 URL（多個請求、第三方 SDK）</td><td>同上，需要唯一的 <code>key</code></td></tr>
+    <tr><td><code>$fetch(url)</code></td><td>事件處理器中呼叫（按鈕送出）</td><td>無快取、無 payload 傳遞；在 setup 頂層用會被請求兩次</td></tr>
+  </table>
+<pre class="code"><code>const { data, status, error, refresh } = await useFetch('/api/products', {
+  query: { page },                       // page 是 ref，變動時自動重新請求
+  lazy: false,                           // true 時不阻塞導航，改用 status 顯示載入中
+  server: true,                          // false 時只在瀏覽器端抓
+  default: () =&gt; [],
+})
+
+// 按鈕送出用 $fetch
+async function submit() {
+  await $fetch('/api/orders', { method: 'POST', body: form })
+}</code></pre>
+  <div class="warn">
+    <p><b>常見錯誤：在 setup 頂層直接用 <code>$fetch</code> 取頁面資料。</b>SSR 時伺服器跑一次，hydration 後瀏覽器又跑一次，資料抓兩次還可能造成 hydration mismatch。頁面初始資料請用 <code>useFetch</code> / <code>useAsyncData</code>。</p>
+  </div>
+
+  <h3>server/ 目錄：Nitro 伺服器</h3>
+  <p>Nuxt 內建 Nitro 伺服器，讓你在同一個專案寫 API，並能部署到 Node、Vercel、Cloudflare Workers 等多種環境。</p>
+<pre class="code" data-file="server/api/products/[id].get.ts"><code>export default defineEventHandler(async (event) =&gt; {
+  const id = getRouterParam(event, 'id')
+  const { fields } = getQuery(event)
+  const product = await db.product.findUnique({ where: { id: Number(id) } })
+  if (!product) throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+  return product                       // 回傳物件自動轉 JSON
+})</code></pre>
+<pre class="code" data-file="server/api/orders.post.ts"><code>import { z } from 'zod'
+const Body = z.object({ items: z.array(z.object({ id: z.number(), qty: z.number().int().positive() })) })
+
+export default defineEventHandler(async (event) =&gt; {
+  const body = await readValidatedBody(event, Body.parse)   // 驗證請求內容
+  const session = await requireUserSession(event)           // 假設的 auth 工具
+  return createOrder(session.userId, body.items)
+})</code></pre>
+  <p>檔名後綴決定 HTTP 方法：<code>xxx.get.ts</code>、<code>xxx.post.ts</code>。BFF（Backend for Frontend）常見用法：瀏覽器呼叫 Nuxt 的 <code>/api/*</code>，由 Nuxt 伺服器帶著機密去呼叫真正的後端或第三方，完美解決第 1 章的「金鑰不能放前端」。</p>
+
+  <h3>runtimeConfig：執行期設定</h3>
+<pre class="code" data-file="nuxt.config.ts"><code>export default defineNuxtConfig({
+  modules: ['@pinia/nuxt'],
+  runtimeConfig: {
+    apiSecret: '',                         // 只在伺服器端可用
+    public: { apiBase: '/api' },           // 前後端皆可用
+  },
+})</code></pre>
+<pre class="code" data-file=".env（或部署平台的環境變數）"><code>NUXT_API_SECRET=xxxxx            # 對應 runtimeConfig.apiSecret
+NUXT_PUBLIC_API_BASE=https://api.example.com</code></pre>
+<pre class="code"><code>const config = useRuntimeConfig()
+config.public.apiBase     // 前後端都能讀
+config.apiSecret          // 在瀏覽器端是 undefined</code></pre>
+  <p>與 Vite 的 <code>VITE_</code> 變數的差別：runtimeConfig 在<b>啟動時</b>才讀環境變數，同一份建置結果可部署到不同環境。</p>
+
+  <h3>middleware 與導航</h3>
+<pre class="code" data-file="middleware/auth.ts"><code>export default defineNuxtRouteMiddleware((to) =&gt; {
+  const user = useState('user')            // SSR 安全的全域狀態
+  if (!user.value) return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
+})
+// middleware/*.global.ts 後綴代表全域；其餘用 definePageMeta({ middleware: 'auth' }) 指定</code></pre>
+
+  <h3>渲染模式：routeRules</h3>
+<pre class="code" data-file="nuxt.config.ts"><code>export default defineNuxtConfig({
+  routeRules: {
+    '/':            { prerender: true },              // 建置時產生靜態 HTML
+    '/blog/**':     { isr: 3600 },                    // 增量靜態再生（需平台支援）
+    '/products/**': { swr: 600 },                     // stale-while-revalidate 快取 10 分鐘
+    '/admin/**':    { ssr: false },                   // 後台直接當 SPA
+    '/api/**':      { cors: true },
+  },
+})</code></pre>
+  <p>部署方式：<code>nuxt build</code> 產生 Node 伺服器（<code>.output/server/index.mjs</code>）；<code>nuxt generate</code> 預先產出全部靜態頁；也能透過 Nitro preset 輸出到 Vercel、Netlify、Cloudflare 等。</p>
+
+  <h3>Hydration 與 SSR 的坑</h3>
+  <p>SSR 流程：伺服器渲染 HTML → 瀏覽器顯示 → 載入 JS 後 Vue「接管」既有 DOM（hydration）。若瀏覽器端首次渲染的結果和伺服器 HTML 不一致，就會出現 <mark>hydration mismatch</mark>。</p>
+  <table>
+    <tr><th>造成不一致的原因</th><th>解法</th></tr>
+    <tr><td>模板直接用 <code>Date.now()</code>、<code>Math.random()</code>、<code>new Date()</code> 顯示</td><td>把值放進 <code>useState</code> 或 <code>onMounted</code> 後再設定</td></tr>
+    <tr><td>存取 <code>window</code>、<code>localStorage</code>、<code>document</code>（伺服器沒有）</td><td>放進 <code>onMounted</code>，或用 <code>if (import.meta.client)</code> 判斷</td></tr>
+    <tr><td>只能在瀏覽器渲染的第三方元件（地圖、圖表）</td><td>用 <code>&lt;ClientOnly&gt;</code> 包起來，或檔名加 <code>.client.vue</code></td></tr>
+    <tr><td>HTML 結構不合法（<code>&lt;p&gt;</code> 裡放 <code>&lt;div&gt;</code>）</td><td>修正標籤巢狀，瀏覽器會自動修正 DOM 造成差異</td></tr>
+    <tr><td>伺服器與瀏覽器時區 / 語系不同</td><td>格式化時明確指定 locale 與 timeZone</td></tr>
+  </table>
+
+  <div class="warn">
+    <p><b>跨請求狀態污染（Cross-request state pollution）。</b>在模組頂層宣告 <code>const user = ref(null)</code> 並匯出，在 CSR 沒問題；但 SSR 時 Node 伺服器的模組是<b>所有使用者共用</b>的，A 使用者的資料可能洩漏給 B。需要 SSR 安全的共享狀態，請用 <code>useState('key')</code> 或 Pinia（它會為每個請求建立獨立實例）。</p>
+  </div>
+
+<pre class="code"><code>// ✗ 所有請求共用同一個物件
+export const currentUser = ref&lt;User | null&gt;(null)
+
+// ✓ 每個請求各自一份
+export const useCurrentUser = () =&gt; useState&lt;User | null&gt;('current-user', () =&gt; null)</code></pre>
+
+  <h3>SEO 與 Meta</h3>
+<pre class="code"><code>useSeoMeta({
+  title: () =&gt; product.value?.name,
+  description: () =&gt; product.value?.summary,
+  ogImage: () =&gt; product.value?.image,
+})</code></pre>
+
+  <h3>Nuxt 中使用 Pinia</h3>
+<pre class="code"><code>// nuxt.config.ts → modules: ['@pinia/nuxt']
+// stores/ 底下的 store 不需要 import；SSR 時 state 會自動序列化到 payload
+const cart = useCartStore()
+await callOnce(() =&gt; cart.fetchInitial())     // SSR 載入一次，避免 hydration 後重複請求</code></pre>
+
+  <p class="ex">練習 7-1：商品列表頁</p>
+  <p>建立 <code>server/api/products.get.ts</code>（回傳假資料，支援 <code>?q=</code> 篩選與 <code>?page=</code> 分頁，每頁 5 筆），再寫 <code>pages/products.vue</code>：搜尋框使用 <code>useFetch</code> 搭配響應式 <code>query</code>，搜尋字改變時自動重抓，並加上 <code>useSeoMeta</code>。用「檢視原始碼」確認 HTML 已包含商品名稱（證明是 SSR）。</p>
+  <details class="answer">
+    <summary>看參考答案</summary>
+<pre class="code" data-file="server/api/products.get.ts"><code>const ALL = Array.from({ length: 23 }, (_, i) =&gt; ({ id: i + 1, name: `商品 ${i + 1}` }))
+
+export default defineEventHandler((event) =&gt; {
+  const { q = '', page = '1' } = getQuery(event) as Record&lt;string, string&gt;
+  const list = ALL.filter((p) =&gt; p.name.includes(q))
+  const size = 5
+  const p = Math.max(1, Number(page) || 1)
+  return { total: list.length, items: list.slice((p - 1) * size, p * size) }
+})</code></pre>
+<pre class="code" data-file="pages/products.vue"><code>&lt;script setup lang="ts"&gt;
+const q = ref('')
+const page = ref(1)
+watch(q, () =&gt; (page.value = 1))
+
+const { data, status } = await useFetch('/api/products', {
+  query: { q, page },                 // ref 變動 → 自動重新請求
+  default: () =&gt; ({ total: 0, items: [] }),
+})
+useSeoMeta({ title: '商品列表' })
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;input v-model.trim="q" placeholder="搜尋" /&gt;
+  &lt;p v-if="status === 'pending'"&gt;載入中…&lt;/p&gt;
+  &lt;ul&gt;&lt;li v-for="p in data.items" :key="p.id"&gt;{{ p.name }}&lt;/li&gt;&lt;/ul&gt;
+  &lt;button :disabled="page &lt;= 1" @click="page--"&gt;上一頁&lt;/button&gt;
+  &lt;button :disabled="page * 5 &gt;= data.total" @click="page++"&gt;下一頁&lt;/button&gt;
+&lt;/template&gt;</code></pre>
+    <p>進階：搜尋輸入加上 debounce（把 <code>q</code> 包成 <code>refDebounced</code>），避免每打一個字就請求一次。</p>
+  </details>
+
+  <div class="quiz" data-answer="1" data-why="模組頂層的 ref 在 Node 伺服器上被所有請求共用；useState 與 Pinia 會為每個請求建立獨立實例。" data-hint="想想 SSR 時伺服器是同一個長駐的 Node 行程，同時服務很多使用者。">
+    <p class="qt">小測驗</p>
+    <p class="q">在 Nuxt SSR 專案，要放一個「目前登入者」的共享狀態，下列哪種做法有跨使用者資料洩漏的風險？</p>
+    <button type="button"><code>useState('user')</code></button>
+    <button type="button">在 <code>composables/auth.ts</code> 的模組頂層宣告並匯出 <code>export const user = ref(null)</code></button>
+    <button type="button">使用 Pinia store</button>
+    <button type="button">使用 cookie 加 <code>useCookie</code></button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <div class="quiz" data-answer="2" data-why="useFetch 的結果會隨 SSR payload 傳給瀏覽器，hydration 時不重複請求；$fetch 在 setup 頂層會在伺服器與瀏覽器各跑一次。" data-hint="Nuxt 為頁面初始資料提供了會處理 SSR payload 的專用 composable。">
+    <p class="qt">小測驗</p>
+    <p class="q">頁面載入時要取得初始資料，在 Nuxt 中應該用？</p>
+    <button type="button">在 setup 頂層直接 <code>await $fetch(...)</code></button>
+    <button type="button">在 <code>onMounted</code> 裡 <code>fetch</code></button>
+    <button type="button"><code>useFetch</code> 或 <code>useAsyncData</code></button>
+    <button type="button">用 <code>setInterval</code> 輪詢</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch7"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 8 章 ============ -->
+<section class="chapter" id="ch8" data-ch="ch8">
+  <h2><span class="ch-no">第 8 章</span>測試、效能與常見陷阱</h2>
+
+  <h3>測試：Vitest + Vue Test Utils</h3>
+<pre class="code" data-file="Counter.spec.ts"><code>import { mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+import Counter from './Counter.vue'
+
+describe('Counter', () =&gt; {
+  it('點擊後數字加一', async () =&gt; {
+    const wrapper = mount(Counter)
+    await wrapper.get('button').trigger('click')       // await：等 DOM 更新
+    expect(wrapper.text()).toContain('1')
+  })
+
+  it('元件會 emit 事件', async () =&gt; {
+    const wrapper = mount(UserCard, { props: { user: { id: 1, name: 'A' } } })
+    await wrapper.trigger('click')
+    expect(wrapper.emitted('select')?.[0]).toEqual([1])
+  })
+})</code></pre>
+  <ul>
+    <li>測「行為」而不是「實作」：點按鈕、看畫面文字、看 emit，不要去讀元件內部變數。</li>
+    <li>Pinia 用 <code>@pinia/testing</code> 的 <code>createTestingPinia({ createSpy: vi.fn })</code>，actions 預設被 stub。</li>
+    <li>Nuxt 專案用 <code>@nuxt/test-utils</code>，可在 Nuxt 環境中跑元件測試與 e2e。</li>
+    <li>端對端：Playwright。</li>
+  </ul>
+
+  <h3>效能優化清單（依成本效益排序）</h3>
+  <table>
+    <tr><th>手法</th><th>何時用</th></tr>
+    <tr><td>路由層級懶載入（<code>() =&gt; import()</code>）</td><td>永遠要做，成本最低、效果最大</td></tr>
+    <tr><td><code>v-for</code> 加正確的 <code>key</code></td><td>永遠要做</td></tr>
+    <tr><td>大型列表用虛擬捲動（<code>vue-virtual-scroller</code>、<code>@tanstack/vue-virtual</code>）</td><td>數千筆以上的列表</td></tr>
+    <tr><td><code>shallowRef</code> 存大型唯讀資料</td><td>上萬筆資料、不會被深層修改</td></tr>
+    <tr><td><code>computed</code> 取代模板中的重複計算 / 函式呼叫</td><td>模板裡有昂貴運算時（函式每次渲染都重跑，computed 有快取）</td></tr>
+    <tr><td><code>defineAsyncComponent</code> / Nuxt 的 <code>Lazy</code> 前綴</td><td>只在特定條件顯示的大元件（Modal、圖表）</td></tr>
+    <tr><td><code>v-once</code>、<code>v-memo</code></td><td>確定不會變的內容 / 超長列表的精細優化；先量測再用</td></tr>
+    <tr><td>圖片：寬高、<code>loading="lazy"</code>、<code>&lt;NuxtImg&gt;</code></td><td>避免版面位移（CLS）與浪費頻寬</td></tr>
+  </table>
+  <p>優化前先量測：Vue DevTools 的 Performance / Timeline、Chrome Lighthouse、<code>vite build --report</code> 或 <code>rollup-plugin-visualizer</code> 看 bundle 組成。</p>
+
+  <h3>TypeScript 要點</h3>
+  <ul>
+    <li>型別檢查靠 <code>vue-tsc</code>（<code>vue-tsc --noEmit</code>），Vite 本身只轉譯、不檢查型別，要放進 CI。</li>
+    <li>用型別宣告 props / emits（<code>defineProps&lt;{...}&gt;()</code>），比 runtime 宣告更簡潔。</li>
+    <li><code>ref&lt;User | null&gt;(null)</code>：需要明確泛型，否則推斷為 <code>Ref&lt;null&gt;</code>。</li>
+    <li>模板內的型別檢查需要 Volar（VS Code 的 Vue 官方擴充套件）。</li>
+  </ul>
+
+  <h3>十個最常踩的坑</h3>
+  <table>
+    <tr><th>#</th><th>症狀</th><th>原因 / 解法</th></tr>
+    <tr><td>1</td><td>解構後不更新</td><td>reactive / props（3.4 以前）/ store 解構；用 <code>toRefs</code>、<code>storeToRefs</code></td></tr>
+    <tr><td>2</td><td>腳本忘了 <code>.value</code></td><td><code>if (loading)</code> 永遠為 true（ref 物件本身是 truthy）；TypeScript 通常會提示</td></tr>
+    <tr><td>3</td><td>列表錯位</td><td>用 index 當 key</td></tr>
+    <tr><td>4</td><td>路由切換資料沒更新</td><td>元件被重用，改用 <code>watch</code> 路由參數</td></tr>
+    <tr><td>5</td><td>記憶體洩漏</td><td>計時器、<code>addEventListener</code>、WebSocket 沒在 <code>onUnmounted</code> 清除</td></tr>
+    <tr><td>6</td><td><code>watch</code> 沒觸發</td><td>直接傳 <code>reactive</code> 的屬性值而非 getter：<code>watch(() =&gt; obj.x, ...)</code></td></tr>
+    <tr><td>7</td><td>deep watch 卡頓</td><td>大物件 <code>deep: true</code> 每次變動都要遍歷；改監聽具體欄位</td></tr>
+    <tr><td>8</td><td>await 之後 composable 壞掉</td><td><code>await</code> 之後的 <code>onMounted</code> 等 hook 找不到元件實例；在 <code>script setup</code> 頂層、第一個 await 之前呼叫</td></tr>
+    <tr><td>9</td><td>hydration mismatch</td><td>見第 7 章</td></tr>
+    <tr><td>10</td><td>dev 正常、上線壞掉</td><td>proxy、環境變數、路由 fallback、大小寫檔名（Windows / Mac 不分大小寫，Linux 分）</td></tr>
+  </table>
+
+  <div class="quiz" data-answer="3" data-why="函式在模板中每次重新渲染都會執行；computed 依賴不變時直接回傳快取。" data-hint="比較「每次渲染都重算」與「依賴不變就用快取」。">
+    <p class="qt">小測驗</p>
+    <p class="q">模板中有一個昂貴的過濾 <code>{{ filterList(items, kw) }}</code>，最合適的優化是？</p>
+    <button type="button">改成 <code>v-once</code></button>
+    <button type="button">把函式放進 <code>watch</code></button>
+    <button type="button">加上 <code>deep: true</code></button>
+    <button type="button">改成 <code>computed</code>，依賴 items 與 kw，有快取</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch8"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 9 章 ============ -->
+<section class="chapter" id="ch9" data-ch="ch9">
+  <h2><span class="ch-no">第 9 章</span>面試題與小抄</h2>
+
+  <h3>面試題（先自己回答，再展開看重點）</h3>
+
+  <details class="answer"><summary>1. Vue 3 的響應式怎麼運作？和 Vue 2 差在哪？</summary>
+    <p>Vue 3 用 <code>Proxy</code> 攔截讀取與寫入：讀取時 track（記錄目前 effect 依賴這個屬性），寫入時 trigger（執行相關 effect）。Vue 2 用 <code>Object.defineProperty</code> 逐一屬性轉成 getter/setter，無法偵測新增 / 刪除屬性與陣列索引修改，初始化時還要遞迴遍歷整個物件。Proxy 版本是惰性的（用到才代理深層）、支援 Map / Set，效能與覆蓋度都更好。代價是不支援 IE。</p>
+  </details>
+  <details class="answer"><summary>2. ref 和 reactive 怎麼選？</summary>
+    <p>ref 可包任何型別、可整個替換、解構傳遞不失效，但腳本要寫 <code>.value</code>；reactive 只接受物件，不能整體替換、解構會失去響應性。預設用 ref 保持一致，reactive 只用於固定結構的表單物件。</p>
+  </details>
+  <details class="answer"><summary>3. computed 和 watch 的差別？</summary>
+    <p>computed 是「宣告式的衍生值」：有快取、同步、純函式、回傳值。watch 是「命令式的副作用」：資料變化時做某件事（API、儲存、操作 DOM），可非同步，拿得到新舊值。能用 computed 表達的就不要用 watch 去同步另一個 ref。</p>
+  </details>
+  <details class="answer"><summary>4. Vue 怎麼知道要更新哪個 DOM？Diff 與 key 的作用？</summary>
+    <p>模板編譯成渲染函式，產生虛擬 DOM（vnode）；狀態變化後重新產生新 vnode，與舊的比對（diff）再更新真實 DOM。Vue 3 編譯器還做了靜態提升、patch flags（標記只有哪些屬性是動態的）與 block tree，讓 diff 只比對動態節點。key 讓列表比對能辨識同一個節點，避免就地重用造成狀態錯位。</p>
+  </details>
+  <details class="answer"><summary>5. 為什麼 Vue 3 偏好 Composition API？它解決了什麼？</summary>
+    <p>Options API 依「選項類型」（data、methods、computed）組織程式，一個功能的程式碼會散落在各處；邏輯重用只能靠 mixin，有來源不清、命名衝突問題。Composition API 依「邏輯功能」組織，可抽成 composable 重用，TypeScript 型別推斷也自然得多。Options API 仍受支援，兩者可共存。</p>
+  </details>
+  <details class="answer"><summary>6. 父子元件通訊有哪些方式？各自適用？</summary>
+    <p>props / emit（直接父子）、v-model / defineModel（雙向綁定約定）、provide / inject（跨層，適合元件庫內部）、模板 ref + defineExpose（父呼叫子的方法，應少用）、Pinia（全域共享狀態）、事件匯流排（Vue 3 已移除，建議用 mitt 或 store 取代）。</p>
+  </details>
+  <details class="answer"><summary>7. Pinia 相較 Vuex 的優勢？</summary>
+    <p>沒有 mutations（只剩 state / getters / actions）；對 TypeScript 友善；天生模組化（每個 store 獨立，不必巢狀 modules 與命名空間）；支援 Composition 風格的 setup store；體積小；有 devtools、HMR、SSR 支援。Vuex 目前處於維護模式，新專案使用 Pinia。</p>
+  </details>
+  <details class="answer"><summary>8. 什麼是 SSR？Hydration 是什麼？為什麼會 mismatch？</summary>
+    <p>SSR 是在伺服器把元件渲染成 HTML 回傳，利於 SEO 與首屏。瀏覽器載入 JS 後，Vue 不重建 DOM，而是「接管」現有 DOM、掛上事件與響應式（hydration）。若瀏覽器首次渲染結果和伺服器 HTML 不同（隨機值、時間、瀏覽器專屬 API、非法 HTML 結構），就是 mismatch，Vue 會警告甚至整個重新渲染。</p>
+  </details>
+  <details class="answer"><summary>9. Nuxt 的 useFetch 與 $fetch 差異？</summary>
+    <p><code>useFetch</code> 是對 <code>useAsyncData</code> + <code>$fetch</code> 的包裝，為 setup 階段取資料設計：SSR 時把結果放進 payload、hydration 不重發；回傳 <code>data / status / error / refresh</code> 響應式物件，可監聽 ref 自動重抓，並以 key 去重。<code>$fetch</code> 是底層的 HTTP 客戶端，用於事件處理（送出表單），在 setup 頂層使用會雙重請求。</p>
+  </details>
+  <details class="answer"><summary>10. 如何設計一個大型 Vue 專案的目錄與分層？</summary>
+    <p>依「功能（feature）」切分比依「類型」切分更好維護：<code>features/cart/{components, composables, store, api, types}</code>，共用的放 <code>shared/</code>。API 呼叫集中在 <code>api/</code> 層，不在元件中直接寫 URL；store 只放用戶端狀態；元件分展示型（只吃 props）與容器型（碰資料）；以 ESLint 規範 import 邊界、<code>vue-tsc</code> 與 Vitest 進 CI。</p>
+  </details>
+
+  <h3>Vue 2 → 3 / Options → Composition 對照</h3>
+  <table>
+    <tr><th>Vue 2 / Options API</th><th>Vue 3 Composition</th></tr>
+    <tr><td><code>data()</code></td><td><code>ref()</code> / <code>reactive()</code></td></tr>
+    <tr><td><code>computed: {}</code></td><td><code>computed()</code></td></tr>
+    <tr><td><code>methods: {}</code></td><td>一般函式</td></tr>
+    <tr><td><code>watch: {}</code></td><td><code>watch()</code> / <code>watchEffect()</code></td></tr>
+    <tr><td><code>mounted</code> / <code>beforeDestroy</code></td><td><code>onMounted</code> / <code>onBeforeUnmount</code></td></tr>
+    <tr><td><code>this.$emit</code></td><td><code>defineEmits</code></td></tr>
+    <tr><td><code>this.$refs</code></td><td><code>useTemplateRef</code> / <code>ref</code></td></tr>
+    <tr><td><code>mixins</code></td><td>composable</td></tr>
+    <tr><td><code>Vue.set</code></td><td>不需要</td></tr>
+    <tr><td><code>this.$store</code>（Vuex）</td><td><code>useXxxStore()</code>（Pinia）</td></tr>
+    <tr><td><code>this.$route</code></td><td><code>useRoute()</code></td></tr>
+  </table>
+
+  <h3>指令小抄</h3>
+<pre class="code" data-file="終端機"><code>npm create vue@latest              # 建立 Vue + Vite 專案
+npm run dev | build | preview      # 開發 / 建置 / 預覽建置結果
+npx vue-tsc --noEmit               # 型別檢查
+npx vitest                         # 測試
+
+npx nuxi@latest init app           # 建立 Nuxt 專案
+npx nuxi dev | build | generate | preview
+npx nuxi add page about            # 產生頁面（也有 component、composable、api…）
+npx nuxi module add pinia          # 安裝並註冊模組</code></pre>
+
+  <h3>延伸閱讀</h3>
+  <ul>
+    <li><a href="https://vuejs.org/" target="_blank" rel="noopener">vuejs.org</a>：官方文件，Guide 與 API 兩個區塊都值得精讀；尤其是「Reactivity in Depth」與「Performance」。</li>
+    <li><a href="https://vite.dev/" target="_blank" rel="noopener">vite.dev</a>、<a href="https://pinia.vuejs.org/" target="_blank" rel="noopener">pinia.vuejs.org</a>、<a href="https://nuxt.com/" target="_blank" rel="noopener">nuxt.com</a></li>
+    <li><a href="https://vueuse.org/" target="_blank" rel="noopener">VueUse</a>：composable 寶庫，也是學習寫法的好教材。</li>
+    <li>讀原始碼：<code>vuejs/core</code> 的 <code>packages/reactivity</code> 約幾千行，是理解響應式最直接的方式。</li>
+  </ul>
+
+  <div class="quiz" data-answer="2" data-why="Vuex 的 mutations 在 Pinia 中已移除，actions 可以同步或非同步地直接修改 state。" data-hint="Pinia 的核心簡化之一是少了某個 Vuex 概念。">
+    <p class="qt">小測驗</p>
+    <p class="q">Pinia 相較 Vuex，移除了下列哪個概念？</p>
+    <button type="button">state</button>
+    <button type="button">getters</button>
+    <button type="button">mutations</button>
+    <button type="button">actions</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch9"> 這章讀完了</label>
+
+  <p class="end" style="margin-top:36px">— 講義結束，祝開發順利 —</p>
+</section>
+
+</main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var DONE_KEY = "vue3-handout:done";
+
+  /* 程式碼複製按鈕 */
+  $$("pre.code").forEach(function (pre) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "copy";
+    btn.textContent = "複製";
+    btn.addEventListener("click", function () {
+      var text = pre.querySelector("code").textContent;
+      var ok = function () { btn.textContent = "已複製"; setTimeout(function () { btn.textContent = "複製"; }, 1200); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(ok, function () { btn.textContent = "失敗"; });
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); ok(); } catch (e) { btn.textContent = "失敗"; }
+        document.body.removeChild(ta);
+      }
+    });
+    pre.appendChild(btn);
+  });
+
+  /* 小測驗 */
+  $$(".quiz").forEach(function (q) {
+    var answer = Number(q.dataset.answer);
+    var buttons = $$("button", q);
+    var fb = $(".fb", q);
+    buttons.forEach(function (btn, i) {
+      btn.addEventListener("click", function () {
+        buttons.forEach(function (b) { b.classList.remove("right", "wrong"); });
+        if (i === answer) {
+          btn.classList.add("right");
+          fb.textContent = "答對了！" + (q.dataset.why || "");
+          fb.dataset.state = "ok";
+        } else {
+          btn.classList.add("wrong");
+          fb.textContent = "不對。" + (q.dataset.hint || "");
+          fb.dataset.state = "no";
+        }
+      });
+    });
+  });
+
+  /* 完成進度 */
+  var chapters = $$("section.chapter");
+  var done = new Set();
+  try { done = new Set(JSON.parse(localStorage.getItem(DONE_KEY) || "[]")); } catch (e) { /* 忽略 */ }
+
+  function refresh() {
+    $$("input[data-done]").forEach(function (cb) { cb.checked = done.has(cb.dataset.done); });
+    $$(".toc li").forEach(function (li) { li.classList.toggle("done", done.has(li.dataset.ch)); });
+    $(".bar").style.width = (done.size / chapters.length) * 100 + "%";
+    $(".progress").setAttribute("aria-valuenow", String(done.size));
+    $(".progress-text").textContent = "已完成 " + done.size + " / " + chapters.length + " 章";
+  }
+  $$("input[data-done]").forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      if (cb.checked) done.add(cb.dataset.done); else done.delete(cb.dataset.done);
+      try { localStorage.setItem(DONE_KEY, JSON.stringify(Array.from(done))); } catch (e) { /* 忽略 */ }
+      refresh();
+    });
+  });
+  refresh();
+
+  /* 目錄：目前章節 */
+  if ("IntersectionObserver" in window) {
+    var spy = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        $$(".toc li").forEach(function (li) {
+          var a = $("a", li);
+          if (li.dataset.ch === en.target.dataset.ch) a.setAttribute("aria-current", "location");
+          else a.removeAttribute("aria-current");
+        });
+      });
+    }, { rootMargin: "-15% 0px -75% 0px" });
+    chapters.forEach(function (c) { spy.observe(c); });
+  }
+
+  /* 列印前展開所有答案 */
+  window.addEventListener("beforeprint", function () { $$("details").forEach(function (d) { d.open = true; }); });
+})();
+</script>
+</body>
+</html>
