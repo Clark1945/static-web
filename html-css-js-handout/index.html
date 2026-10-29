@@ -9,7 +9,8 @@
 (function(){var l;try{l=localStorage.getItem("html-css-js-handout:lang");}catch(e){}
 var h=location.hash;if(/^#en-/.test(h))l="en";else if(/^#ch\d/.test(h))l="zh";
 if(l!=="en"&&l!=="zh")l=/^zh/i.test(navigator.language||"")?"zh":"en";
-var r=document.documentElement;r.dataset.lang=l;r.lang=l==="en"?"en":"zh-Hant";})();
+var r=document.documentElement;r.dataset.lang=l;r.lang=l==="en"?"en":"zh-Hant";
+try{if(localStorage.getItem("html-css-js-handout:toc")==="collapsed")r.classList.add("toc-collapsed");}catch(e){}})();
 </script>
 <style>
 :root {
@@ -148,13 +149,8 @@ html[data-lang="en"] .page[lang="zh-Hant"] { display: none; }
 
 /* 窄螢幕 */
 @media (max-width: 1040px) {
-  .page { grid-template-columns: 1fr; gap: 0; padding: 0; }
-  .toc { position: sticky; top: 0; z-index: 20; max-height: none; padding: 8px 170px 8px 12px; background: var(--sheet); border-bottom: 1px solid var(--rule); }
-  .toc h2, .progress, .progress-text { display: none; }
-  .toc ol { display: flex; gap: 4px; }
-  .toc a { white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; padding: 4px 10px; }
-  .toc a[aria-current] { border-bottom-color: var(--red); }
-  .sheet { border-radius: 0; padding: 28px 18px 40px 30px; box-shadow: none; }
+  .page { grid-template-columns: 1fr; gap: 0; padding: 48px 0 0; }
+  .sheet { border-radius: 0; padding: 24px 18px 40px 30px; box-shadow: none; }
   .sheet::before { left: 14px; }
   .chapter { grid-template-columns: minmax(0, 1fr); }
   .chapter > .side { grid-column: 1; }
@@ -297,9 +293,6 @@ pre.code.good { border-left: 4px solid var(--ok); }
   .tl { grid-template-columns: 78px minmax(0, 1fr); }
   .tl-name { font-size: 12px; }
 }
-@media (max-width: 1040px) {
-  .toc li.toc-part { display: none; }
-}
 @media print {
   .chap-nav, .pg-bar, .p-run { display: none; }
   .predict { break-inside: avoid; }
@@ -311,6 +304,62 @@ td code, th code { overflow-wrap: anywhere; }
   .chapter table { display: block; max-width: 100%; overflow-x: auto; }
 }
 :not(pre) > code { overflow-wrap: anywhere; }
+
+/* ───────── 目錄開合與手機版面 ───────── */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.toc-toggle { position: fixed; top: 10px; left: 14px; z-index: 70; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); font: 18px/1 var(--sans); cursor: pointer; box-shadow: 0 2px 10px rgba(10, 20, 40, .18); }
+.toc-toggle:hover { border-color: var(--muted); }
+.topbar, .toc-backdrop { display: none; }
+
+/* 桌面：側欄可收合，記在瀏覽器裡 */
+@media (min-width: 1041px) {
+  .toc { margin-top: 36px; top: 60px; max-height: calc(100vh - 84px); max-height: calc(100dvh - 84px); }
+  html.toc-collapsed .page { grid-template-columns: minmax(0, 1fr); }
+  html.toc-collapsed .toc { display: none; }
+  html.toc-collapsed .sheet { width: 100%; max-width: 1080px; margin: 0 auto; }
+}
+
+/* 平板與手機：頂端細列 + 滑出式目錄 */
+@media (max-width: 1040px) {
+  html { scroll-padding-top: 60px; }
+  .topbar { display: block; position: fixed; top: 0; left: 0; right: 0; z-index: 40; height: 48px; padding: 0 150px 0 56px; border-bottom: 1px solid var(--rule); background: var(--sheet); font-size: 14.5px; font-weight: 700; line-height: 47px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toc-toggle { top: 6px; left: 10px; }
+  .lang-switch { top: 7px; right: 10px; }
+  .toc { position: fixed; top: 0; bottom: 0; left: 0; z-index: 60; width: min(86vw, 330px); max-height: none; margin: 0; padding: 60px 12px 28px; background: var(--sheet); box-shadow: 4px 0 24px rgba(0, 0, 0, .3); font-size: 16px; visibility: hidden; transform: translateX(-102%); transition: transform .25s ease, visibility 0s linear .25s; overscroll-behavior: contain; }
+  html.toc-open .toc { visibility: visible; transform: none; transition: transform .25s ease; }
+  .toc a { padding: 11px 12px; }
+  .toc-backdrop { position: fixed; inset: 0; z-index: 55; background: rgba(0, 0, 0, .45); }
+  html.toc-open .toc-backdrop { display: block; }
+  html.toc-open body { overflow: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toc, html.toc-open .toc { transition: none; }
+}
+
+/* 手機：好讀的字級、間距與觸控目標 */
+@media (max-width: 720px) {
+  body { font-size: 16px; line-height: 1.8; }
+  .sheet { padding: 20px 16px 36px 26px; }
+  .sheet::before { left: 12px; }
+  .cover h1 { font-size: 28px; }
+  .cover .sub { font-size: 16.5px; }
+  .chapter { margin-bottom: 48px; }
+  .chapter > h2 { font-size: 23px; }
+  .chapter h3 { font-size: 18px; }
+  .chapter h3.topic { margin-top: 34px; padding-top: 18px; font-size: 20px; }
+  .lede { font-size: 16px; }
+  .side { font-size: 14px; }
+  pre.code { margin-left: -6px; margin-right: -6px; padding: 12px; font-size: 12.5px; line-height: 1.65; }
+  .copy, .pg-head button, .pg-bar button { padding: 4px 12px; }
+  .quiz { padding: 10px 12px 6px; }
+  .quiz button, .p-opts button { min-height: 44px; }
+  .done { padding: 8px 0; font-size: 15px; }
+  .done input { width: 22px; height: 22px; }
+  .chap-nav a { flex-basis: 100%; }
+}
+@media print {
+  .toc-toggle, .topbar, .toc-backdrop { display: none; }
+}
 </style>
 </head>
 <body>
@@ -318,6 +367,9 @@ td code, th code { overflow-wrap: anywhere; }
   <button type="button" data-set-lang="zh" lang="zh-Hant" aria-pressed="true">中文</button>
   <button type="button" data-set-lang="en" lang="en" aria-pressed="false">English</button>
 </div>
+<button type="button" class="toc-toggle" aria-label="目錄 / Contents" title="目錄 / Contents" aria-expanded="true">☰</button>
+<div class="topbar" aria-hidden="true"><span class="cur-title"></span></div>
+<div class="toc-backdrop"></div>
 
 <div class="page" lang="zh-Hant">
 
@@ -7817,12 +7869,44 @@ HistoryDB.register({
 
   /* ───── 目錄：目前章節 ───── */
   let currentCh = null;
+  const barTitle = $(".cur-title");
+  function updateBarTitle() {
+    const pane = $('.page[lang="' + (root.dataset.lang === "en" ? "en" : "zh-Hant") + '"]');
+    const a = pane && currentCh ? $('.toc li[data-ch="' + currentCh + '"] a', pane) : null;
+    barTitle.textContent = a ? a.textContent.replace(/\s+/g, " ").trim() : document.title;
+  }
+
+  /* ───── 目錄開合：桌面收合側欄，手機滑出抽屜 ───── */
+  const TOC_KEY = "html-css-js-handout:toc";
+  const tocToggle = $(".toc-toggle");
+  const narrowMq = window.matchMedia("(max-width: 1040px)");
+  function syncToggle() {
+    const open = narrowMq.matches ? root.classList.contains("toc-open") : !root.classList.contains("toc-collapsed");
+    tocToggle.setAttribute("aria-expanded", String(open));
+    tocToggle.textContent = narrowMq.matches && open ? "✕" : "☰";
+  }
+  function setDrawer(open) { root.classList.toggle("toc-open", open); syncToggle(); }
+  tocToggle.addEventListener("click", () => {
+    if (narrowMq.matches) { setDrawer(!root.classList.contains("toc-open")); return; }
+    const collapsed = root.classList.toggle("toc-collapsed");
+    try { localStorage.setItem(TOC_KEY, collapsed ? "collapsed" : "open"); } catch (e) { /* 忽略 */ }
+    syncToggle();
+  });
+  $(".toc-backdrop").addEventListener("click", () => setDrawer(false));
+  $$(".toc a").forEach((a) => a.addEventListener("click", () => { if (narrowMq.matches) setDrawer(false); }));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && root.classList.contains("toc-open")) { setDrawer(false); tocToggle.focus(); }
+  });
+  narrowMq.addEventListener("change", () => setDrawer(false));
+  syncToggle();
+
   if ("IntersectionObserver" in window) {
     const spy = new IntersectionObserver((entries) => {
       entries.forEach((en) => {
         if (!en.isIntersecting) return;
         const pane = en.target.closest(".page");
         currentCh = en.target.dataset.ch;
+        updateBarTitle();
         $$(".toc li[data-ch]", pane).forEach((li) => {
           const a = $("a", li);
           if (li.dataset.ch === currentCh) a.setAttribute("aria-current", "location");
@@ -7841,6 +7925,7 @@ HistoryDB.register({
     document.title = STR[lang].title;
     $$("[data-set-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setLang === lang)));
     try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* 忽略 */ }
+    updateBarTitle();
 
     const pane = $('.page[lang="' + (lang === "en" ? "en" : "zh-Hant") + '"]');
     if (!("IntersectionObserver" in window)) $$(".pg", pane).forEach((p) => { if (!p.__ran) p.__run(); });
