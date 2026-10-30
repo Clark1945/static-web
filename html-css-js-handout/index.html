@@ -360,6 +360,30 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 @media print {
   .toc-toggle, .topbar, .toc-backdrop { display: none; }
 }
+
+/* ───────── 收藏章節與集中複習 ───────── */
+:root { --star: #d99a00; }
+@media (prefers-color-scheme: dark) { :root { --star: #fbbf24; } }
+.fav-hide { display: none !important; }
+.toc li[data-ch] { display: flex; align-items: center; }
+.toc li[data-ch] > a { flex: 1; min-width: 0; }
+.fav-star { flex: none; width: 28px; height: 28px; margin-right: 2px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: 17px/1 var(--sans); cursor: pointer; }
+.fav-star:hover, .fav-star.on { color: var(--star); }
+.fav-review { display: block; width: 100%; margin: 0 0 12px; padding: 6px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 600 13.5px/1.4 var(--sans); text-align: left; cursor: pointer; }
+.fav-review:hover { border-color: var(--muted); }
+.fav-review[aria-pressed="true"] { border-color: var(--star); background: var(--star); color: #1b1300; }
+.fav-banner { display: none; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 14px; margin: 0 0 28px; padding: 10px 14px; border: 2px solid var(--star); border-radius: 8px; background: color-mix(in srgb, var(--star) 12%, transparent); font-size: 15px; line-height: 1.6; }
+.fav-banner p { margin: 0; font-weight: 700; }
+.fav-banner button { padding: 3px 14px; border: 1px solid var(--ink); border-radius: 999px; background: transparent; color: var(--ink); font: 600 13.5px var(--sans); cursor: pointer; }
+html.fav-mode .fav-banner { display: flex; }
+html.fav-mode .cover, html.fav-mode .chap-nav { display: none; }
+@media (max-width: 1040px) {
+  .fav-star { width: 40px; height: 40px; font-size: 21px; }
+  .fav-review { padding: 10px 12px; font-size: 15px; }
+}
+@media print {
+  .fav-star, .fav-review, .fav-banner { display: none; }
+}
 </style>
 </head>
 <body>
@@ -7497,6 +7521,10 @@ HistoryDB.register({
       right: "預測正確。", wrong: (x) => "你選的是第 " + x + " 個選項，和實際輸出不同。",
       mismatch: "（注意：這個瀏覽器的實際輸出和預期的標準答案不同。）",
       prev: "上一章", next: "下一章",
+      star: "收藏", unstar: "取消收藏",
+      favReview: (n) => "★ 複習收藏（" + n + "）", favExit: "離開收藏複習",
+      favBanner: (n) => "收藏複習：只顯示你標了星號的 " + n + " 章",
+      favNone: "還沒有收藏的章節。離開後，點目錄中章節左邊的 ☆ 就能收藏。",
     },
     en: {
       title: "HTML / CSS / JavaScript Interactive Handout: from basics to advanced",
@@ -7513,6 +7541,10 @@ HistoryDB.register({
       right: "Correct prediction.", wrong: (x) => "You picked option " + x + ", which differs from the real output.",
       mismatch: "(Note: this browser's real output differs from the expected reference answer.)",
       prev: "Previous", next: "Next",
+      star: "Star", unstar: "Unstar",
+      favReview: (n) => "★ Review starred (" + n + ")", favExit: "Exit review",
+      favBanner: (n) => "Starred review: showing only your " + n + " starred chapter" + (n > 1 ? "s" : ""),
+      favNone: "No starred chapters yet. Exit, then tap the ☆ next to a chapter in the contents.",
     },
   };
   const langOf = (el) => ((el.closest(".page") || root).lang === "en" ? "en" : "zh");
@@ -7843,6 +7875,77 @@ HistoryDB.register({
     });
   });
   refreshProgress();
+
+  /* ───── 收藏章節：目錄左邊的星號，加上集中複習模式 ───── */
+  const FAV_KEY = "html-css-js-handout:fav";
+  const chapterIds = new Set(chapters.map((c) => c.dataset.ch));
+  let favs = new Set();
+  try { favs = new Set(JSON.parse(localStorage.getItem(FAV_KEY) || "[]")); } catch (e) { /* 忽略 */ }
+  let favMode = false;
+
+  function toggleFav(id) {
+    if (favs.has(id)) favs.delete(id); else favs.add(id);
+    try { localStorage.setItem(FAV_KEY, JSON.stringify([...favs])); } catch (e) { /* 忽略 */ }
+    refreshFavs();
+  }
+  function setFavMode(on) {
+    favMode = on;
+    refreshFavs();
+    window.scrollTo({ top: 0, behavior: "instant" });
+    if (narrowMq.matches) setDrawer(false);
+  }
+  function refreshFavs() {
+    const n = [...favs].filter((id) => chapterIds.has(id)).length;
+    root.classList.toggle("fav-mode", favMode);
+    $$(".page").forEach((pane) => {
+      const s = STR[langOf(pane)];
+      $$(".fav-star", pane).forEach((b) => {
+        const on = favs.has(b.dataset.ch);
+        const label = (on ? s.unstar : s.star) + " " + b.dataset.title;
+        b.textContent = on ? "★" : "☆";
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-pressed", String(on));
+        b.setAttribute("aria-label", label);
+        b.title = label;
+      });
+      const rv = $(".fav-review", pane);
+      rv.textContent = favMode ? "✕ " + s.favExit : s.favReview(n);
+      rv.setAttribute("aria-pressed", String(favMode));
+      $(".fav-banner p", pane).textContent = n ? s.favBanner(n) : s.favNone;
+      $$("section.chapter", pane).forEach((sec) => sec.classList.toggle("fav-hide", favMode && !favs.has(sec.dataset.ch)));
+      let part = null, any = false;
+      const flush = () => { if (part) part.classList.toggle("fav-hide", favMode && !any); };
+      $$(".toc li", pane).forEach((li) => {
+        if (li.classList.contains("toc-part")) { flush(); part = li; any = false; return; }
+        const hide = favMode && !favs.has(li.dataset.ch);
+        li.classList.toggle("fav-hide", hide);
+        if (!hide) any = true;
+      });
+      flush();
+    });
+  }
+  $$(".page").forEach((pane) => {
+    const s = STR[langOf(pane)];
+    $$(".toc li[data-ch]", pane).forEach((li) => {
+      const b = el("button", "fav-star", "☆");
+      b.type = "button";
+      b.dataset.ch = li.dataset.ch;
+      b.dataset.title = $("a", li).textContent.replace(/\s+/g, " ").trim();
+      b.addEventListener("click", () => toggleFav(li.dataset.ch));
+      li.prepend(b);
+    });
+    const rv = el("button", "fav-review");
+    rv.type = "button";
+    rv.addEventListener("click", () => setFavMode(!favMode));
+    $(".progress-text", pane).after(rv);
+    const banner = el("div", "fav-banner");
+    const exit = el("button", null, s.favExit);
+    exit.type = "button";
+    exit.addEventListener("click", () => setFavMode(false));
+    banner.append(el("p"), exit);
+    $(".sheet", pane).prepend(banner);
+  });
+  refreshFavs();
 
   /* ───── 章節導覽：上一章 / 下一章 ───── */
   $$(".page").forEach((pane) => {
