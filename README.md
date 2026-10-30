@@ -5,7 +5,7 @@
 | 資料夾 | 是什麼 | 技術 | 怎麼開 |
 |---|---|---|---|
 | [`history-db/`](history-db/) | 全球歷史資料庫：橫軸是國家、縱軸是年份的時間軸，目前收錄台灣 1603～2024 | 純 HTML / CSS / JS（靜態） | 直接雙擊 `index.html` |
-| [`html-css-js-handout/`](html-css-js-handout/) | HTML / CSS / JavaScript 入門講義，中英雙語，右上角切換，有可編輯的即時範例與小測驗 | 單一 HTML 檔 | 直接雙擊 `index.html` |
+| [`html-css-js-handout/`](html-css-js-handout/) | HTML / CSS / JavaScript 互動式講義（基礎篇 + 進階篇，共 13 章），中英雙語，右上角切換；有可編輯的即時範例、預測題與小測驗，目錄可收合、可收藏章節集中複習，手機也好讀 | 單一 HTML 檔 | 直接雙擊 `index.html` |
 | [`db-lab/`](db-lab/) | 資料庫面試練習庫：用模擬電商資料練習 PostgreSQL、Redis、MongoDB 等九種資料庫，含 Spring Boot 展示台與中英日三語靜態網站 | Docker、Spring Boot、靜態網站 | 見 [`db-lab/README.md`](db-lab/README.md) |
 | [`vue3-handout/`](vue3-handout/) | Vue 3 實戰講義（給 3～4 年經驗工程師）：Vite、Composition API、響應式原理、Pinia、Nuxt 3（SSR、Nitro、useFetch），附小測驗、練習題與面試題 | 單一 HTML 檔 | 直接雙擊 `index.html` |
 
