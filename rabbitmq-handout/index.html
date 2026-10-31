@@ -1,0 +1,1488 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RabbitMQ 實戰講義</title>
+<meta name="description" content="給 2～4 年經驗軟體工程師的 RabbitMQ 講義：Exchange 路由、Queue 類型、訊息可靠性、Spring AMQP、DLX 與重試、叢集與營運，附小測驗、練習題與面試題。">
+<script>
+(function(){try{if(localStorage.getItem("rabbitmq-handout:toc")==="collapsed")document.documentElement.classList.add("toc-collapsed");}catch(e){}})();
+</script>
+<style>
+:root {
+  --desk: #efe9e3;
+  --sheet: #ffffff;
+  --ink: #2a211b;
+  --muted: #6b5b4e;
+  --rule: #e0d6cc;
+  --accent: #d9530b;
+  --hl: #ffe9a8;
+  --code-bg: #f7f2ed;
+  --link: #1f5fbf;
+  --ok: #1d7a46;
+  --bad: #c0252f;
+  --star: #d99a00;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono CJK TC", monospace;
+  --sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", system-ui, sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --desk: #14100d; --sheet: #1d1713; --ink: #f0e6dc; --muted: #b3a291; --rule: #3a2f27;
+    --accent: #ff8a3d; --hl: #6b5a10; --code-bg: #16110e; --link: #7db2ff; --ok: #5fd18d; --bad: #ff7b84; --star: #fbbf24;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--desk); color: var(--ink); font-family: var(--sans); font-size: 16.5px; line-height: 1.85; }
+a { color: var(--link); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+
+.page { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; max-width: 1340px; margin: 0 auto; padding: 24px; }
+
+/* 目錄 */
+.toc { position: sticky; top: 60px; align-self: start; margin-top: 36px; max-height: calc(100vh - 84px); max-height: calc(100dvh - 84px); overflow: auto; font-size: 14.5px; line-height: 1.5; }
+.toc h2 { margin: 0 0 8px; font-size: 15px; }
+.progress { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .3s; }
+.progress-text { margin: 4px 0 10px; font-size: 12.5px; color: var(--muted); }
+.toc ol { margin: 0; padding: 0; list-style: none; }
+.toc li[data-ch] { display: flex; align-items: center; }
+.toc li[data-ch] > a { flex: 1; min-width: 0; }
+.toc li.toc-part { margin: 14px 0 2px; padding: 0 10px; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--muted); }
+.toc a { display: block; padding: 6px 10px; border-left: 3px solid transparent; color: var(--ink); text-decoration: none; }
+.toc a:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.toc a[aria-current] { border-left-color: var(--accent); font-weight: 700; background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.toc li.done a::after { content: " ✓"; color: var(--ok); }
+.fav-star { flex: none; width: 28px; height: 28px; margin-right: 2px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: 17px/1 var(--sans); cursor: pointer; }
+.fav-star:hover, .fav-star.on { color: var(--star); }
+.fav-review { display: block; width: 100%; margin: 0 0 12px; padding: 6px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 600 13.5px/1.4 var(--sans); text-align: left; cursor: pointer; }
+.fav-review:hover { border-color: var(--muted); }
+.fav-review[aria-pressed="true"] { border-color: var(--star); background: var(--star); color: #1b1300; }
+.fav-hide { display: none !important; }
+
+.toc-toggle { position: fixed; top: 10px; left: 14px; z-index: 70; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); font: 18px/1 var(--sans); cursor: pointer; box-shadow: 0 2px 10px rgba(30, 15, 5, .2); }
+.toc-toggle:hover { border-color: var(--muted); }
+.topbar, .toc-backdrop { display: none; }
+
+/* 紙張 */
+.sheet { position: relative; background: var(--sheet); border-radius: 6px; box-shadow: 0 2px 14px rgba(30, 15, 5, .14); padding: 44px 48px 56px 76px; }
+.sheet::before { content: ""; position: absolute; top: 0; bottom: 0; left: 48px; width: 2px; background: var(--accent); opacity: .4; }
+
+.cover { padding-bottom: 24px; margin-bottom: 36px; border-bottom: 4px double var(--ink); }
+.cover h1 { margin: 0 0 6px; font-size: clamp(28px, 5vw, 42px); line-height: 1.25; letter-spacing: .02em; }
+.cover .sub { margin: 0 0 20px; font-size: 19px; color: var(--muted); }
+.meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 18px; font-size: 15px; line-height: 1.6; }
+.meta dt { font-weight: 700; color: var(--accent); }
+.meta dd { margin: 0; }
+
+.fav-banner { display: none; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 14px; margin: 0 0 28px; padding: 10px 14px; border: 2px solid var(--star); border-radius: 8px; background: color-mix(in srgb, var(--star) 12%, transparent); font-size: 15px; line-height: 1.6; }
+.fav-banner p { margin: 0; font-weight: 700; }
+.fav-banner button { padding: 3px 14px; border: 1px solid var(--ink); border-radius: 999px; background: transparent; color: var(--ink); font: 600 13.5px var(--sans); cursor: pointer; }
+html.fav-mode .fav-banner { display: flex; }
+html.fav-mode .cover, html.fav-mode .chap-nav { display: none; }
+
+mark { background: linear-gradient(transparent 55%, var(--hl) 55%); color: inherit; padding: 0 1px; }
+
+/* 章 */
+.chapter { display: grid; grid-template-columns: minmax(0, 1fr) 230px; column-gap: 32px; margin-bottom: 64px; }
+.chapter > * { grid-column: 1; min-width: 0; }
+.chapter > h2 { grid-column: 1 / -1; }
+.chapter > .side { grid-column: 2; }
+.chapter p, .chapter ul, .chapter ol { margin: 0 0 14px; }
+.chapter ul, .chapter ol { padding-left: 1.4em; }
+.chapter li { margin: 2px 0; }
+.chapter > h2 { margin: 0 0 18px; padding-bottom: 8px; border-bottom: 3px solid var(--ink); font-size: 29px; line-height: 1.35; }
+.ch-no { display: block; margin-bottom: 2px; color: var(--accent); font-size: 15px; font-weight: 700; letter-spacing: .08em; }
+.chapter h3 { margin: 26px 0 10px; font-size: 19px; line-height: 1.5; }
+.chapter h3::before { content: ""; display: inline-block; width: 6px; height: 1em; margin-right: 9px; background: var(--accent); vertical-align: -.14em; }
+
+/* 旁註 */
+.side { align-self: start; margin: 2px 0 14px; padding: 2px 0 2px 12px; border-left: 3px solid var(--accent); font-size: 13.5px; line-height: 1.7; color: var(--muted); }
+.side strong { display: block; color: var(--ink); }
+.side code { font-size: 12.5px; }
+
+/* 程式碼 */
+code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); padding: 1px 6px; border-radius: 4px; overflow-wrap: break-word; }
+pre.code { position: relative; margin: 12px 0 16px; padding: 14px 16px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; overflow: auto; font: 13.5px/1.7 var(--mono); tab-size: 2; }
+pre.code[data-file]::before { content: attr(data-file); display: block; margin: -4px 0 8px; color: var(--muted); font-size: 12px; }
+pre.code code { padding: 0; background: none; font-size: inherit; overflow-wrap: normal; }
+.copy { position: absolute; top: 6px; right: 6px; padding: 1px 9px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); color: var(--muted); font: 12px var(--sans); cursor: pointer; }
+.copy:hover { color: var(--ink); border-color: var(--muted); }
+
+table { width: 100%; margin: 12px 0 18px; border-collapse: collapse; font-size: 14.5px; line-height: 1.6; }
+th, td { padding: 7px 10px; border: 1px solid var(--rule); text-align: left; vertical-align: top; }
+th { background: var(--code-bg); }
+
+/* 流程圖 */
+.chapter .flow { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0 12px; padding: 0; list-style: none; }
+.chapter .flow li { position: relative; flex: 1 1 130px; margin: 0; padding: 10px 12px; border: 2px solid var(--ink); border-radius: 6px; font-size: 14px; line-height: 1.6; }
+.chapter .flow li:not(:last-child)::after { content: "→"; position: absolute; right: -16px; top: 50%; transform: translateY(-50%); color: var(--accent); font-weight: 700; background: var(--sheet); }
+.flow b { display: block; }
+
+/* 提示框 */
+.warn { margin: 14px 0; padding: 10px 14px; border-left: 4px solid var(--bad); background: color-mix(in srgb, var(--bad) 8%, transparent); border-radius: 0 6px 6px 0; font-size: 15px; line-height: 1.7; }
+.warn > :last-child { margin-bottom: 0; }
+.warn b:first-child { color: var(--bad); }
+.tip { margin: 14px 0; padding: 10px 14px; border-left: 4px solid var(--ok); background: color-mix(in srgb, var(--ok) 8%, transparent); border-radius: 0 6px 6px 0; font-size: 15px; line-height: 1.7; }
+.tip > :last-child { margin-bottom: 0; }
+.tip b:first-child { color: var(--ok); }
+
+/* 小測驗 */
+.quiz { margin: 18px 0; padding: 12px 16px 8px; border: 2px dashed var(--ink); border-radius: 8px; }
+.quiz .qt { margin: 0 0 4px; color: var(--accent); font-weight: 700; font-size: 14px; }
+.quiz .q { margin: 0 0 6px; font-weight: 700; }
+.quiz button { display: block; width: 100%; margin: 6px 0; padding: 7px 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 15px/1.6 var(--sans); text-align: left; cursor: pointer; }
+.quiz button:hover { border-color: var(--muted); }
+.quiz button.right { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.quiz button.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 13%, transparent); }
+.quiz .fb { min-height: 1.6em; margin: 4px 0 6px; font-size: 14.5px; }
+.quiz .fb[data-state="ok"] { color: var(--ok); }
+.quiz .fb[data-state="no"] { color: var(--bad); }
+
+details.answer { margin: 10px 0 16px; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 6px; }
+details.answer summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+details.answer[open] summary { margin-bottom: 8px; }
+
+.done { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--rule); font-size: 14.5px; cursor: pointer; }
+.done input { width: 18px; height: 18px; accent-color: var(--ok); }
+
+.chap-nav { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.chap-nav a { flex: 1 1 220px; display: block; padding: 10px 14px; border: 1px solid var(--rule); border-radius: 8px; color: var(--ink); text-decoration: none; line-height: 1.5; }
+.chap-nav a:hover { border-color: var(--muted); }
+.chap-nav a.next { text-align: right; }
+.chap-nav small { display: block; font-size: 12.5px; color: var(--muted); }
+
+.ex { margin: 18px 0 4px; font-weight: 700; }
+.end { text-align: center; color: var(--muted); font-size: 14px; }
+
+/* 桌面：側欄可收合 */
+@media (min-width: 1041px) {
+  html.toc-collapsed .page { grid-template-columns: minmax(0, 1fr); }
+  html.toc-collapsed .toc { display: none; }
+  html.toc-collapsed .sheet { width: 100%; max-width: 1080px; margin: 0 auto; }
+}
+
+/* 平板與手機：頂端細列 + 滑出式目錄 */
+@media (max-width: 1040px) {
+  html { scroll-padding-top: 60px; }
+  .page { grid-template-columns: 1fr; gap: 0; padding: 48px 0 0; }
+  .topbar { display: block; position: fixed; top: 0; left: 0; right: 0; z-index: 40; height: 48px; padding: 0 16px 0 56px; border-bottom: 1px solid var(--rule); background: var(--sheet); font-size: 14.5px; font-weight: 700; line-height: 47px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toc-toggle { top: 6px; left: 10px; }
+  .toc { position: fixed; top: 0; bottom: 0; left: 0; z-index: 60; width: min(86vw, 330px); max-height: none; margin: 0; padding: 60px 12px 28px; background: var(--sheet); box-shadow: 4px 0 24px rgba(0, 0, 0, .3); font-size: 16px; visibility: hidden; transform: translateX(-102%); transition: transform .25s ease, visibility 0s linear .25s; overscroll-behavior: contain; }
+  html.toc-open .toc { visibility: visible; transform: none; transition: transform .25s ease; }
+  .toc a { padding: 11px 12px; }
+  .fav-star { width: 40px; height: 40px; font-size: 21px; }
+  .fav-review { padding: 10px 12px; font-size: 15px; }
+  .toc-backdrop { position: fixed; inset: 0; z-index: 55; background: rgba(0, 0, 0, .45); }
+  html.toc-open .toc-backdrop { display: block; }
+  html.toc-open body { overflow: hidden; }
+  .sheet { border-radius: 0; padding: 24px 18px 40px 30px; box-shadow: none; }
+  .sheet::before { left: 14px; }
+  .chapter { grid-template-columns: minmax(0, 1fr); }
+  .chapter > .side { grid-column: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toc, html.toc-open .toc { transition: none; }
+}
+
+/* 手機：好讀的字級、間距與觸控目標 */
+@media (max-width: 720px) {
+  body { font-size: 16px; line-height: 1.8; }
+  .sheet { padding: 20px 16px 36px 26px; }
+  .sheet::before { left: 12px; }
+  .meta { grid-template-columns: 1fr; }
+  .cover h1 { font-size: 28px; }
+  .cover .sub { font-size: 16.5px; }
+  .chapter { margin-bottom: 48px; }
+  .chapter > h2 { font-size: 23px; }
+  .chapter h3 { font-size: 18px; }
+  .side { font-size: 14px; }
+  pre.code { margin-left: -6px; margin-right: -6px; padding: 12px; font-size: 12.5px; line-height: 1.65; }
+  .copy { padding: 4px 12px; }
+  .quiz { padding: 10px 12px 6px; }
+  .quiz button { min-height: 44px; }
+  .done { padding: 8px 0; font-size: 15px; }
+  .done input { width: 22px; height: 22px; }
+  .chap-nav a { flex-basis: 100%; }
+  .chapter .flow li:not(:last-child)::after { display: none; }
+  .chapter table { display: block; max-width: 100%; overflow-x: auto; }
+}
+
+@media print {
+  body { background: #fff; color: #000; font-size: 12pt; }
+  .page { display: block; padding: 0; }
+  .toc, .toc-toggle, .topbar, .toc-backdrop, .fav-banner, .copy, .quiz, .done, .chap-nav { display: none; }
+  .sheet { box-shadow: none; padding: 0 0 0 20px; }
+  .sheet::before { left: 0; }
+  .chapter { display: block; break-before: page; }
+  .chapter:first-of-type { break-before: auto; }
+  pre.code, .side, table { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<button type="button" class="toc-toggle" aria-label="目錄" title="目錄" aria-expanded="true">☰</button>
+<div class="topbar" aria-hidden="true"><span class="cur-title"></span></div>
+<div class="toc-backdrop"></div>
+
+<div class="page">
+
+<nav class="toc" aria-label="目錄">
+  <h2>目錄</h2>
+  <div class="progress" role="progressbar" aria-label="完成進度" aria-valuemin="0" aria-valuemax="11" aria-valuenow="0"><i class="bar"></i></div>
+  <p class="progress-text"></p>
+  <ol>
+    <li class="toc-part">基礎篇</li>
+    <li data-ch="ch0"><a href="#ch0">0　先看全貌</a></li>
+    <li data-ch="ch1"><a href="#ch1">1　快速上手</a></li>
+    <li data-ch="ch2"><a href="#ch2">2　Exchange 與路由</a></li>
+    <li data-ch="ch3"><a href="#ch3">3　Queue 類型與屬性</a></li>
+    <li class="toc-part">實作篇</li>
+    <li data-ch="ch4"><a href="#ch4">4　訊息可靠性</a></li>
+    <li data-ch="ch5"><a href="#ch5">5　Spring AMQP 實戰</a></li>
+    <li data-ch="ch6"><a href="#ch6">6　DLX、重試與延遲</a></li>
+    <li data-ch="ch7"><a href="#ch7">7　常見模式與設計</a></li>
+    <li class="toc-part">營運篇</li>
+    <li data-ch="ch8"><a href="#ch8">8　叢集與高可用</a></li>
+    <li data-ch="ch9"><a href="#ch9">9　營運、監控與排錯</a></li>
+    <li data-ch="ch10"><a href="#ch10">10　面試題與小抄</a></li>
+  </ol>
+</nav>
+
+<main class="sheet">
+
+<header class="cover">
+  <h1>RabbitMQ 實戰講義</h1>
+  <p class="sub">不只會收發訊息，還要說得出「訊息怎麼才不會丟、不會重、不會卡」</p>
+  <dl class="meta">
+    <dt>適用對象</dt><dd>有 2～4 年軟體開發經驗，用過 HTTP API 與資料庫，但還沒有系統性使用過訊息佇列，或只用過最基本的收發</dd>
+    <dt>預估時間</dt><dd>約 8～10 小時，含練習</dd>
+    <dt>版本基準</dt><dd>RabbitMQ 4.x（協定 AMQP 0-9-1）、Spring Boot 3.x / Spring AMQP 3.x、Java 17+。其他語言的客戶端概念相同，API 名稱略有不同</dd>
+    <dt>不包含</dt><dd>Kafka 的完整教學、RabbitMQ Streams 的深入用法、MQTT / STOMP 協定、Erlang 內部機制</dd>
+  </dl>
+  <p><strong>怎麼讀這份講義</strong></p>
+  <ul>
+    <li><mark>螢光筆</mark>是關鍵詞；紅色框是常見的踩雷點，綠色框是建議做法。</li>
+    <li>右側旁註是設計取捨與其他系統的對照，手機上會移到段落下方。</li>
+    <li>範例以 Java + Spring Boot 為主，搭配 <code>docker compose</code> 與 <code>rabbitmqctl</code> 指令。建議邊讀邊在本機起一個 RabbitMQ 實際操作，看管理介面比光看文字有效。</li>
+    <li>目錄每章左邊的 ☆ 可以收藏，按「複習收藏」只顯示收藏的章節；每章結尾有小測驗與「這章讀完了」勾選，都記在這個瀏覽器裡。列印時會自動展開所有答案。</li>
+  </ul>
+</header>
+
+<!-- ============ 第 0 章 ============ -->
+<section class="chapter" id="ch0" data-ch="ch0">
+  <h2><span class="ch-no">第 0 章</span>先看全貌：為什麼要訊息佇列，RabbitMQ 長什麼樣</h2>
+
+  <h3>訊息佇列解決什麼問題</h3>
+  <p>假設「使用者下單」要做：扣庫存、建立訂單、寄確認信、通知倉儲、累積點數、推播到 App。全部寫在同一個 HTTP 請求裡，會有幾個問題：</p>
+  <ul>
+    <li><mark>耦合</mark>：下單服務要認識每一個下游，新增一個下游就要改下單程式。</li>
+    <li><mark>延遲與可用性</mark>：寄信服務慢或掛掉，整個下單就慢或失敗，但其實「寄信失敗」不該讓訂單失敗。</li>
+    <li><mark>尖峰</mark>：大促時流量是平常的幾十倍，下游扛不住。</li>
+  </ul>
+  <p>訊息佇列的做法：下單服務只負責把「訂單已建立」這個事實<b>丟進 broker</b>，馬上回應使用者；各下游各自從 broker 取訊息、依自己的速度處理。得到的好處是<mark>解耦、非同步、削峰</mark>。</p>
+
+  <div class="warn">
+    <p><b>代價別忽略：</b>系統變成最終一致；訊息可能重複，下游必須做到冪等；除錯要追蹤跨服務的訊息流；多了一個必須維運的基礎設施。<b>呼叫端需要立刻拿到結果的流程（查餘額、登入驗證）通常不該用 MQ。</b></p>
+  </div>
+
+  <h3>RabbitMQ 的核心模型</h3>
+  <p>最容易誤解的一點：生產者<b>不是</b>直接把訊息送進 queue，而是送給 <mark>exchange</mark>，由 exchange 依規則決定要放進哪些 queue。</p>
+  <ol class="flow">
+    <li><b>Producer</b>生產者，發訊息</li>
+    <li><b>Exchange</b>依規則分送</li>
+    <li><b>Binding</b>exchange 與 queue 的規則（routing key）</li>
+    <li><b>Queue</b>暫存訊息</li>
+    <li><b>Consumer</b>消費者，處理後 ack</li>
+  </ol>
+  <table>
+    <tr><th>名詞</th><th>說明</th></tr>
+    <tr><td>Connection</td><td>應用程式與 broker 的一條 TCP 連線，建立成本高，應長期持有、重複使用</td></tr>
+    <tr><td>Channel</td><td>一條連線內的輕量「虛擬連線」。幾乎所有操作（發、收、宣告）都在 channel 上做</td></tr>
+    <tr><td>Virtual host（vhost）</td><td>邏輯隔離單位，類似資料庫的 schema。不同 vhost 的 exchange / queue / 權限互不相通</td></tr>
+    <tr><td>Exchange</td><td>接收生產者訊息並路由。類型：direct、fanout、topic、headers</td></tr>
+    <tr><td>Queue</td><td>儲存訊息、等待消費者取走的緩衝區</td></tr>
+    <tr><td>Binding</td><td>連結 exchange 與 queue 的規則，可帶 binding key</td></tr>
+    <tr><td>Routing key</td><td>生產者發訊息時附帶的字串，exchange 用它去比對 binding</td></tr>
+    <tr><td>Ack</td><td>消費者告訴 broker「我處理完了，可以刪掉這則」</td></tr>
+  </table>
+  <aside class="side">
+    <strong>為什麼要多一層 exchange</strong>
+    讓生產者與消費者的拓撲脫鉤：生產者只管「發到 order.events」，之後多一個消費者，只要新增 queue 並綁定，生產者程式完全不用改。
+  </aside>
+
+  <h3>RabbitMQ、Kafka、Redis 怎麼選</h3>
+  <table>
+    <tr><th></th><th>RabbitMQ</th><th>Kafka</th><th>Redis（List / Stream）</th></tr>
+    <tr><td>本質</td><td>訊息 broker，聰明的 broker</td><td>分散式追加日誌，聰明的消費者</td><td>記憶體資料庫附帶佇列功能</td></tr>
+    <tr><td>訊息保留</td><td>消費並 ack 後刪除</td><td>依保留時間 / 大小保留，可重複讀、重播</td><td>List 取走即刪；Stream 可保留</td></tr>
+    <tr><td>路由</td><td>很靈活（exchange、topic、header）</td><td>以 topic + partition，路由簡單</td><td>幾乎沒有</td></tr>
+    <tr><td>順序</td><td>單一 queue 內有序（多消費者時打破）</td><td>partition 內嚴格有序</td><td>List 有序</td></tr>
+    <tr><td>吞吐</td><td>萬～十萬級 / 秒</td><td>十萬～百萬級 / 秒</td><td>高，但受記憶體限制</td></tr>
+    <tr><td>適合</td><td>任務派送、服務間事件、需要靈活路由與逐則確認</td><td>日誌、事件溯源、串流處理、大量資料管線</td><td>輕量、對可靠性要求不高的場景</td></tr>
+  </table>
+  <p>簡單的判斷：要「把工作交給別人做」並且每則訊息逐一確認 → RabbitMQ；要「保留所有事件的歷史、多個系統各自重播」→ Kafka。兩者常常並存。</p>
+
+  <div class="quiz" data-answer="1" data-why="生產者把訊息交給 exchange，由 exchange 依 binding 規則路由到一個或多個 queue。" data-hint="想想 RabbitMQ 的核心模型：中間多了一層負責分送的元件。">
+    <p class="qt">小測驗</p>
+    <p class="q">在 RabbitMQ 中，生產者發出的訊息會先交給哪個元件？</p>
+    <button type="button">Queue</button>
+    <button type="button">Exchange</button>
+    <button type="button">Consumer</button>
+    <button type="button">Channel 的內部緩衝區，由 broker 自動決定去向</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch0"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 1 章 ============ -->
+<section class="chapter" id="ch1" data-ch="ch1">
+  <h2><span class="ch-no">第 1 章</span>快速上手：起一個 RabbitMQ，收發第一則訊息</h2>
+
+  <h3>用 Docker Compose 啟動</h3>
+<pre class="code" data-file="docker-compose.yml"><code>services:
+  rabbitmq:
+    image: rabbitmq:4-management       # management 版本內建管理介面
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"      # AMQP：應用程式連這個
+      - "15672:15672"    # 管理介面（HTTP）
+    environment:
+      RABBITMQ_DEFAULT_USER: app
+      RABBITMQ_DEFAULT_PASS: app-secret
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq   # 沒掛 volume，容器重建後 queue 與訊息都沒了
+    restart: unless-stopped
+
+volumes:
+  rabbitmq-data:</code></pre>
+<pre class="code" data-file="終端機"><code>docker compose up -d
+# 開 http://localhost:15672，用 app / app-secret 登入
+docker exec rabbitmq rabbitmq-diagnostics check_running</code></pre>
+  <div class="warn">
+    <p><b>預設帳號 guest / guest 只允許從本機（localhost）連線，這是刻意的安全設計。</b>正式環境必須自己建立使用者、給最小權限，並刪除或停用 guest（第 9 章）。</p>
+  </div>
+
+  <h3>管理介面導覽</h3>
+  <table>
+    <tr><th>分頁</th><th>看什麼</th></tr>
+    <tr><td>Overview</td><td>整體的發布 / 消費速率、佇列總訊息數、節點狀態、連接埠</td></tr>
+    <tr><td>Connections / Channels</td><td>目前有哪些客戶端連進來、各自開了多少 channel</td></tr>
+    <tr><td>Exchanges</td><td>所有 exchange 與 binding；可以手動發訊息測試</td></tr>
+    <tr><td>Queues and Streams</td><td>每個 queue 的 Ready（待消費）、Unacked（已派送未確認）、消費者數；可以手動 Get Messages 看內容</td></tr>
+    <tr><td>Admin</td><td>使用者、vhost、權限、policy</td></tr>
+  </table>
+  <aside class="side">
+    <strong>Ready 與 Unacked</strong>
+    Ready：還在 queue 裡等人取。Unacked：已經交給消費者、但還沒收到 ack。兩者相加是 queue 的訊息總數，排錯時要分開看（第 9 章）。
+  </aside>
+
+  <h3>Spring Boot 的第一個範例</h3>
+<pre class="code" data-file="pom.xml"><code>&lt;dependency&gt;
+  &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+  &lt;artifactId&gt;spring-boot-starter-amqp&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></pre>
+<pre class="code" data-file="application.yml"><code>spring:
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: app
+    password: app-secret
+    virtual-host: /</code></pre>
+<pre class="code" data-file="HelloConfig.java"><code>@Configuration
+public class HelloConfig {
+    @Bean
+    Queue helloQueue() {
+        return QueueBuilder.durable("hello").build();   // 啟動時由 RabbitAdmin 自動宣告
+    }
+}</code></pre>
+<pre class="code" data-file="HelloDemo.java"><code>@Component
+public class HelloDemo {
+    private final RabbitTemplate rabbit;
+    public HelloDemo(RabbitTemplate rabbit) { this.rabbit = rabbit; }
+
+    // 送到預設 exchange（名稱為空字串），routing key = queue 名稱
+    public void send() { rabbit.convertAndSend("", "hello", "Hello RabbitMQ"); }
+
+    @RabbitListener(queues = "hello")
+    public void receive(String body) { System.out.println("收到：" + body); }
+}</code></pre>
+  <p>這裡用到了 RabbitMQ 的一個特性：每個 queue 都會自動綁定到<mark>預設 exchange</mark>（名稱是空字串，類型 direct），binding key 就是 queue 名稱。所以「送到 <code>""</code> + routing key 等於 queue 名」就等於直接送進該 queue。學習時很方便，但正式設計請使用具名 exchange（第 2 章）。</p>
+
+  <h3>常用指令</h3>
+<pre class="code" data-file="終端機"><code>docker exec rabbitmq rabbitmqctl list_queues name type messages_ready messages_unacknowledged consumers
+docker exec rabbitmq rabbitmqctl list_exchanges name type
+docker exec rabbitmq rabbitmqctl list_bindings
+docker exec rabbitmq rabbitmqctl list_connections name state channels
+docker exec rabbitmq rabbitmq-diagnostics status</code></pre>
+
+  <div class="quiz" data-answer="2" data-why="預設 exchange 是名稱為空字串的 direct exchange，每個 queue 都會自動以自己的名稱綁定它。" data-hint="想想「發送到空字串 exchange + routing key = queue 名」這個技巧背後是哪個 exchange。">
+    <p class="qt">小測驗</p>
+    <p class="q"><code>convertAndSend("", "hello", msg)</code> 為什麼能直接把訊息送進名為 hello 的 queue？</p>
+    <button type="button">Spring 會自動跳過 exchange</button>
+    <button type="button">空字串代表 fanout exchange，會送到所有 queue</button>
+    <button type="button">預設 exchange（空字串）是 direct 類型，所有 queue 都自動以自己的名稱綁定到它</button>
+    <button type="button">RabbitMQ 規定 queue 名稱必須等於 exchange 名稱</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch1"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 2 章 ============ -->
+<section class="chapter" id="ch2" data-ch="ch2">
+  <h2><span class="ch-no">第 2 章</span>Exchange 與路由</h2>
+
+  <h3>四種 Exchange</h3>
+  <table>
+    <tr><th>類型</th><th>路由規則</th><th>典型用途</th></tr>
+    <tr><td><b>direct</b></td><td>routing key 與 binding key <b>完全相等</b>才送</td><td>依類別分派：log.error 到告警、log.info 到歸檔</td></tr>
+    <tr><td><b>fanout</b></td><td>忽略 routing key，送給<b>所有</b>綁定的 queue</td><td>廣播：快取失效通知、設定更新</td></tr>
+    <tr><td><b>topic</b></td><td>routing key 是以 <code>.</code> 分隔的單字，binding key 可用萬用字元</td><td>事件路由：<code>order.created.tw</code>，各消費者訂閱感興趣的子集</td></tr>
+    <tr><td><b>headers</b></td><td>比對訊息標頭而非 routing key</td><td>很少用，topic 通常已足夠</td></tr>
+  </table>
+
+  <h3>topic 的萬用字元</h3>
+  <ul>
+    <li><code>*</code>：剛好一個單字</li>
+    <li><code>#</code>：零個或多個單字</li>
+  </ul>
+  <table>
+    <tr><th>binding key</th><th><code>order.created</code></th><th><code>order.created.tw</code></th><th><code>order.paid.tw</code></th><th><code>payment.failed</code></th></tr>
+    <tr><td><code>order.created</code></td><td>✔</td><td>✘</td><td>✘</td><td>✘</td></tr>
+    <tr><td><code>order.*</code></td><td>✔</td><td>✘（多一個單字）</td><td>✘</td><td>✘</td></tr>
+    <tr><td><code>order.#</code></td><td>✔</td><td>✔</td><td>✔</td><td>✘</td></tr>
+    <tr><td><code>*.*.tw</code></td><td>✘</td><td>✔</td><td>✔</td><td>✘</td></tr>
+    <tr><td><code>#</code></td><td>✔</td><td>✔</td><td>✔</td><td>✔</td></tr>
+  </table>
+  <aside class="side">
+    <strong>命名建議</strong>
+    routing key 用「領域.事件.（修飾）」，例如 <code>order.created</code>。exchange 以領域或服務命名（<code>order.events</code>），不要用消費者的名稱，否則生產者又和消費者耦合了。
+  </aside>
+
+  <h3>用 Spring 宣告拓撲</h3>
+<pre class="code" data-file="OrderTopology.java"><code>@Configuration
+public class OrderTopology {
+    public static final String EXCHANGE = "order.events";
+
+    @Bean
+    TopicExchange orderExchange() {
+        return new TopicExchange(EXCHANGE, true, false);       // durable, 非 auto-delete
+    }
+
+    // 寄信服務：只關心「訂單建立」
+    @Bean
+    Queue mailQueue() {
+        return QueueBuilder.durable("order.created.mail").quorum().build();
+    }
+    @Bean
+    Binding mailBinding(Queue mailQueue, TopicExchange orderExchange) {
+        return BindingBuilder.bind(mailQueue).to(orderExchange).with("order.created");
+    }
+
+    // 稽核服務：訂單所有事件都要
+    @Bean
+    Queue auditQueue() {
+        return QueueBuilder.durable("order.audit").quorum().build();
+    }
+    @Bean
+    Binding auditBinding(Queue auditQueue, TopicExchange orderExchange) {
+        return BindingBuilder.bind(auditQueue).to(orderExchange).with("order.#");
+    }
+}</code></pre>
+  <p>發一則 <code>order.created</code>：寄信與稽核兩個 queue 都各收到一份<mark>獨立的副本</mark>；發 <code>order.paid</code>：只有稽核收到。每個 queue 內的消費者則是「<b>競爭</b>」關係：同一則訊息只會交給其中一個消費者。</p>
+
+  <div class="warn">
+    <p><b>找不到對應 queue 的訊息會被「默默丟掉」。</b>如果 routing key 打錯、或 binding 還沒建立，broker 不會報錯，生產者也不會知道。兩個解法：發送時設定 <code>mandatory</code> 並處理 return（第 4 章）；或替 exchange 設定 <code>alternate-exchange</code>，把無法路由的訊息導到一個專門收集的 queue。</p>
+  </div>
+
+  <h3>其他實用觀念</h3>
+  <ul>
+    <li><b>宣告是冪等的</b>：重複宣告同名同屬性的 exchange / queue 沒問題；但屬性不同（例如 durable 不同、queue 類型不同）會拋 <code>PRECONDITION_FAILED</code>，必須先刪除再重建。</li>
+    <li><b>誰負責宣告</b>：通常由消費者宣告自己的 queue 與 binding（它最清楚自己要什麼）；exchange 由擁有它的服務宣告。Spring 的 <code>RabbitAdmin</code> 會在連線建立時自動宣告所有 Bean。</li>
+    <li><b>Exchange 可以綁 exchange</b>（exchange-to-exchange binding），用來組合複雜的路由，但會增加理解難度，謹慎使用。</li>
+    <li><b>系統內建的 <code>amq.*</code> exchange</b> 保留給系統使用，不要自己取這類名稱。</li>
+  </ul>
+
+  <div class="quiz" data-answer="2" data-why="* 只匹配一個單字，所以 order.* 配不到三段的 order.created.tw；order.# 可匹配零到多個單字。" data-hint="數一數單字數：* 剛好一個，# 是零或多個。">
+    <p class="qt">小測驗</p>
+    <p class="q">topic exchange 上，routing key 為 <code>order.created.tw</code> 的訊息，會被下列哪個 binding key 匹配？</p>
+    <button type="button"><code>order.*</code></button>
+    <button type="button"><code>order.created</code></button>
+    <button type="button"><code>order.#</code></button>
+    <button type="button"><code>*.tw</code></button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch2"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 3 章 ============ -->
+<section class="chapter" id="ch3" data-ch="ch3">
+  <h2><span class="ch-no">第 3 章</span>Queue 類型與屬性</h2>
+
+  <h3>三種 Queue 類型</h3>
+  <table>
+    <tr><th></th><th>Classic</th><th><mark>Quorum</mark></th><th>Stream</th></tr>
+    <tr><td>複製</td><td>只存在一個節點（4.0 起已移除鏡像佇列）</td><td>Raft 共識，複製到多數節點</td><td>複製，追加式日誌</td></tr>
+    <tr><td>資料安全</td><td>節點掛掉，該 queue 不可用，訊息可能遺失</td><td>多數節點存活就不會遺失已確認的訊息</td><td>同左</td></tr>
+    <tr><td>消費後</td><td>刪除</td><td>刪除</td><td>保留，可重複讀、從指定位置讀（Kafka 式）</td></tr>
+    <tr><td>適合</td><td>暫存、可丟失的資料、單節點開發環境</td><td><b>需要可靠與高可用的一般業務佇列（首選）</b></td><td>需要重播、大量扇出、高吞吐</td></tr>
+    <tr><td>限制</td><td>—</td><td>一定是 durable、不可 exclusive；優先權支援有限；吞吐略低於 classic</td><td>用法與 AMQP queue 不同（偏移量、需 prefetch）</td></tr>
+  </table>
+<pre class="code"><code>// Spring：宣告 quorum queue
+QueueBuilder.durable("order.created.mail").quorum().build();
+
+// 或以 argument 指定
+QueueBuilder.durable("q").withArgument("x-queue-type", "quorum").build();</code></pre>
+  <aside class="side">
+    <strong>建議</strong>
+    新專案的業務佇列預設用 quorum。要小心的是：queue 類型建立後不能更改，要換類型就得建新 queue、遷移訊息。
+  </aside>
+
+  <h3>其他屬性（宣告時指定）</h3>
+  <table>
+    <tr><th>屬性</th><th>說明</th></tr>
+    <tr><td>durable</td><td>queue 的定義是否在 broker 重啟後保留。正式環境的業務佇列都應 true。注意：<b>queue 持久不代表訊息持久</b>，訊息還要標記 persistent（第 4 章）</td></tr>
+    <tr><td>exclusive</td><td>只限宣告它的那條連線使用，連線關閉就刪除。適合臨時回覆佇列</td></tr>
+    <tr><td>auto-delete</td><td>最後一個消費者離開就自動刪除</td></tr>
+    <tr><td><code>x-message-ttl</code></td><td>訊息在 queue 中的存活時間（毫秒），逾時會被丟棄或送到 DLX</td></tr>
+    <tr><td><code>x-expires</code></td><td>queue 閒置多久後自動刪除</td></tr>
+    <tr><td><code>x-max-length</code> / <code>x-max-length-bytes</code></td><td>queue 長度 / 大小上限</td></tr>
+    <tr><td><code>x-overflow</code></td><td>超過上限時：<code>drop-head</code>（預設，丟最舊的）或 <code>reject-publish</code>（拒絕新訊息，搭配 publisher confirm 產生 nack）</td></tr>
+    <tr><td><code>x-dead-letter-exchange</code></td><td>死信去向（第 6 章）</td></tr>
+    <tr><td><code>x-delivery-limit</code></td><td>quorum queue 專用：同一則訊息被重新投遞的次數上限，超過就進 DLX（或丟棄）</td></tr>
+  </table>
+
+  <h3>用 Policy 而非硬寫在程式裡</h3>
+  <p>queue 的 argument 一旦宣告就不能改；<b>Policy</b> 則是由 broker 端依名稱模式套用，可隨時調整，不必改程式、重建 queue。TTL、長度上限、DLX 這類營運參數，建議用 policy 管理。</p>
+<pre class="code" data-file="終端機"><code># 所有以 order. 開頭的 queue，訊息最多存活 1 小時、最多 10 萬則
+docker exec rabbitmq rabbitmqctl set_policy order-limits "^order\." \
+  '{"message-ttl":3600000,"max-length":100000}' --apply-to queues</code></pre>
+  <p>當 policy 與 queue argument 衝突時，argument 優先（部分屬性取較小值）。</p>
+
+  <div class="warn">
+    <p><b>Queue 不是資料庫，也不是越大越好。</b>長期堆積大量訊息會佔用記憶體與磁碟、拖慢 broker、延長故障後的恢復時間。把 queue 當成「暫時的緩衝」，堆積通常代表消費端出了問題，應當警報，而不是放任它長大。</p>
+  </div>
+
+  <div class="quiz" data-answer="1" data-why="quorum queue 以 Raft 複製到多數節點，是 4.x 中一般業務佇列的建議類型；經典鏡像佇列在 4.0 已移除。" data-hint="想想「需要高可用與資料安全的一般業務佇列」，RabbitMQ 官方現在推薦哪一種。">
+    <p class="qt">小測驗</p>
+    <p class="q">一個三節點叢集中，要建立「訂單事件」的業務佇列，節點掛掉也不能丟訊息，建議使用？</p>
+    <button type="button">Classic queue，並設為 durable</button>
+    <button type="button">Quorum queue</button>
+    <button type="button">Exclusive queue</button>
+    <button type="button">Auto-delete queue</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch3"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 4 章 ============ -->
+<section class="chapter" id="ch4" data-ch="ch4">
+  <h2><span class="ch-no">第 4 章</span>訊息可靠性：怎麼確保不丟、不重</h2>
+
+  <p>「訊息不會丟」不是 RabbitMQ 預設就給你的，而是<mark>三個環節都要做對</mark>。任何一個環節有缺口，訊息就可能無聲消失。</p>
+  <ol class="flow">
+    <li><b>① 生產者 → Broker</b>Publisher confirm + mandatory</li>
+    <li><b>② Broker 儲存</b>durable queue（或 quorum）+ persistent 訊息</li>
+    <li><b>③ Broker → 消費者</b>手動 / 受控的 ack + 處理失敗策略</li>
+  </ol>
+
+  <h3>① 生產者到 Broker</h3>
+  <p>預設情況下，<code>basicPublish</code> 送出就算完成，不保證 broker 真的收到、也不保證路由成功。需要兩個機制：</p>
+  <ul>
+    <li><mark>Publisher Confirm</mark>：broker 收到並<b>處理完</b>（已寫入所有目標 queue；quorum queue 則是已複製到多數）後，回覆 ack；處理失敗回覆 nack。生產者非同步地接收這些確認。</li>
+    <li><mark>mandatory + Return</mark>：訊息無法路由到任何 queue 時，broker 把訊息退回給生產者（<code>basic.return</code>）。注意此時 broker 仍會發 confirm ack（「我處理完了」，結果是沒地方放），所以兩者要一起用。</li>
+  </ul>
+<pre class="code" data-file="application.yml"><code>spring:
+  rabbitmq:
+    publisher-confirm-type: correlated    # 啟用 confirm，並帶回 CorrelationData
+    publisher-returns: true
+    template:
+      mandatory: true</code></pre>
+<pre class="code" data-file="PublisherCallbacks.java"><code>@Component
+public class PublisherCallbacks {
+    private static final Logger log = LoggerFactory.getLogger(PublisherCallbacks.class);
+
+    public PublisherCallbacks(RabbitTemplate rabbit) {
+        rabbit.setConfirmCallback((CorrelationData cd, boolean ack, String cause) -&gt; {
+            String id = cd != null ? cd.getId() : "unknown";
+            if (ack) {
+                log.debug("broker 已確認 {}", id);
+            } else {
+                log.error("broker 拒絕 {}：{}", id, cause);   // 應重送，或標記失敗讓補償機制處理
+            }
+        });
+        rabbit.setReturnsCallback(returned -&gt;
+            log.error("無法路由：exchange={}, key={}, replyText={}",
+                returned.getExchange(), returned.getRoutingKey(), returned.getReplyText()));
+    }
+}</code></pre>
+<pre class="code" data-file="OrderPublisher.java"><code>public void publishCreated(OrderCreated evt) {
+    CorrelationData cd = new CorrelationData(evt.orderId().toString());
+    rabbit.convertAndSend("order.events", "order.created", evt, msg -&gt; {
+        msg.getMessageProperties().setMessageId(UUID.randomUUID().toString());   // 給消費端做冪等用
+        return msg;
+    }, cd);
+}</code></pre>
+  <div class="warn">
+    <p><b>confirm 是「非同步」的。</b><code>convertAndSend</code> 回傳不代表 broker 已確認。如果程式在 confirm 到達前就當作「發送成功」並提交資料庫交易，仍然可能丟訊息。真正嚴謹的做法是 Outbox（第 7 章）。AMQP 的交易模式（<code>txSelect</code>）雖然也能保證，但吞吐會掉到十分之一以下，實務上不建議使用。</p>
+  </div>
+
+  <h3>② Broker 儲存</h3>
+  <ul>
+    <li>queue 必須 <b>durable</b>（quorum queue 一定是）。</li>
+    <li>訊息要標記 <b>persistent</b>（<code>delivery_mode = 2</code>）。Spring AMQP 的 <code>RabbitTemplate</code> 預設就是 persistent，原生客戶端需自己設定。</li>
+    <li>Broker 並不是每則訊息都立刻 <code>fsync</code>；單節點的 classic queue 在 confirm 之前會先落盤，但硬體故障仍會遺失資料，這正是需要 quorum queue 把資料複製到多個節點的原因。</li>
+  </ul>
+
+  <h3>③ Broker 到消費者：Ack</h3>
+  <table>
+    <tr><th>動作</th><th>意思</th><th>結果</th></tr>
+    <tr><td><code>basicAck</code></td><td>處理成功</td><td>broker 刪除該訊息</td></tr>
+    <tr><td><code>basicNack(requeue=true)</code></td><td>處理失敗，放回 queue</td><td>訊息重新排到 queue（通常是原位置附近），可能馬上再被取走</td></tr>
+    <tr><td><code>basicNack / basicReject(requeue=false)</code></td><td>處理失敗，不要了</td><td>丟棄；有設 DLX 則進死信（第 6 章）</td></tr>
+    <tr><td>連線斷線 / channel 關閉</td><td>未 ack 的訊息</td><td>broker 自動把它們重新放回 queue（<b>所以訊息會被重複投遞</b>）</td></tr>
+  </table>
+  <div class="warn">
+    <p><b>auto-ack（自動確認）會丟訊息。</b>RabbitMQ 原生的 <code>autoAck=true</code> 是「一送出就當作已確認」；消費者拿到後如果當掉，訊息就永久消失。Spring AMQP 的 <code>AUTO</code> 模式不同：它是「listener 方法正常返回才 ack，拋例外就 nack」，是安全的。兩者名稱相似，意思完全不同。</p>
+  </div>
+  <div class="warn">
+    <p><b>無限重試的死循環。</b>Spring 預設 <code>default-requeue-rejected = true</code>：listener 拋例外，訊息被放回 queue，立刻又被取走、又拋例外…，CPU 與 log 瞬間爆滿，而且這則「毒藥訊息」會卡住後面的訊息。一定要設計失敗處理（第 6 章）。</p>
+  </div>
+
+  <h3>Prefetch：一次預取幾則</h3>
+  <p>Broker 不會等消費者處理完一則才發下一則，而是一次最多派送 <code>prefetch</code> 則「未確認」的訊息給該消費者。</p>
+  <ul>
+    <li>prefetch 太小（例如 1）：每則都要等一次網路往返，吞吐低。</li>
+    <li>prefetch 太大：一個慢消費者囤積大量訊息，其他消費者閒置，負載不平均；消費者當掉時，大量訊息要重新投遞。</li>
+    <li>經驗：處理很快（毫秒級）可設 50～250；處理很慢（秒級以上、需要公平分配）設 1～10。Spring 預設 250。</li>
+  </ul>
+
+  <h3>「剛好一次」並不存在</h3>
+  <p>在分散式系統中，要同時保證不丟（at-least-once）與不重（at-most-once）是做不到的。RabbitMQ 實務上的選擇是 <mark>at-least-once（至少一次）</mark>：寧可重複，也不遺失。因此：</p>
+  <div class="tip">
+    <p><b>結論：消費端必須冪等。</b>同一則訊息被處理兩次，結果要和處理一次一樣。具體做法見第 5 章。</p>
+  </div>
+  <aside class="side">
+    <strong>consumer_timeout</strong>
+    消費者拿到訊息後，若超過 30 分鐘（預設）還沒 ack，broker 會關閉該 channel，訊息重新投遞。長時間任務要不是拆小、就是調高 <code>consumer_timeout</code>。
+  </aside>
+
+  <p class="ex">練習 4-1：可靠性檢查清單</p>
+  <p>下單後要「寄確認信」。請列出從生產者到消費者，每個環節要做哪些設定，才能確保訂單不會因為訊息遺失而收不到信。</p>
+  <details class="answer">
+    <summary>看參考答案</summary>
+    <ol>
+      <li>生產者：開啟 publisher confirm 與 mandatory，處理 nack 與 return；為每則訊息設定 messageId；理想上使用 Outbox，讓「建立訂單」與「記錄要發的訊息」在同一個資料庫交易內。</li>
+      <li>Broker：exchange、queue 都 durable；queue 用 quorum；訊息 persistent；叢集至少三個節點。</li>
+      <li>消費者：使用 AUTO（或手動）ack，處理成功才確認；設定有限次數的重試 + 死信佇列，避免毒藥訊息；以 messageId 做冪等去重，寄信前先檢查是否已寄。</li>
+      <li>監控：queue 堆積、DLQ 有訊息、unacked 長時間不下降都要告警。</li>
+    </ol>
+  </details>
+
+  <div class="quiz" data-answer="3" data-why="消費者拿到訊息後連線中斷，未 ack 的訊息會被 broker 重新放回 queue，因此可能被重複處理；系統只能做到至少一次，必須靠消費端冪等。" data-hint="想想 broker 怎麼知道消費者有沒有處理完：靠 ack，沒收到 ack 就會重送。">
+    <p class="qt">小測驗</p>
+    <p class="q">消費者處理完業務邏輯、準備 ack 的瞬間連線斷了，這則訊息會怎樣？該如何應對？</p>
+    <button type="button">訊息永久消失，所以要用 auto-ack</button>
+    <button type="button">訊息被刪除，因為業務邏輯已執行</button>
+    <button type="button">訊息變成死信，必須人工處理</button>
+    <button type="button">訊息會被重新投遞，消費者可能處理第二次，所以消費端要做冪等</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch4"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 5 章 ============ -->
+<section class="chapter" id="ch5" data-ch="ch5">
+  <h2><span class="ch-no">第 5 章</span>Spring AMQP 實戰</h2>
+
+  <h3>連線與 Channel 管理</h3>
+  <ul>
+    <li><code>CachingConnectionFactory</code>（Spring Boot 預設）只建立<b>一條</b>連線，並快取 channel 重複使用。不要自己每次發訊息都 new 一條連線，這是最常見的連線洩漏來源（第 9 章）。</li>
+    <li>Channel <b>不是執行緒安全</b>的（尤其在發布 confirm 時）。<code>RabbitTemplate</code> 會從快取取出 channel 使用後歸還，因此 template 本身可以安全共享。</li>
+    <li>生產與消費建議使用<b>不同的連線</b>（Spring 預設已分開），避免 broker 因流量控制阻塞發布連線時，連帶影響消費。</li>
+  </ul>
+
+  <h3>訊息序列化：用 JSON</h3>
+<pre class="code"><code>@Bean
+MessageConverter jsonMessageConverter() {
+    return new Jackson2JsonMessageConverter();   // Spring Boot 會自動套用到 RabbitTemplate 與 listener
+}</code></pre>
+  <p>預設的 Java 序列化既不安全、也綁死語言與類別版本。使用 JSON 時，訊息的 <code>__TypeId__</code> 標頭會帶有 Java 類別全名，跨服務時兩端類別路徑不同會反序列化失敗。建議消費端以方法參數型別決定轉換（Jackson2JsonMessageConverter 預設就會優先參考參數型別），或自訂 <code>DefaultJackson2JavaTypeMapper</code> 的信任套件。</p>
+
+  <h3>消費端設定</h3>
+<pre class="code" data-file="application.yml"><code>spring:
+  rabbitmq:
+    listener:
+      simple:
+        acknowledge-mode: auto        # 方法正常返回 ack；例外則 nack
+        prefetch: 20
+        concurrency: 2                # 初始消費者執行緒數
+        max-concurrency: 8            # 依負載動態擴充上限
+        default-requeue-rejected: false   # 失敗不要立刻放回 queue
+        retry:
+          enabled: true
+          initial-interval: 1s
+          multiplier: 2.0
+          max-interval: 10s
+          max-attempts: 3             # 含第一次，共處理 3 次</code></pre>
+<pre class="code" data-file="MailConsumer.java"><code>@Component
+public class MailConsumer {
+    private final MailService mailService;
+    public MailConsumer(MailService mailService) { this.mailService = mailService; }
+
+    @RabbitListener(queues = "order.created.mail")
+    public void onOrderCreated(OrderCreated evt,
+                               @Header(AmqpHeaders.MESSAGE_ID) String messageId) {
+        mailService.sendOnce(messageId, evt);   // 例外會觸發重試，最後進死信
+    }
+}</code></pre>
+
+  <h3>三個要想清楚的設定</h3>
+  <table>
+    <tr><th>設定</th><th>影響</th></tr>
+    <tr><td><code>concurrency</code></td><td>同一個 listener 的消費者執行緒數，<b>會打破單一 queue 的順序保證</b>。要保序就設為 1</td></tr>
+    <tr><td><code>prefetch</code></td><td>每個消費者執行緒最多持有的未確認訊息數。總未確認數 ≈ 執行緒數 × prefetch</td></tr>
+    <tr><td><code>acknowledge-mode</code></td><td><code>auto</code>（簡單，推薦）、<code>manual</code>（自行控制 ack 時機）、<code>none</code>（<b>相當於 auto-ack，會丟訊息</b>，不要用）</td></tr>
+  </table>
+
+  <h3>手動 Ack：需要時才用</h3>
+<pre class="code"><code>@RabbitListener(queues = "order.created.mail", ackMode = "MANUAL")
+public void handle(OrderCreated evt, Channel channel,
+                   @Header(AmqpHeaders.DELIVERY_TAG) long tag) throws IOException {
+    try {
+        service.process(evt);
+        channel.basicAck(tag, false);
+    } catch (TemporaryException e) {
+        channel.basicNack(tag, false, true);     // 暫時性錯誤：放回去再試（要小心死循環）
+    } catch (Exception e) {
+        channel.basicNack(tag, false, false);    // 永久性錯誤：丟棄，進 DLQ
+    }
+}</code></pre>
+  <p>手動 ack 的風險是「忘了 ack」：訊息一直卡在 Unacked，直到連線關閉或超過 <code>consumer_timeout</code>。能用 <code>auto</code> 搭配重試與 DLQ 解決的，就不要手動。</p>
+
+  <h3>冪等消費</h3>
+  <p>因為至少一次的語意，同一則訊息可能到達多次。常見做法：</p>
+  <table>
+    <tr><th>做法</th><th>說明</th></tr>
+    <tr><td>天然冪等</td><td>「把狀態設為 PAID」做幾次都一樣；用 <code>UPDATE ... SET status='PAID'</code> 而非 <code>amount = amount + x</code></td></tr>
+    <tr><td>唯一鍵去重</td><td>以 messageId（或業務唯一鍵）寫入「已處理表」，唯一索引衝突就代表處理過了</td></tr>
+    <tr><td>條件更新（樂觀鎖）</td><td><code>UPDATE ... WHERE id=? AND version=?</code>，影響行數為 0 就跳過</td></tr>
+    <tr><td>Redis <code>SETNX</code> + TTL</td><td>輕量，但與資料庫交易不是原子，要注意失敗時的回滾</td></tr>
+  </table>
+<pre class="code" data-file="MailService.java"><code>@Transactional
+public void sendOnce(String messageId, OrderCreated evt) {
+    try {
+        processedRepo.insert(messageId);          // processed_message.message_id 有 UNIQUE 約束
+    } catch (DuplicateKeyException dup) {
+        return;                                   // 已處理過：直接當成功，讓外層 ack
+    }
+    mailGateway.send(evt.email(), "訂單成立", renderBody(evt));
+}</code></pre>
+  <div class="warn">
+    <p><b>注意這段的盲點：</b>「寫入已處理表」與「寄信」不是同一個原子操作。若寄信成功但交易回滾（或反過來），仍會有重複或遺漏。寄信這類外部副作用最好本身也支援冪等鍵（例如帶 idempotency key 呼叫郵件服務），或接受「極少數情況重複寄一封」的取捨。</p>
+  </div>
+
+  <h3>順序性</h3>
+  <ul>
+    <li>單一 queue、<b>單一消費者</b>、不使用 requeue：嚴格 FIFO。</li>
+    <li>多消費者並行處理：先出的不一定先完成，順序無法保證。</li>
+    <li><code>nack(requeue=true)</code>：被放回的訊息會排回原位置附近，但消費者已處理了後面的訊息，順序已被打亂。</li>
+    <li>需要「同一個訂單的事件依序處理，但不同訂單並行」：使用 <b>Single Active Consumer</b>（<code>x-single-active-consumer</code>，同一 queue 同時只有一個消費者運作，其他待命）搭配多個 queue；或用 Consistent Hash Exchange 外掛，依 key 分流到多個 queue，每個 queue 單消費者。</li>
+  </ul>
+
+  <p class="ex">練習 5-1：設計「寄信」消費者</p>
+  <p>要求：失敗最多重試 3 次，之後進 DLQ；同一個 messageId 不可重複寄；處理時間通常 200ms，尖峰需要擴充。請寫出 <code>application.yml</code> 的關鍵設定與消費者的關鍵步驟。</p>
+  <details class="answer">
+    <summary>看參考答案</summary>
+<pre class="code"><code>spring:
+  rabbitmq:
+    listener:
+      simple:
+        acknowledge-mode: auto
+        prefetch: 20
+        concurrency: 2
+        max-concurrency: 10
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2.0</code></pre>
+    <p>queue 宣告時設定 <code>deadLetterExchange</code> 與 DLQ（第 6 章）。重試用完後 Spring 預設的 <code>RejectAndDontRequeueRecoverer</code> 會以 <code>requeue=false</code> 拒絕訊息，訊息就進 DLQ。消費者以 messageId 寫入已處理表（唯一鍵），衝突就直接返回；訊息本身沒有 messageId 時（舊版生產者）要改用業務唯一鍵（如 orderId）。</p>
+  </details>
+
+  <div class="quiz" data-answer="0" data-why="acknowledge-mode: none 相當於 auto-ack：訊息一送出就視為已確認，消費者處理到一半當掉訊息就丟了。auto 模式是方法正常返回才 ack。" data-hint="Spring 的 none 與 auto 名稱不同於 RabbitMQ 的 autoAck，想想哪個是「送出就當已處理」。">
+    <p class="qt">小測驗</p>
+    <p class="q">Spring AMQP 的 <code>acknowledge-mode</code> 設為哪個值，行為最接近「會丟訊息的 auto-ack」？</p>
+    <button type="button"><code>none</code></button>
+    <button type="button"><code>auto</code></button>
+    <button type="button"><code>manual</code></button>
+    <button type="button">三者都一樣安全</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch5"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 6 章 ============ -->
+<section class="chapter" id="ch6" data-ch="ch6">
+  <h2><span class="ch-no">第 6 章</span>死信（DLX）、重試與延遲訊息</h2>
+
+  <h3>死信交換器（Dead Letter Exchange）</h3>
+  <p>訊息在以下情況會變成「死信」，被轉送到該 queue 設定的 DLX：</p>
+  <ul>
+    <li>消費者 <code>reject / nack</code> 且 <code>requeue=false</code></li>
+    <li>訊息 TTL 到期</li>
+    <li>queue 長度超過上限（<code>drop-head</code> 溢出時被擠掉的訊息）</li>
+    <li>quorum queue：投遞次數超過 <code>x-delivery-limit</code></li>
+  </ul>
+  <p>DLX 就是一個普通的 exchange，死信被當成新訊息發給它，可以綁定一個 <mark>DLQ（死信佇列）</mark>集中收集失敗訊息。訊息的 <code>x-death</code> 標頭會記錄原因、來源 queue、次數，方便排查。</p>
+<pre class="code" data-file="DeadLetterTopology.java"><code>@Configuration
+public class DeadLetterTopology {
+
+    @Bean DirectExchange orderDlx() { return new DirectExchange("order.dlx", true, false); }
+
+    @Bean Queue mailDlq() { return QueueBuilder.durable("order.created.mail.dlq").quorum().build(); }
+
+    @Bean Binding mailDlqBinding() {
+        return BindingBuilder.bind(mailDlq()).to(orderDlx()).with("order.created.mail");
+    }
+
+    @Bean Queue mailQueue() {
+        return QueueBuilder.durable("order.created.mail").quorum()
+            .deadLetterExchange("order.dlx")
+            .deadLetterRoutingKey("order.created.mail")
+            .deliveryLimit(5)                 // quorum 專用：最多被投遞 5 次
+            .build();
+    }
+}</code></pre>
+  <div class="tip">
+    <p><b>DLQ 一定要有人看。</b>DLQ 有訊息代表有業務需要處理的失敗：設告警；提供「修正後重新投遞」的工具（例如把 DLQ 的訊息 shovel 回原 queue，或寫一個管理頁面）；不要讓它變成沒人看的垃圾桶。</p>
+  </div>
+
+  <h3>重試策略比較</h3>
+  <table>
+    <tr><th>方案</th><th>做法</th><th>優點</th><th>缺點</th></tr>
+    <tr><td>A. Spring 內建重試</td><td><code>retry.enabled</code>，在消費者執行緒內 sleep 後重試</td><td>簡單</td><td>重試期間<b>佔住執行緒與訊息</b>，降低吞吐；程式重啟時計數歸零</td></tr>
+    <tr><td>B. 等待佇列（wait queue）</td><td>失敗 → 送到無消費者、帶 TTL 的等待 queue，到期經 DLX 回主 queue</td><td>非阻塞；延遲由 broker 計時；可多段退避（10s、1m、10m）</td><td>拓撲較複雜；每個延遲級別一個 queue</td></tr>
+    <tr><td>C. 延遲訊息外掛</td><td><code>rabbitmq_delayed_message_exchange</code>，送訊息時帶 <code>x-delay</code></td><td>任意延遲時間，單一 exchange</td><td>延遲訊息存在<b>單一節點</b>、非高可用；大量或很長延遲不適合</td></tr>
+    <tr><td>D. 應用層排程</td><td>失敗記錄到資料庫，排程任務重新發送</td><td>可查、可控、可人工介入</td><td>要自己實作，多一份狀態</td></tr>
+  </table>
+  <p>實務常見組合：<b>先用方案 A 重試 2～3 次處理瞬間錯誤（網路抖動）</b>，仍失敗就進入<b>方案 B 的等待佇列做較長間隔的退避</b>，最終仍失敗才進 DLQ 交給人處理。</p>
+
+  <h3>等待佇列重試的寫法</h3>
+<pre class="code" data-file="RetryTopology.java"><code>// 等待佇列：沒有任何消費者。訊息到期後，透過預設 exchange 送回「原本的主 queue」
+@Bean Queue mailRetry10s() {
+    return QueueBuilder.durable("order.created.mail.retry.10s")
+        .withArgument("x-message-ttl", 10_000)
+        .deadLetterExchange("")                          // 空字串 = 預設 exchange
+        .deadLetterRoutingKey("order.created.mail")      // = 主 queue 名稱
+        .build();
+}</code></pre>
+  <div class="warn">
+    <p><b>不要把等待佇列的 DLX 指向原本的業務 exchange。</b>若指向 <code>order.events</code> 並用 <code>order.created</code> 當 routing key，重送時會被路由到「所有」綁定 <code>order.created</code> 的 queue，其他本來已處理成功的消費者會再收到一次。要「只送回失敗的那個 queue」，應使用預設 exchange + queue 名稱當 routing key。</p>
+  </div>
+  <p>消費者端的流程：處理失敗 → 讀取 <code>x-death</code> 標頭（或自訂 header 如 <code>x-retry-count</code>）判斷已重試幾次 → 未達上限就把訊息發到對應的等待佇列並 ack 原訊息；已達上限就發到 DLQ。注意「發到等待佇列」與「ack 原訊息」之間也有失敗的可能，需用 publisher confirm 先確認再 ack。</p>
+
+  <h3>延遲訊息與 TTL 的陷阱</h3>
+  <div class="warn">
+    <p><b>單則訊息的 TTL（<code>expiration</code>）只在訊息到達 queue 的「頭部」時才會被檢查。</b>如果 queue 頭部是一則 60 秒的訊息，後面排了一則 5 秒的，那 5 秒那則要等前面那則過期後才會一起被清掉。因此「用 per-message TTL + 同一個等待佇列」做不同長度的延遲會失準。要嘛每個延遲長度一個 queue（用 queue 層級的 <code>x-message-ttl</code>），要嘛使用延遲訊息外掛。</p>
+  </div>
+<pre class="code" data-file="終端機"><code>docker exec rabbitmq rabbitmq-plugins enable rabbitmq_delayed_message_exchange</code></pre>
+<pre class="code"><code>@Bean CustomExchange delayedExchange() {
+    return new CustomExchange("order.delayed", "x-delayed-message", true, false,
+        Map.of("x-delayed-type", "direct"));
+}
+// 發送：加上 x-delay（毫秒）
+rabbit.convertAndSend("order.delayed", "order.cancel", evt, m -&gt; {
+    m.getMessageProperties().setDelayLong(30L * 60 * 1000);   // 30 分鐘後才可被消費
+    return m;
+});</code></pre>
+  <p>典型應用：「下單後 30 分鐘未付款自動取消」。外掛方案寫起來最短，但訊息量大或要求高可用時，改用「資料庫 + 排程掃描」或每個延遲級別一個 queue 更穩。</p>
+
+  <h3>毒藥訊息（Poison Message）</h3>
+  <p>格式錯誤、永遠無法處理的訊息，不管重試幾次都會失敗。沒有重試上限與 DLQ，它會無限循環並卡住 queue。處理原則：<b>區分暫時性錯誤（可重試）與永久性錯誤（不要重試）</b>。Spring 可以設定 <code>ListenerExecutionFailedException</code> 的不可重試例外分類（如反序列化失敗、驗證失敗直接丟 <code>AmqpRejectAndDontRequeueException</code>）。</p>
+
+  <p class="ex">練習 6-1：設計付款失敗的重試</p>
+  <p>付款通知消費者呼叫第三方 API，偶爾逾時。要求：最多重試 5 次，間隔依序 10 秒、1 分鐘、10 分鐘、1 小時、6 小時；最終進 DLQ 並告警。請描述需要的 queue 與流程。</p>
+  <details class="answer">
+    <summary>看參考答案</summary>
+    <ol>
+      <li>主 queue <code>payment.notify</code>（設定 DLX 指向 <code>payment.dlx</code>）。</li>
+      <li>五個等待佇列：<code>payment.notify.retry.10s / 1m / 10m / 1h / 6h</code>，各自設定 <code>x-message-ttl</code> 與 <code>deadLetterExchange=""</code>、<code>deadLetterRoutingKey=payment.notify</code>。</li>
+      <li>消費者失敗時，依訊息 header 的 <code>x-retry-count</code>（沒有就是 0）選擇對應的等待佇列，count + 1 後重新發送；confirm 成功後 ack 原訊息。</li>
+      <li>count 已達 5：發送到 DLQ <code>payment.notify.dlq</code>，並觸發告警。</li>
+      <li>注意消費端冪等：第三方 API 要帶 idempotency key，避免「其實上一次已成功只是回應逾時」造成重複扣款。</li>
+    </ol>
+  </details>
+
+  <div class="quiz" data-answer="1" data-why="單則訊息的 TTL 只有在訊息位於 queue 頭部時才檢查，後面較短 TTL 的訊息會被前面較長的擋住；解法是每個延遲長度一個 queue，或使用延遲訊息外掛。" data-hint="想想：訊息過期是在 queue 的哪個位置被檢查的？">
+    <p class="qt">小測驗</p>
+    <p class="q">用同一個等待佇列，對訊息各自設定不同的 <code>expiration</code>（有 60 秒也有 5 秒），會發生什麼問題？</p>
+    <button type="button">沒有問題，每則都會在自己的時間到期</button>
+    <button type="button">排在後面的短 TTL 訊息可能被前面的長 TTL 訊息擋住，無法準時到期</button>
+    <button type="button">RabbitMQ 會拒絕宣告這個 queue</button>
+    <button type="button">所有訊息會用第一則的 TTL</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch6"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 7 章 ============ -->
+<section class="chapter" id="ch7" data-ch="ch7">
+  <h2><span class="ch-no">第 7 章</span>常見模式與設計</h2>
+
+  <h3>1. Work Queue：把工作分給多個工人</h3>
+  <p>多個消費者監聽同一個 queue，訊息輪流分派（競爭消費者）。擴充處理能力只要多開消費者。要<b>公平分派</b>（避免快的閒著、慢的堆積）就把 prefetch 設小（1～10）。適合耗時任務：圖片處理、報表產生、批次寄送。</p>
+
+  <h3>2. Publish / Subscribe：一個事件，多個訂閱者</h3>
+  <p>用 fanout 或 topic exchange，每個訂閱者有自己的 queue。新增訂閱者不影響既有系統。這是事件驅動架構（EDA）的基礎。</p>
+
+  <h3>3. RPC：用訊息做請求回應</h3>
+  <p>請求帶上 <code>reply-to</code>（回覆 queue）與 <code>correlation-id</code>，伺服器處理後把結果送到 reply-to，客戶端以 correlation-id 對應。RabbitMQ 提供 <code>amq.rabbitmq.reply-to</code> 的 direct reply-to 機制，不必為每個請求建 queue。Spring 提供 <code>rabbit.convertSendAndReceive(...)</code>。</p>
+  <div class="warn">
+    <p><b>RPC 通常不是好選擇。</b>它把非同步訊息又變回同步等待：呼叫方要處理逾時、重複回應、服務端掛掉；耦合度和直接呼叫 HTTP 差不多，卻更難除錯。需要同步結果時，優先考慮 HTTP / gRPC；MQ 用在「不需要立刻拿到結果」的地方。</p>
+  </div>
+
+  <h3>4. 雙寫問題與 Outbox 模式</h3>
+  <p>下單時要「寫資料庫」並「發訊息」。兩個動作無法放在同一個交易內：</p>
+  <ul>
+    <li>先寫 DB 再發訊息：DB 成功、發送失敗（或程式在中間當掉）→ 訂單存在，但下游永遠沒收到。</li>
+    <li>先發訊息再寫 DB：訊息發出了，DB 交易卻回滾 → 下游處理了一筆不存在的訂單。</li>
+  </ul>
+  <p>解法是 <mark>Transactional Outbox</mark>：把「要發的訊息」當成資料，和業務資料寫進<b>同一個資料庫交易</b>；另一個程序負責把它發到 RabbitMQ。</p>
+<pre class="code" data-file="schema.sql"><code>CREATE TABLE outbox (
+  id           BIGSERIAL PRIMARY KEY,
+  event_id     UUID        NOT NULL UNIQUE,     -- 之後當作 messageId，供消費端去重
+  exchange     VARCHAR(100) NOT NULL,
+  routing_key  VARCHAR(200) NOT NULL,
+  payload      JSONB       NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ
+);</code></pre>
+<pre class="code" data-file="OrderService.java"><code>@Transactional
+public Order create(CreateOrder cmd) {
+    Order order = orderRepo.save(Order.from(cmd));
+    outboxRepo.save(Outbox.of("order.events", "order.created", new OrderCreated(order)));  // 同一個交易
+    return order;
+}</code></pre>
+<pre class="code" data-file="OutboxRelay.java"><code>@Scheduled(fixedDelay = 500)
+@Transactional
+public void relay() {
+    // FOR UPDATE SKIP LOCKED：多個實例同時跑也不會重複撈同一批
+    List&lt;Outbox&gt; batch = outboxRepo.lockUnpublished(100);
+    for (Outbox o : batch) {
+        rabbit.invoke(ops -&gt; {
+            ops.convertAndSend(o.exchange(), o.routingKey(), o.payload(), m -&gt; {
+                m.getMessageProperties().setMessageId(o.eventId().toString());
+                return m;
+            });
+            return ops.waitForConfirms(5_000);    // 等 broker 確認才標記已發送
+        });
+        o.markPublished();
+    }
+}</code></pre>
+  <p>Outbox 保證「資料庫有，訊息最終一定會發」，代價是可能重複發送（發成功但標記前當掉），所以消費端的冪等仍是必要的。進階做法是改用 CDC（如 Debezium）讀取資料庫日誌，不必輪詢。</p>
+
+  <h3>5. 訊息設計的原則</h3>
+  <table>
+    <tr><th>原則</th><th>說明</th></tr>
+    <tr><td>事件 vs 命令</td><td>事件是「已發生的事實」（<code>OrderCreated</code>），發送者不在乎誰處理；命令是「請你做某事」（<code>SendMail</code>），有明確的接收者。優先用事件，耦合最低</td></tr>
+    <tr><td>必備的 metadata</td><td>messageId（去重）、correlationId（追蹤同一流程）、timestamp、type / version</td></tr>
+    <tr><td>Payload 大小</td><td>訊息小而精。大檔案放物件儲存，訊息只放連結。只放 ID 還是放完整資料要權衡：完整資料讓消費者不必回查，但資料可能過時、增加耦合</td></tr>
+    <tr><td>Schema 演進</td><td>只新增欄位、不刪除也不改義；消費者要忽略未知欄位（Jackson 設 <code>FAIL_ON_UNKNOWN_PROPERTIES=false</code>）；破壞性變更用新的 routing key 或版本號</td></tr>
+    <tr><td>不要放敏感資料</td><td>訊息可能長期留在 DLQ、log、備份，個資與密碼別直接放進去</td></tr>
+  </table>
+
+  <div class="quiz" data-answer="2" data-why="Outbox 讓「業務資料」與「待發訊息」在同一個資料庫交易內寫入，之後由獨立程序可靠地發送，解決雙寫不一致。" data-hint="問題的根源是 DB 與 broker 無法放進同一個交易，要想辦法讓「發訊息」這件事也變成 DB 的一筆資料。">
+    <p class="qt">小測驗</p>
+    <p class="q">為了解決「寫 DB 成功但發訊息失敗」的雙寫問題，最標準的做法是？</p>
+    <button type="button">先發訊息，再寫 DB</button>
+    <button type="button">把發訊息放在 <code>finally</code> 區塊，失敗就重試一次</button>
+    <button type="button">Outbox：訊息與業務資料同一交易寫入資料庫，再由獨立程序發送到 broker</button>
+    <button type="button">使用 auto-ack</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch7"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 8 章 ============ -->
+<section class="chapter" id="ch8" data-ch="ch8">
+  <h2><span class="ch-no">第 8 章</span>叢集與高可用</h2>
+
+  <h3>叢集的基本概念</h3>
+  <ul>
+    <li>多個 RabbitMQ 節點組成一個叢集，<b>中繼資料</b>（exchange、queue 定義、binding、使用者、vhost）會複製到所有節點。</li>
+    <li>但 <b>queue 的內容</b>不一定複製：classic queue 只存在一個節點；<b>quorum queue</b> 與 stream 才會複製到多個節點。</li>
+    <li>節點之間靠 Erlang 的分散式機制通訊，需要相同的 Erlang cookie，並開放 4369（epmd）與 25672（節點間通訊）等連接埠。</li>
+  </ul>
+  <aside class="side">
+    <strong>重要：4.0 的變化</strong>
+    傳統的「鏡像佇列」（classic mirrored queues）在 4.0 已經移除。舊資料與舊文章中的 <code>ha-mode</code> policy 不再適用，高可用請改用 quorum queue。
+  </aside>
+
+  <h3>Quorum Queue 與多數決</h3>
+  <p>每個 quorum queue 有一個 leader 與數個 follower，寫入需要<mark>多數節點</mark>確認才算成功。</p>
+  <table>
+    <tr><th>叢集節點數</th><th>多數</th><th>可容忍掛掉幾個</th></tr>
+    <tr><td>1</td><td>1</td><td>0</td></tr>
+    <tr><td>2</td><td>2</td><td>0（比 1 個還糟：任何一台掛了就不可用）</td></tr>
+    <tr><td>3</td><td>2</td><td>1</td></tr>
+    <tr><td>5</td><td>3</td><td>2</td></tr>
+  </table>
+  <p>所以叢集用<b>奇數個節點（3 或 5）</b>。三個節點只能容忍一個節點故障；兩個同時掛掉，quorum queue 因為失去多數而<b>停止服務</b>（不是遺失資料，而是等待恢復）。Leader 掛掉時，剩餘節點在幾秒內選出新 leader。</p>
+
+  <h3>客戶端怎麼連叢集</h3>
+<pre class="code" data-file="application.yml"><code>spring:
+  rabbitmq:
+    addresses: rmq1:5672,rmq2:5672,rmq3:5672   # 連線失敗時依序嘗試
+    username: app
+    password: app-secret</code></pre>
+  <ul>
+    <li>也可以在前面放負載平衡器（HAProxy、雲端 LB）：TCP 層轉發 5672，並設定健康檢查。</li>
+    <li>客戶端要開啟<b>自動連線恢復</b>（Spring AMQP 預設會重連；原生 Java 客戶端需設定 <code>automaticRecoveryEnabled</code>），並在重連後重新宣告拓撲。</li>
+    <li>叢集中的 quorum queue leader 分散在各節點，連線連到哪個節點都可以，節點間會轉送。</li>
+  </ul>
+
+  <h3>網路分區</h3>
+  <p>叢集節點間網路斷線（partition）時，各半邊可能都認為對方掛了。<code>cluster_partition_handling</code> 設定處理策略，生產環境建議 <mark><code>pause_minority</code></mark>：少數派那一半自動暫停服務，等網路恢復再加入，避免「分裂腦」（兩邊各自接受寫入、資料不一致）。Quorum queue 本身以 Raft 保證一致性，天然抗分區。</p>
+  <div class="warn">
+    <p><b>不要把一個叢集跨越廣域網路（跨區域、跨機房）。</b>RabbitMQ 叢集假設節點之間網路低延遲且穩定。跨機房的資料同步請使用 <b>Federation</b>（讓一個 exchange / queue 從遠端上游拉取訊息）或 <b>Shovel</b>（把訊息從一個 broker 的 queue 搬到另一個），而不是組成一個大叢集。</p>
+  </div>
+
+  <h3>部署與升級</h3>
+  <ul>
+    <li>Kubernetes：使用官方的 <b>RabbitMQ Cluster Operator</b>，把拓撲宣告成 YAML（還有 Messaging Topology Operator 管理 queue / exchange）。</li>
+    <li>磁碟使用具備足夠 IOPS 的持久儲存；quorum queue 對磁碟 fsync 效能敏感。</li>
+    <li>滾動升級：一次一個節點，等它完全重新加入叢集、同步完畢，再升級下一個。升級前先看版本相容性（尤其跨大版本如 3.x → 4.x，需先升到 3.13 再升 4.x）。</li>
+  </ul>
+
+  <div class="quiz" data-answer="3" data-why="三節點的多數是 2；兩個節點同時故障就沒有多數，quorum queue 無法選出 leader，暫停服務直到節點恢復，但已確認的資料不會遺失。" data-hint="多數決需要超過一半的節點存活。">
+    <p class="qt">小測驗</p>
+    <p class="q">三節點叢集上的 quorum queue，兩個節點同時故障，會發生什麼事？</p>
+    <button type="button">剩下的一個節點繼續提供服務，沒有影響</button>
+    <button type="button">所有訊息永久遺失</button>
+    <button type="button">自動降級成 classic queue 繼續運作</button>
+    <button type="button">該 queue 因為失去多數而暫停服務，等節點恢復後繼續，已確認的資料不會遺失</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch8"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 9 章 ============ -->
+<section class="chapter" id="ch9" data-ch="ch9">
+  <h2><span class="ch-no">第 9 章</span>營運、監控與排錯</h2>
+
+  <h3>常用連接埠</h3>
+  <table>
+    <tr><th>埠</th><th>用途</th></tr>
+    <tr><td>5672 / 5671</td><td>AMQP 0-9-1 / AMQP over TLS</td></tr>
+    <tr><td>15672</td><td>管理介面與 HTTP API</td></tr>
+    <tr><td>15692</td><td>Prometheus 指標（需啟用 <code>rabbitmq_prometheus</code> 外掛）</td></tr>
+    <tr><td>4369 / 25672</td><td>叢集節點間通訊（epmd / Erlang 分散式），<b>不要對外開放</b></td></tr>
+  </table>
+
+  <h3>該監控什麼</h3>
+  <table>
+    <tr><th>指標</th><th>代表什麼</th><th>告警建議</th></tr>
+    <tr><td>Queue 的 Ready 數</td><td>待處理的積壓</td><td>持續上升或超過容忍值</td></tr>
+    <tr><td>Queue 的 Unacked 數</td><td>消費者手上還沒確認的</td><td>長時間居高不下 = 消費者卡住 / 忘了 ack</td></tr>
+    <tr><td>消費者數</td><td>queue 有沒有人在處理</td><td>重要 queue 的消費者為 0</td></tr>
+    <tr><td>發布 / 投遞 / ack 速率</td><td>流量與處理能力是否平衡</td><td>發布速率持續大於 ack 速率</td></tr>
+    <tr><td>DLQ 訊息數</td><td>有多少失敗訊息等人處理</td><td>大於 0 就通知</td></tr>
+    <tr><td>連線數、Channel 數</td><td>客戶端是否洩漏連線</td><td>異常成長</td></tr>
+    <tr><td>記憶體、磁碟剩餘</td><td>是否接近觸發流量控制的水位</td><td>接近水位（預設記憶體 40%、磁碟剩餘 50MB）</td></tr>
+    <tr><td>節點存活、叢集成員</td><td>叢集健康</td><td>任何節點離線</td></tr>
+  </table>
+  <p>標準做法：啟用 Prometheus 外掛，用 Grafana 看板（RabbitMQ 官方提供現成的 dashboard），Alertmanager 發告警。</p>
+
+  <h3>流量控制與阻塞</h3>
+  <p>當記憶體超過水位（<code>vm_memory_high_watermark</code>，預設為實體記憶體的 40%）或磁碟剩餘低於 <code>disk_free_limit</code>，broker 會觸發<mark>警報（alarm）</mark>並<b>阻塞所有發布者連線</b>：生產者的連線狀態會變成 <code>blocked</code>，發送動作被卡住。這是保護機制，但對線上服務就是「發送突然全部停住」，所以水位警報要在到達前就預警。</p>
+<pre class="code" data-file="終端機"><code>docker exec rabbitmq rabbitmq-diagnostics alarms          # 目前有無警報
+docker exec rabbitmq rabbitmq-diagnostics memory_breakdown  # 記憶體都被誰佔用</code></pre>
+
+  <h3>症狀排錯表</h3>
+  <table>
+    <tr><th>症狀</th><th>常見原因與檢查方向</th></tr>
+    <tr><td><b>訊息不見了</b></td><td>
+      ① routing key / binding 不匹配，訊息被丟（開 mandatory 或看 alternate exchange）<br>
+      ② queue 不是 durable，broker 重啟後消失<br>
+      ③ 使用 auto-ack，消費者當掉<br>
+      ④ TTL 到期或超過 max-length 被丟棄 / 進 DLX<br>
+      ⑤ 發錯 vhost
+    </td></tr>
+    <tr><td><b>Ready 越積越多</b></td><td>消費者數不夠或太慢、消費者掛了、prefetch 或 concurrency 太小、下游（DB / 第三方）變慢、發布速度暴增</td></tr>
+    <tr><td><b>Unacked 很多且不下降</b></td><td>消費者拿了訊息卻沒 ack（手動 ack 漏掉分支）、處理卡死（死鎖、無逾時的外部呼叫）、prefetch 過大</td></tr>
+    <tr><td><b>同一則訊息一直重複</b></td><td>requeue 死循環（沒有重試上限）、處理成功但 ack 前當掉、超過 <code>consumer_timeout</code> 被強制重送</td></tr>
+    <tr><td><b>連線數暴增</b></td><td>每次發送都新建連線、沒有關閉、使用了多個沒共用的 ConnectionFactory</td></tr>
+    <tr><td><b>發布者被卡住（blocked）</b></td><td>觸發記憶體 / 磁碟警報；檢查 alarms 與堆積</td></tr>
+    <tr><td><b>啟動時 <code>PRECONDITION_FAILED</code></b></td><td>同名 queue / exchange 已存在，但屬性不同（durable、類型、arguments）；刪除或改名</td></tr>
+    <tr><td><b>消費者收不到訊息</b></td><td>queue 名稱拼錯、沒有綁定、vhost 不同、權限不足（<code>ACCESS_REFUSED</code>）、single-active-consumer 下是備援消費者</td></tr>
+  </table>
+
+  <h3>安全基本功</h3>
+  <ul>
+    <li><b>刪除或停用 guest</b>，每個應用一個專屬使用者。</li>
+    <li><b>vhost 隔離</b>：不同環境 / 不同業務用不同 vhost。</li>
+    <li><b>最小權限</b>：權限分 configure / write / read 三項，各是一個正規表示式，指定可操作的資源名稱。</li>
+    <li><b>TLS</b>：用戶端連線與管理介面都應加密（5671、15671）。</li>
+    <li>管理介面不要暴露在公網；叢集間通訊埠只在內網開放。</li>
+  </ul>
+<pre class="code" data-file="終端機"><code>docker exec rabbitmq rabbitmqctl add_vhost prod
+docker exec rabbitmq rabbitmqctl add_user order-svc '強密碼'
+# 只允許操作 order. 開頭的資源：configure / write / read
+docker exec rabbitmq rabbitmqctl set_permissions -p prod order-svc "^order\." "^order\." "^order\."
+docker exec rabbitmq rabbitmqctl delete_user guest</code></pre>
+
+  <h3>效能調校要點</h3>
+  <ul>
+    <li><b>連線與 channel</b>：長連線、少連線；發布與消費分開連線；不要在多執行緒共用一個 channel。</li>
+    <li><b>批次確認</b>：高吞吐下，不要逐則等 confirm，改成批次發送後一起確認，或使用非同步 confirm（Spring 的 correlated 模式即是）。</li>
+    <li><b>訊息大小</b>：幾 KB 以內最佳；避免 MB 級訊息。</li>
+    <li><b>Queue 保持短</b>：快速消費、短佇列效能最好；需要長期保留、重播，用 stream。</li>
+    <li><b>多個 queue 分散負載</b>：單一 queue 是單一 leader、單一執行緒處理，吞吐有上限。熱點流量可以分成多個 queue（Consistent Hash Exchange）。</li>
+    <li><b>先量測再調</b>：用 <code>PerfTest</code> 工具（RabbitMQ 官方壓測程式）在接近正式的硬體上測試，而不是憑感覺。</li>
+  </ul>
+
+  <div class="quiz" data-answer="0" data-why="Unacked 代表已派送但未確認；長時間不下降通常是消費者卡住或忘了 ack；Ready 積壓則多半是消費能力不足。" data-hint="Unacked 是「已交給消費者，但還沒確認」。">
+    <p class="qt">小測驗</p>
+    <p class="q">某 queue 的 Unacked 數長時間維持在高點，Ready 很少，最可能的原因是？</p>
+    <button type="button">消費者拿了訊息但卡住或沒有 ack</button>
+    <button type="button">沒有任何消費者連線</button>
+    <button type="button">生產者發布速度太慢</button>
+    <button type="button">queue 沒有 durable</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch9"> 這章讀完了</label>
+</section>
+
+<!-- ============ 第 10 章 ============ -->
+<section class="chapter" id="ch10" data-ch="ch10">
+  <h2><span class="ch-no">第 10 章</span>面試題與小抄</h2>
+
+  <h3>面試題（先自己回答，再展開看重點）</h3>
+
+  <details class="answer"><summary>1. 為什麼要用訊息佇列？有什麼代價？</summary>
+    <p>好處：解耦（生產者不認識消費者）、非同步（降低回應延遲）、削峰填谷（保護下游）、可靠投遞與重試。代價：系統複雜度、最終一致性、訊息重複與亂序、除錯困難、多一個要高可用維運的元件。需要立即結果的流程不適合。</p>
+  </details>
+  <details class="answer"><summary>2. 說明 RabbitMQ 的訊息從發送到消費的完整路徑。</summary>
+    <p>Producer 透過 channel 把訊息發給 exchange（附 routing key）→ exchange 依類型與 binding 規則路由到零個或多個 queue（無匹配則丟棄，除非 mandatory / alternate exchange）→ queue 儲存訊息 → broker 依 prefetch 派送給消費者 → 消費者處理後 ack，broker 刪除訊息；失敗則 nack，依設定放回或進入 DLX。</p>
+  </details>
+  <details class="answer"><summary>3. 四種 exchange 的差別？topic 的 * 與 # 呢？</summary>
+    <p>direct 完全匹配；fanout 廣播忽略 key；topic 以 . 分隔單字，* 匹配剛好一個、# 匹配零或多個；headers 比對標頭。業務事件路由最常用 topic。</p>
+  </details>
+  <details class="answer"><summary>4. 如何保證訊息不丟？</summary>
+    <p>三個環節：①生產者開 publisher confirm 與 mandatory，處理 nack / return，必要時用 Outbox；②exchange、queue durable，訊息 persistent，使用 quorum queue 並多節點；③消費者在處理成功後才 ack，不用 auto-ack，並有重試與 DLQ，避免毒藥訊息。再加上監控與告警。</p>
+  </details>
+  <details class="answer"><summary>5. 如何保證訊息不重複消費？</summary>
+    <p>無法在傳輸層保證「剛好一次」，只能做到至少一次，所以要在消費端做冪等：天然冪等的操作、以 messageId / 業務唯一鍵在資料庫唯一索引去重、樂觀鎖條件更新，外部呼叫帶 idempotency key。</p>
+  </details>
+  <details class="answer"><summary>6. 如何保證訊息順序？</summary>
+    <p>單一 queue + 單一消費者 + 不 requeue 才嚴格有序。多消費者並行、nack requeue、重試都會打亂順序。要「同一鍵有序、不同鍵並行」可用 Single Active Consumer 搭配多個 queue，或 Consistent Hash Exchange 依 key 分流，每個 queue 一個消費者。</p>
+  </details>
+  <details class="answer"><summary>7. 訊息堆積了怎麼辦？</summary>
+    <p>先判斷原因：消費者掛了？變慢（下游 DB / API）？發布暴增？對策：增加消費者數與 concurrency（注意下游承受能力）、調整 prefetch、優化處理邏輯（批次、非同步）、暫時降級非核心流程、設定 TTL / 長度上限避免無限堆積、事前用監控與告警提早發現。若堆積訊息已無價值（過期的通知），可以直接清空或轉入 DLQ。</p>
+  </details>
+  <details class="answer"><summary>8. 什麼是死信？怎麼設計重試？</summary>
+    <p>死信來源：被 reject 且不 requeue、TTL 過期、queue 滿被擠出、quorum 超過投遞次數。重試策略：Spring 內建重試處理瞬間錯誤；較長間隔用等待佇列（TTL + DLX 繞回主 queue）或延遲外掛；最終進 DLQ 告警並人工處理。要區分暫時性與永久性錯誤，永久性的不重試。</p>
+  </details>
+  <details class="answer"><summary>9. Classic queue 與 Quorum queue 的差別？</summary>
+    <p>Classic 只存在單一節點（鏡像在 4.0 已移除）；Quorum 以 Raft 複製到多數節點，資料安全與高可用更好，是業務佇列的建議類型，代價是吞吐略低、功能有些限制（不可 exclusive、優先權有限）。Stream 則是追加式日誌，可重播。</p>
+  </details>
+  <details class="answer"><summary>10. prefetch 是什麼？怎麼設定？</summary>
+    <p>消費者可持有的最大未確認訊息數。太小吞吐差（頻繁往返），太大負載不均、消費者當掉時重投遞量大。快速處理的任務可設 50～250，耗時任務設 1～10 以公平分派。</p>
+  </details>
+  <details class="answer"><summary>11. RabbitMQ 與 Kafka 怎麼選？</summary>
+    <p>RabbitMQ：靈活路由、逐則確認、任務派送、低延遲、消費後刪除。Kafka：高吞吐、訊息可保留與重播、partition 內有序、適合事件溯源與資料管線。需要重播歷史、多個獨立消費群組各自讀取全量資料時選 Kafka；一般服務間的事件通知與任務佇列用 RabbitMQ。</p>
+  </details>
+  <details class="answer"><summary>12. 如何解決「寫資料庫」與「發訊息」的一致性問題？</summary>
+    <p>Transactional Outbox：訊息與業務資料同一交易寫入 outbox 表，另一程序可靠地發送（輪詢或 CDC），發送後標記；因為可能重複發送，消費端要冪等。避免「先發訊息後寫 DB」或「寫完 DB 再發，失敗忽略」。</p>
+  </details>
+
+  <h3>小抄：常用指令</h3>
+<pre class="code" data-file="rabbitmqctl / rabbitmq-diagnostics"><code>rabbitmqctl list_queues name type messages_ready messages_unacknowledged consumers
+rabbitmqctl list_exchanges name type durable
+rabbitmqctl list_bindings
+rabbitmqctl list_connections name user state
+rabbitmqctl list_channels connection number prefetch_count
+rabbitmqctl list_users
+rabbitmqctl list_permissions -p /
+rabbitmqctl list_policies
+rabbitmqctl purge_queue &lt;queue&gt;            # 清空 queue（危險）
+rabbitmqctl cluster_status
+rabbitmq-diagnostics check_running
+rabbitmq-diagnostics alarms
+rabbitmq-plugins list
+rabbitmq-plugins enable rabbitmq_prometheus</code></pre>
+
+  <h3>小抄：Spring Boot 設定速查</h3>
+  <table>
+    <tr><th>設定</th><th>用途</th></tr>
+    <tr><td><code>spring.rabbitmq.publisher-confirm-type=correlated</code></td><td>啟用 publisher confirm</td></tr>
+    <tr><td><code>spring.rabbitmq.publisher-returns=true</code> + <code>template.mandatory=true</code></td><td>無法路由時退回訊息</td></tr>
+    <tr><td><code>spring.rabbitmq.listener.simple.acknowledge-mode</code></td><td><code>auto</code> / <code>manual</code> / <code>none</code></td></tr>
+    <tr><td><code>...simple.prefetch</code></td><td>預取數量</td></tr>
+    <tr><td><code>...simple.concurrency</code> / <code>max-concurrency</code></td><td>消費者執行緒數</td></tr>
+    <tr><td><code>...simple.default-requeue-rejected=false</code></td><td>失敗不放回 queue</td></tr>
+    <tr><td><code>...simple.retry.*</code></td><td>內建重試（次數、間隔、倍數）</td></tr>
+    <tr><td><code>spring.rabbitmq.addresses</code></td><td>叢集多節點位址</td></tr>
+  </table>
+
+  <h3>設計檢查清單</h3>
+  <ol>
+    <li>Exchange 以領域命名，routing key 用「領域.事件」。</li>
+    <li>業務佇列使用 quorum queue、durable、有 DLX 與 DLQ。</li>
+    <li>生產者：confirm + mandatory + messageId；與資料庫的一致性用 Outbox。</li>
+    <li>消費者：auto ack、有限次數重試、永久性錯誤不重試、冪等。</li>
+    <li>prefetch 與 concurrency 依任務特性調整；要保序就單消費者。</li>
+    <li>監控 Ready / Unacked / DLQ / 消費者數 / 記憶體磁碟，並有告警。</li>
+    <li>專用帳號與最小權限，刪除 guest，啟用 TLS。</li>
+    <li>叢集三節點起跳，不跨廣域網路；跨機房用 Federation / Shovel。</li>
+  </ol>
+
+  <h3>延伸閱讀</h3>
+  <ul>
+    <li><a href="https://www.rabbitmq.com/docs" target="_blank" rel="noopener">RabbitMQ 官方文件</a>：Reliability Guide、Quorum Queues、Monitoring 幾篇最值得精讀。</li>
+    <li><a href="https://docs.spring.io/spring-amqp/reference/" target="_blank" rel="noopener">Spring AMQP 參考文件</a>：Listener 容器、重試與錯誤處理章節。</li>
+    <li>《Enterprise Integration Patterns》：訊息系統的經典模式目錄，本講義的許多模式都能在裡面找到原型。</li>
+    <li><a href="https://microservices.io/patterns/data/transactional-outbox.html" target="_blank" rel="noopener">microservices.io：Transactional Outbox</a></li>
+  </ul>
+
+  <div class="quiz" data-answer="1" data-why="at-least-once 是不丟訊息的代價：可能重複，因此消費端要冪等。" data-hint="分散式系統中，剛好一次無法由傳輸層單獨保證。">
+    <p class="qt">小測驗</p>
+    <p class="q">RabbitMQ 在實務上提供的投遞語意，以及消費端因此要做的事是？</p>
+    <button type="button">剛好一次（exactly-once），消費端不需特別處理</button>
+    <button type="button">至少一次（at-least-once），消費端要做冪等處理</button>
+    <button type="button">至多一次（at-most-once），消費端要補償遺失的訊息</button>
+    <button type="button">依 exchange 類型決定，沒有固定語意</button>
+    <p class="fb" aria-live="polite"></p>
+  </div>
+  <label class="done"><input type="checkbox" data-done="ch10"> 這章讀完了</label>
+
+  <p class="end" style="margin-top:36px">— 講義結束，祝開發順利 —</p>
+</section>
+
+</main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var root = document.documentElement;
+  var DONE_KEY = "rabbitmq-handout:done";
+  var FAV_KEY = "rabbitmq-handout:fav";
+  var TOC_KEY = "rabbitmq-handout:toc";
+
+  function load(key) {
+    try { return new Set(JSON.parse(localStorage.getItem(key) || "[]")); } catch (e) { return new Set(); }
+  }
+  function save(key, set) {
+    try { localStorage.setItem(key, JSON.stringify(Array.from(set))); } catch (e) { /* 忽略 */ }
+  }
+
+  /* 程式碼複製按鈕 */
+  $$("pre.code").forEach(function (pre) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "copy";
+    btn.textContent = "複製";
+    btn.addEventListener("click", function () {
+      var text = pre.querySelector("code").textContent;
+      var ok = function () { btn.textContent = "已複製"; setTimeout(function () { btn.textContent = "複製"; }, 1200); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(ok, function () { btn.textContent = "失敗"; });
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); ok(); } catch (e) { btn.textContent = "失敗"; }
+        document.body.removeChild(ta);
+      }
+    });
+    pre.appendChild(btn);
+  });
+
+  /* 小測驗 */
+  $$(".quiz").forEach(function (q) {
+    var answer = Number(q.dataset.answer);
+    var buttons = $$("button", q);
+    var fb = $(".fb", q);
+    buttons.forEach(function (btn, i) {
+      btn.addEventListener("click", function () {
+        buttons.forEach(function (b) { b.classList.remove("right", "wrong"); });
+        if (i === answer) {
+          btn.classList.add("right");
+          fb.textContent = "答對了！" + (q.dataset.why || "");
+          fb.dataset.state = "ok";
+        } else {
+          btn.classList.add("wrong");
+          fb.textContent = "不對。" + (q.dataset.hint || "");
+          fb.dataset.state = "no";
+        }
+      });
+    });
+  });
+
+  /* 完成進度 */
+  var chapters = $$("section.chapter");
+  var done = load(DONE_KEY);
+  function refreshProgress() {
+    $$("input[data-done]").forEach(function (cb) { cb.checked = done.has(cb.dataset.done); });
+    $$(".toc li[data-ch]").forEach(function (li) { li.classList.toggle("done", done.has(li.dataset.ch)); });
+    $(".bar").style.width = (done.size / chapters.length) * 100 + "%";
+    $(".progress").setAttribute("aria-valuenow", String(done.size));
+    $(".progress-text").textContent = "已完成 " + done.size + " / " + chapters.length + " 章";
+  }
+  $$("input[data-done]").forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      if (cb.checked) done.add(cb.dataset.done); else done.delete(cb.dataset.done);
+      save(DONE_KEY, done);
+      refreshProgress();
+    });
+  });
+  refreshProgress();
+
+  /* 章節導覽：上一章 / 下一章 */
+  function tocTitle(sec) {
+    var a = $('.toc li[data-ch="' + sec.dataset.ch + '"] a');
+    return a ? a.textContent.replace(/\s+/g, " ").trim() : "";
+  }
+  chapters.forEach(function (sec, i) {
+    var nav = document.createElement("nav");
+    nav.className = "chap-nav";
+    nav.setAttribute("aria-label", "上一章 / 下一章");
+    function mk(target, dir) {
+      var a = document.createElement("a");
+      a.className = dir;
+      a.href = "#" + target.id;
+      var small = document.createElement("small");
+      small.textContent = dir === "prev" ? "← 上一章" : "下一章 →";
+      var span = document.createElement("span");
+      span.textContent = tocTitle(target);
+      a.appendChild(small); a.appendChild(span);
+      return a;
+    }
+    if (chapters[i - 1]) nav.appendChild(mk(chapters[i - 1], "prev"));
+    if (chapters[i + 1]) nav.appendChild(mk(chapters[i + 1], "next"));
+    if (nav.children.length) sec.appendChild(nav);
+  });
+
+  /* 目錄開合：桌面收合側欄，手機滑出抽屜 */
+  var tocToggle = $(".toc-toggle");
+  var narrowMq = window.matchMedia("(max-width: 1040px)");
+  function syncToggle() {
+    var open = narrowMq.matches ? root.classList.contains("toc-open") : !root.classList.contains("toc-collapsed");
+    tocToggle.setAttribute("aria-expanded", String(open));
+    tocToggle.textContent = narrowMq.matches && open ? "✕" : "☰";
+  }
+  function setDrawer(open) { root.classList.toggle("toc-open", open); syncToggle(); }
+  tocToggle.addEventListener("click", function () {
+    if (narrowMq.matches) { setDrawer(!root.classList.contains("toc-open")); return; }
+    var collapsed = root.classList.toggle("toc-collapsed");
+    try { localStorage.setItem(TOC_KEY, collapsed ? "collapsed" : "open"); } catch (e) { /* 忽略 */ }
+    syncToggle();
+  });
+  $(".toc-backdrop").addEventListener("click", function () { setDrawer(false); });
+  $$(".toc a").forEach(function (a) {
+    a.addEventListener("click", function () { if (narrowMq.matches) setDrawer(false); });
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && root.classList.contains("toc-open")) { setDrawer(false); tocToggle.focus(); }
+  });
+  if (narrowMq.addEventListener) narrowMq.addEventListener("change", function () { setDrawer(false); });
+  syncToggle();
+
+  /* 收藏章節與集中複習 */
+  var favs = load(FAV_KEY);
+  var favMode = false;
+  var ids = new Set(chapters.map(function (c) { return c.dataset.ch; }));
+  var reviewBtn = document.createElement("button");
+  reviewBtn.type = "button";
+  reviewBtn.className = "fav-review";
+  $(".progress-text").insertAdjacentElement("afterend", reviewBtn);
+  var banner = document.createElement("div");
+  banner.className = "fav-banner";
+  var bannerText = document.createElement("p");
+  var exitBtn = document.createElement("button");
+  exitBtn.type = "button";
+  exitBtn.textContent = "離開收藏複習";
+  banner.appendChild(bannerText); banner.appendChild(exitBtn);
+  $(".sheet").insertBefore(banner, $(".sheet").firstChild);
+
+  $$(".toc li[data-ch]").forEach(function (li) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "fav-star";
+    b.dataset.ch = li.dataset.ch;
+    b.dataset.title = $("a", li).textContent.replace(/\s+/g, " ").trim();
+    b.addEventListener("click", function () {
+      if (favs.has(b.dataset.ch)) favs.delete(b.dataset.ch); else favs.add(b.dataset.ch);
+      save(FAV_KEY, favs);
+      refreshFavs();
+    });
+    li.insertBefore(b, li.firstChild);
+  });
+
+  function refreshFavs() {
+    var n = Array.from(favs).filter(function (id) { return ids.has(id); }).length;
+    root.classList.toggle("fav-mode", favMode);
+    $$(".fav-star").forEach(function (b) {
+      var on = favs.has(b.dataset.ch);
+      var label = (on ? "取消收藏 " : "收藏 ") + b.dataset.title;
+      b.textContent = on ? "★" : "☆";
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", String(on));
+      b.setAttribute("aria-label", label);
+      b.title = label;
+    });
+    reviewBtn.textContent = favMode ? "✕ 離開收藏複習" : "★ 複習收藏（" + n + "）";
+    reviewBtn.setAttribute("aria-pressed", String(favMode));
+    bannerText.textContent = n ? "收藏複習：只顯示你標了星號的 " + n + " 章" : "還沒有收藏的章節。離開後，點目錄中章節左邊的 ☆ 就能收藏。";
+    chapters.forEach(function (sec) { sec.classList.toggle("fav-hide", favMode && !favs.has(sec.dataset.ch)); });
+    var part = null, any = false;
+    function flush() { if (part) part.classList.toggle("fav-hide", favMode && !any); }
+    $$(".toc li").forEach(function (li) {
+      if (li.classList.contains("toc-part")) { flush(); part = li; any = false; return; }
+      var hide = favMode && !favs.has(li.dataset.ch);
+      li.classList.toggle("fav-hide", hide);
+      if (!hide) any = true;
+    });
+    flush();
+  }
+  function setFavMode(on) {
+    favMode = on;
+    refreshFavs();
+    window.scrollTo(0, 0);
+    if (narrowMq.matches) setDrawer(false);
+  }
+  reviewBtn.addEventListener("click", function () { setFavMode(!favMode); });
+  exitBtn.addEventListener("click", function () { setFavMode(false); });
+  refreshFavs();
+
+  /* 目錄：目前章節 + 手機頂端細列標題 */
+  var barTitle = $(".cur-title");
+  barTitle.textContent = document.title;
+  if ("IntersectionObserver" in window) {
+    var spy = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        var cur = en.target.dataset.ch;
+        $$(".toc li[data-ch]").forEach(function (li) {
+          var a = $("a", li);
+          if (li.dataset.ch === cur) a.setAttribute("aria-current", "location");
+          else a.removeAttribute("aria-current");
+        });
+        barTitle.textContent = tocTitle(en.target) || document.title;
+      });
+    }, { rootMargin: "-15% 0px -75% 0px" });
+    chapters.forEach(function (c) { spy.observe(c); });
+  }
+
+  /* 列印前展開所有答案 */
+  window.addEventListener("beforeprint", function () { $$("details").forEach(function (d) { d.open = true; }); });
+})();
+</script>
+</body>
+</html>
